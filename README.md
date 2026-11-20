@@ -76,3 +76,22 @@ The benchmark/host provenance, significance limitations, acceptance test matrix,
 ## Licensing
 
 No project license has been selected; the repository owner retains applicable rights. System dependencies have their own licenses. Do not redistribute PHASESHIFT under an invented license.
+
+## R7 v1.0 contract hardening
+
+The original v1.0 specification has an explicit requirement-to-evidence map in [`docs/v1_requirements_evidence.md`](docs/v1_requirements_evidence.md). In addition to the original functionality, current source provides configurable adaptive exploration fraction and measured batch floor, a fresh-worker-per-sample option, detailed host/build provenance comparison, irreversible experiment evidence state transitions, empirical scaling-regime detection with new-size holdout confirmation, and matched-seed structural interventions. These features are intentionally conservative and may abstain.
+
+Config excerpts (both configuration forms persist into the immutable run manifest):
+
+```json
+{
+  "search": {"method": "adaptive_partition", "exploration_fraction": 0.20},
+  "measurement": {"minimum_batch_ms": 2, "isolation_mode": "per_case"}
+}
+```
+
+`isolation_mode: "per_sample"` starts one child process per timed operation and preserves paired blocks/order metadata. It is slower and measures a different cache/plugin-state regime than `per_case`; compare results only after documenting this difference. `minimum_batch_ms` has a 1–100 ms range, and the adaptive exploration fraction must be between zero and one inclusive. The scheduler's quota is deterministic, including after resume.
+
+Use `phaseshift scaling --run RUN --out NEW_RUN --seeds 3` for empirical scaling fits. If a predeclared single-algorithm segmented candidate is identified, PHASESHIFT can check it on **new sizes and independent seeds**, applying the configured confidence and practical slope-change threshold. A model fit alone is never upgraded to a confirmed finding. Use `phaseshift intervene --run RUN --out NEW_RUN --hypothesis H1 --pairs 20` to measure matched-seed neighbor cases and enumerate observed morphology changes. This is an *intervention diagnostic*, **not a causal-identification proof**.
+
+`phaseshift compare --a RUN --b RUN` evaluates recorded host/build metadata and emits explicit compatibility states. The code or library revision, compiler flags, CPU model/affinity/governor, and platform can differ even when two configurations name the same algorithm. Matching metadata cannot prove thermal, noise or hardware equivalence. Do not embed secrets into compiler flags intended for public evidence reports.

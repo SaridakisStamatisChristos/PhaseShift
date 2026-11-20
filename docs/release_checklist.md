@@ -21,3 +21,8 @@ This ledger distinguishes a **locally verified executable v1 candidate** from a 
 - A reported test **PASS** applies only to the indicated checked code, toolchain and test environment. CI YAML alone does not prove CI execution.
 
 **Release label**: `PHASESHIFT v1.0 core acceptance complete locally on Linux x86-64; GitHub Actions and other platform qualification are pending evidence`. Don't mark production-ready or mathematically proven.
+
+
+## R7 follow-on implementation (2026-11-20; current source)
+
+See [`v1_requirements_evidence.md`](v1_requirements_evidence.md) for requirement-level evidence and caveats. The earlier local acceptance matrix above is a **historical snapshot**, not a claim about the latest unverified revision. New changes include configurable measurement/search policy, per-sample worker isolation, scaling detection and fresh-size holdout, matched intervention diagnostics, explicit irreversible evidence transitions, detailed build/runtime provenance, and CPU-time ablation accounting. New CI outcomes are required before calling this revised branch fully verified. The pre-change head `9c77906` passed GCC/Clang and sanitizer GitHub workflows including the sanitized CLI smoke; this evidence does **not** automatically cover subsequent edits.
