@@ -28,5 +28,6 @@ llvm-profdata merge -sparse "${profiles[@]}" -o "$build/merged.profdata"
 llvm-cov export "$build/phaseshift_tests" \
   -instr-profile="$build/merged.profdata" \
   -object="$build/phaseshift" -object="$build/phaseshift_worker" \
+  -object="$build/phaseshift_boundary_v2_tests" \
   > "$build/coverage.json"
 python3 "$root/scripts/coverage_gate.py" --root "$root" --min-line "$min_line" --input "$build/coverage.json"

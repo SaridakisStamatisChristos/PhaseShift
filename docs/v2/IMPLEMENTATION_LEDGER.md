@@ -20,3 +20,7 @@ Preserve historical generator bytes/IDs, v1 CLI behavior, SQLite v7 evidence, na
 | G1–G14 v2 hard gates | UNVERIFIED | No branch CI or held-out comparison yet |
 
 Research claim: **none**. Any synthetic fixture is a correctness calibration, not scientific novelty. No PR merge, license or release is authorized.
+
+## CI falsification / repair F-v2-001
+
+Commit `1e3cf349` ran 39/39 CTests successfully in the LLVM coverage job, but the coverage gate **failed**: `src/boundary_v2.cpp` was missing from the instrumented linked object set. Earliest affected phase: INTEGRATE (coverage aggregation), not the detector algorithm. Repair: explicitly include the executable that links the new translation unit in `llvm-cov export`; rerun coverage on the repaired branch SHA. This is not an accepted pass until exact-revision CI reports success.
