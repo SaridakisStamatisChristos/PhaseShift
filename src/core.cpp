@@ -1,6 +1,7 @@
 #include "phaseshift/core.hpp"
 #include <openssl/evp.h>
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <ctime>
@@ -44,6 +45,20 @@ std::string sha256(const Bytes& b){
  std::ostringstream out;out<<std::hex<<std::setfill('0');for(unsigned i=0;i<n;i++)out<<std::setw(2)<<static_cast<unsigned>(digest[i]);return out.str();
 }
 std::string sha256(const std::string& s){return sha256(Bytes(s.begin(),s.end()));}
+std::string sha256_file(const std::string& path){
+ std::ifstream input(path,std::ios::binary);if(!input)throw Error("SHA256 cannot open file: "+path);
+ EVP_MD_CTX* ctx=EVP_MD_CTX_new();if(!ctx)throw Error("SHA-256 allocation failed");
+ unsigned char digest[EVP_MAX_MD_SIZE]{};unsigned n=0;
+ if(EVP_DigestInit_ex(ctx,EVP_sha256(),nullptr)!=1){EVP_MD_CTX_free(ctx);throw Error("SHA-256 init failed");}
+ std::array<char,65536> buffer{};
+ while(input){input.read(buffer.data(),static_cast<std::streamsize>(buffer.size()));auto size=input.gcount();
+  if(size>0&&EVP_DigestUpdate(ctx,buffer.data(),static_cast<std::size_t>(size))!=1){EVP_MD_CTX_free(ctx);throw Error("SHA256 update failed");}
+ }
+ if(!input.eof()){EVP_MD_CTX_free(ctx);throw Error("SHA256 file read failed: "+path);}
+ if(EVP_DigestFinal_ex(ctx,digest,&n)!=1||n!=32){EVP_MD_CTX_free(ctx);throw Error("SHA256 final failed");}
+ EVP_MD_CTX_free(ctx);std::ostringstream out;out<<std::hex<<std::setfill('0');for(unsigned i=0;i<n;i++)out<<std::setw(2)<<static_cast<unsigned>(digest[i]);return out.str();
+}
+
 std::string hex_encode(const Bytes& b){static constexpr char abc[]="0123456789abcdef";std::string s;s.reserve(b.size()*2);for(auto x:b){s.push_back(abc[x>>4]);s.push_back(abc[x&15]);}return s;}
 Bytes hex_decode(const std::string& s){if(s.size()%2)throw Error("invalid hex byte count");Bytes b;b.reserve(s.size()/2);auto digit=[](char c)->int{if(c>='0'&&c<='9')return c-'0';if(c>='a'&&c<='f')return c-'a'+10;if(c>='A'&&c<='F')return c-'A'+10;return -1;};for(std::size_t i=0;i<s.size();i+=2){int a=digit(s[i]),d=digit(s[i+1]);if(a<0||d<0)throw Error("invalid hex digit");b.push_back(static_cast<std::uint8_t>(a*16+d));}return b;}
 std::uint64_t splitmix64(std::uint64_t& s){std::uint64_t z=(s+=0x9e3779b97f4a7c15ULL);z=(z^(z>>30))*0xbf58476d1ce4e5b9ULL;z=(z^(z>>27))*0x94d049bb133111ebULL;return z^(z>>31);}

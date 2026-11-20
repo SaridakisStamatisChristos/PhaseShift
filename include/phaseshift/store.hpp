@@ -5,13 +5,13 @@ namespace ps {
 class Store {
  sqlite3* db_=nullptr;
 public:
- explicit Store(const std::string& path); ~Store();
+ explicit Store(const std::string& path,bool readonly=false); ~Store();
  Store(const Store&)=delete;Store& operator=(const Store&)=delete;
  void exec(const std::string& sql);
  void experiment(const std::string& config,const std::string& env);
  void add_case(const Case& c);
  void add_observation(const Case& c,const Observation& s,bool holdout);
- void hypothesis(const std::string& id,const std::string& status,const std::string& axis,std::int64_t left,std::int64_t right,double effect,const std::string& detail);
+ void hypothesis(const std::string& id,const std::string& status,const std::string& axis,std::int64_t left,std::int64_t right,double effect,const std::string& detail,const std::string& kind="UNSTABLE_OR_INCONCLUSIVE");
  struct SchedulerDecision {std::int64_t pool_index=0;std::string case_id;std::uint64_t next_rng_state=0;};
  std::vector<SchedulerDecision> scheduler_decisions();
  void record_decision(std::size_t index,const std::string& case_id,std::uint64_t next_rng_state);

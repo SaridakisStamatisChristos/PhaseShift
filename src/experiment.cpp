@@ -1,4 +1,6 @@
 #include "phaseshift/experiment.hpp"
+#include "phaseshift/statistics.hpp"
+#include "phaseshift/morphology.hpp"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -25,7 +27,7 @@ static Json config_json(const Config& c){
  Json j;j.put("schema_version",static_cast<std::int64_t>(1));j.put("experiment_id",c.experiment_id);j.put("problem_family",c.family);j.put("algorithm_a",c.a);j.put("algorithm_b",c.b);j.put("search_method",c.method);j.put("primary_axis",c.axis);j.put("seed",static_cast<std::int64_t>(c.seed));j.put("max_cases",static_cast<std::int64_t>(c.max_cases));j.put("max_case_bytes",static_cast<std::int64_t>(c.max_bytes));j.put("discovery_blocks",static_cast<std::int64_t>(c.blocks));j.put("confirm_blocks",static_cast<std::int64_t>(c.confirm_blocks));j.put("warmup",static_cast<std::int64_t>(c.warmup));j.put("sample_ms",static_cast<std::int64_t>(c.sample_ms));j.put("rss_mb",static_cast<std::int64_t>(c.rss_mb));j.put("total_wall_seconds",static_cast<std::int64_t>(c.total_wall_s));j.put("min_practical_ratio",c.min_ratio);j.put("base_params",case_params(c.base));
  Json axes;for(const auto& [name,values]:c.axes){auto* arr=json_object_new_array();for(const auto& val:values)json_object_array_add(arr,json_object_new_string(val.c_str()));json_object_object_add(axes.p,name.c_str(),arr);}j.put("axes",std::move(axes));return j;
 }
-static Config config_from_json(const Json& j){
+Config config_from_json(const Json& j){
  if(j.i("schema_version",1)!=1)throw Error("only config schema version 1 supported");
  Config c;c.experiment_id=j.s("experiment_id","experiment");c.family=j.s("problem_family",j.s("family","calibration"));
  c.a=j.s("algorithm_a","");c.b=j.s("algorithm_b","");
@@ -87,43 +89,66 @@ static std::vector<Case> scheduled(const Config& c){
  }
  return cases;
 }
-static double median(std::vector<double> v){if(v.empty())throw Error("median of empty sample");std::sort(v.begin(),v.end());const auto n=v.size();return n%2?v[n/2]:0.5*(v[n/2-1]+v[n/2]);}
 static std::int64_t axis_value(const Case& c,const std::string& axis){if(axis=="x")return c.x;if(axis=="n")return c.n;if(axis=="k")return c.k;if(axis=="edges")return c.edges;if(axis=="vertices")return c.vertices;return 0;}
-static std::optional<double> metric(Store& s,const Case& c,const Config& cfg,bool holdout){
- auto obs=s.observations(c.id,holdout);std::vector<double> a,b;
- for(const auto& o:obs){if(o.status!="ok"||o.batch<1)continue;double v;
-  if(cfg.family=="calibration")v=static_cast<double>(o.work);else {if(o.ns<=0)continue;v=static_cast<double>(o.ns)/static_cast<double>(o.batch);}
-  if(v<=0)continue;
-  if(o.algorithm==cfg.a)a.push_back(v);
-  if(o.algorithm==cfg.b)b.push_back(v);
+static std::optional<double> metric(Store& store,const Case& c,const Config& cfg,bool holdout){
+ const auto obs=store.observations(c.id,holdout);
+ std::map<std::int64_t,std::vector<double>> a,b;
+ for(const auto& o:obs){
+  if(o.status!="ok"||o.batch<1)continue;
+  double value=0;
+  if(cfg.family=="calibration")value=static_cast<double>(o.work);
+  else if(o.ns>0)value=static_cast<double>(o.ns)/static_cast<double>(o.batch);
+  if(!std::isfinite(value)||value<=0)continue;
+  if(o.algorithm==cfg.a)a[o.block].push_back(value);
+  if(o.algorithm==cfg.b)b[o.block].push_back(value);
  }
- if(a.empty()||(!cfg.b.empty()&&b.empty()))return {};
- if(cfg.b.empty())return std::log(median(a));
- return std::log(median(a)/median(b));
+ if(a.empty())return {};
+ std::vector<double> paired;
+ for(const auto& [block,va]:a){
+  if(cfg.b.empty())paired.push_back(std::log(sample_median(va)));
+  else if(b.count(block)&&!b.at(block).empty())paired.push_back(std::log(sample_median(va)/sample_median(b.at(block))));
+ }
+ if(paired.empty())return {};
+ return sample_median(paired);
 }
-static std::optional<std::tuple<std::int64_t,std::int64_t,double>> detect(Store& s,const Config& cfg){
+struct Detection {std::int64_t left=0,right=0;double effect=0;std::string kind;};
+static std::optional<Detection> detect(Store& store,const Config& cfg){
  if(!numeric_axis(cfg.axis))return {};
  for(const auto& [key,values]:cfg.axes){if(key!=cfg.axis&&values.size()>1)return {};}
  std::map<std::int64_t,std::vector<double>> grouped;
- for(const auto& c:s.cases(false)){if(auto m=metric(s,c,cfg,false))grouped[axis_value(c,cfg.axis)].push_back(*m);}
+ for(const auto& c:store.cases(false))if(auto m=metric(store,c,cfg,false))grouped[axis_value(c,cfg.axis)].push_back(*m);
  if(grouped.size()<4)return {};
- std::vector<std::int64_t> x;std::vector<double> y;for(const auto& [n,v]:grouped){x.push_back(n);y.push_back(median(v));}
- const double mean=std::accumulate(y.begin(),y.end(),0.0)/static_cast<double>(y.size());
- double null_sse=0;for(auto v:y)null_sse+=(v-mean)*(v-mean);
+ std::vector<std::int64_t> x;std::vector<double> y;
+ for(const auto& [key,values]:grouped){x.push_back(key);y.push_back(sample_median(values));}
+ /* A crossover is an advantage sign change, not a discontinuity. The holdout
+    must later establish both advantage signs independently. */
+ if(!cfg.b.empty()&&cfg.family!="calibration"){
+  std::optional<Detection> best;
+  for(std::size_t i=1;i<y.size();i++)if(y[i-1]*y[i]<0){
+   const auto effect=std::min(std::abs(y[i-1]),std::abs(y[i]));
+   if(effect>std::log(1.05)&&(!best||effect>best->effect))best=Detection{x[i-1],x[i],effect,"PERFORMANCE_CROSSOVER"};
+  }
+  if(best)return best;
+ }
+ const auto avg=std::accumulate(y.begin(),y.end(),0.0)/static_cast<double>(y.size());
+ double null_sse=0;for(auto v:y)null_sse+=(v-avg)*(v-avg);
  double best_sse=std::numeric_limits<double>::infinity();std::size_t cut=0;
  for(std::size_t j=1;j<y.size();j++){
-  auto ml=std::accumulate(y.begin(),y.begin()+static_cast<std::ptrdiff_t>(j),0.0)/static_cast<double>(j);
-  auto mr=std::accumulate(y.begin()+static_cast<std::ptrdiff_t>(j),y.end(),0.0)/static_cast<double>(y.size()-j);
-  double sse=0;for(std::size_t k=0;k<j;k++)sse+=(y[k]-ml)*(y[k]-ml);for(std::size_t k=j;k<y.size();k++)sse+=(y[k]-mr)*(y[k]-mr);
+  const auto ml=std::accumulate(y.begin(),y.begin()+static_cast<std::ptrdiff_t>(j),0.0)/static_cast<double>(j);
+  const auto mr=std::accumulate(y.begin()+static_cast<std::ptrdiff_t>(j),y.end(),0.0)/static_cast<double>(y.size()-j);
+  double sse=0;
+  for(std::size_t k=0;k<j;k++)sse+=(y[k]-ml)*(y[k]-ml);
+  for(std::size_t k=j;k<y.size();k++)sse+=(y[k]-mr)*(y[k]-mr);
   if(sse<best_sse){best_sse=sse;cut=j;}
  }
  const auto effect=std::abs(y[cut]-y[cut-1]);
- const auto n=static_cast<double>(y.size());const double bic0=n*std::log((null_sse+1e-12)/n)+std::log(n);const double bic1=n*std::log((best_sse+1e-12)/n)+3.0*std::log(n);
+ const auto n=static_cast<double>(y.size());
+ const double bic0=n*std::log((null_sse+1e-12)/n)+std::log(n);
+ const double bic1=n*std::log((best_sse+1e-12)/n)+3.0*std::log(n);
  if(bic0-bic1<6||effect<std::log(cfg.min_ratio))return {};
- /* Single largest local contrast must dominate smooth gradients. */
  double other=0;for(std::size_t i=1;i<y.size();i++)if(i!=cut)other=std::max(other,std::abs(y[i]-y[i-1]));
  if(effect<2.0*other)return {};
- return std::tuple{x[cut-1],x[cut],effect};
+ return Detection{x[cut-1],x[cut],effect,cfg.family=="calibration"?"SYNTHETIC_CALIBRATION":"PERFORMANCE_CLIFF"};
 }
 static std::size_t adaptive_next(Store& store,const Config& cfg,const std::vector<Case>& pool,const std::vector<bool>& chosen,std::uint64_t& random_state){
  std::vector<std::size_t> available;available.reserve(pool.size());
@@ -186,7 +211,7 @@ static void execute_schedule(const Config& cfg,const std::string& out,Store& sto
  }
  if(completed==cfg.max_cases||completed==choices.size()){
   if(auto d=detect(store,cfg)){
-   auto [l,r,e]=*d;store.hypothesis("H1","HYPOTHESIZED",cfg.axis,l,r,e,"Exploratory segmented fit vs no-break null (BIC>6); holdout required");
+   store.hypothesis("H1","HYPOTHESIZED",cfg.axis,d->left,d->right,d->effect,"Exploratory candidate, single preselected hypothesis with separate holdout; confirmation required",d->kind);
   }else store.hypothesis("H1","NO_CONFIRMED_BOUNDARY",cfg.axis,0,0,0,"No convincing isolated structural discontinuity under declared thresholds");
   store.event("search_complete",std::to_string(completed));
  }else store.event("search_paused",std::to_string(completed));
@@ -213,57 +238,80 @@ static std::tuple<std::string,std::string,std::int64_t,std::int64_t> read_hypoth
  std::string status=reinterpret_cast<const char*>(sqlite3_column_text(st,0)),axis=reinterpret_cast<const char*>(sqlite3_column_text(st,1));auto l=sqlite3_column_int64(st,2),r=sqlite3_column_int64(st,3);sqlite3_finalize(st);return {status,axis,l,r};
 }
 void confirm(const std::string& run,const std::string& id){
- Store s(run+"/run.sqlite");auto cfg=config_from_json(Json::parse(s.config()));auto [status,axis,left,right]=read_hypothesis(s,id);
- if(status=="NO_CONFIRMED_BOUNDARY") {std::cout<<"No candidate to confirm\n";return;}
+ Store store(run+"/run.sqlite");const auto cfg=config_from_json(Json::parse(store.config()));
+ auto [status,axis,left,right]=read_hypothesis(store,id);
+ if(status=="NO_CONFIRMED_BOUNDARY"){std::cout<<"No candidate to confirm\n";return;}
  if(status!="HYPOTHESIZED")throw Error("confirmation already attempted or candidate not eligible: "+status);
+ sqlite3_stmt* kind_stmt=nullptr;
+ if(sqlite3_prepare_v2(store.raw(),"SELECT kind FROM hypotheses WHERE id=?",-1,&kind_stmt,nullptr)!=SQLITE_OK)throw Error("hypothesis kind query failed");
+ sqlite3_bind_text(kind_stmt,1,id.c_str(),-1,SQLITE_TRANSIENT);
+ if(sqlite3_step(kind_stmt)!=SQLITE_ROW){sqlite3_finalize(kind_stmt);throw Error("hypothesis not found");}
+ const auto kind=std::string(reinterpret_cast<const char*>(sqlite3_column_text(kind_stmt,0)));
+ sqlite3_finalize(kind_stmt);
  std::array<std::vector<double>,2> side_estimates;
+ std::vector<double> paired_differences;
  const auto begin=std::chrono::steady_clock::now();
- for(std::size_t side=0;side<2;side++){
-  const auto x=side==0?left:right;
-  for(int i=0;i<cfg.confirm_blocks;i++){
-   if(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now()-begin).count()>=cfg.total_wall_s){
-    s.hypothesis(id,"NOT_CONFIRMED",axis,left,right,0,"Holdout stopped by total wall-time budget");report(run);return;
-   }
-   Case c=cfg.base;assign(c,axis,std::to_string(x));
-   c.seed=cfg.seed+1000000+static_cast<std::uint64_t>(i)*31+static_cast<std::uint64_t>(x%31);
-   c=make_case(c,cfg.max_bytes);
-   const auto obs=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},1,cfg.warmup,cfg.sample_ms,cfg.rss_mb);
-   for(const auto& o:obs)s.add_observation(c,o,true);
-   if(auto m=metric(s,c,cfg,true))side_estimates[side].push_back(*m);
+ std::set<std::string> discovery_ids;for(const auto& c:store.cases(false))discovery_ids.insert(c.id);
+ auto reject=[&](const std::string& why){store.hypothesis(id,"NOT_CONFIRMED",axis,left,right,0,why);report(run);};
+ for(int i=0;i<cfg.confirm_blocks;i++){
+  const auto seed=cfg.seed+1000000ULL+static_cast<std::uint64_t>(i)*97ULL;
+  std::array<double,2> estimates{};
+  for(int order=0;order<2;order++){
+   const auto side=static_cast<std::size_t>((i+order)%2);
+   if(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now()-begin).count()>=cfg.total_wall_s){reject("Holdout stopped by declared wall budget");return;}
+   Case c=cfg.base;assign(c,axis,std::to_string(side==0?left:right));c.seed=seed;c=make_case(c,cfg.max_bytes);
+   if(discovery_ids.count(c.id)){reject("Held-out input overlaps discovery: confirmation invalid");return;}
+   auto obs=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},1,cfg.warmup,cfg.sample_ms,cfg.rss_mb);
+   for(const auto& o:obs)store.add_observation(c,o,true);
+   auto result=metric(store,c,cfg,true);
+   if(!result){reject("Insufficient holdout measurement or correctness/worker failure");return;}
+   estimates[side]=*result;
   }
-  if(side_estimates[side].size()<static_cast<std::size_t>(cfg.confirm_blocks)){
-   s.hypothesis(id,"NOT_CONFIRMED",axis,left,right,0,"Holdout correctness/measurement failures or insufficient cases");report(run);return;
-  }
+  side_estimates[0].push_back(estimates[0]);side_estimates[1].push_back(estimates[1]);
+  paired_differences.push_back(estimates[1]-estimates[0]);
  }
- const double delta=median(side_estimates[1])-median(side_estimates[0]);
- const double difference=std::abs(delta);
+ const auto delta=sample_median(paired_differences);
+ const auto threshold=std::log(cfg.min_ratio);
+ std::ostringstream detail;detail<<std::setprecision(8);
+ bool confirmed=false;
  if(cfg.family=="calibration"){
-  if(difference>=std::log(cfg.min_ratio))
-   s.hypothesis(id,"CONFIRMED",axis,left,right,difference,"Independent seed-separated deterministic work-count holdout; not wall-clock performance");
-  else s.hypothesis(id,"NOT_CONFIRMED",axis,left,right,difference,"Synthetic holdout below practical threshold");
+  confirmed=std::abs(delta)>=threshold;
+  detail<<"Independent seed-separated deterministic operation-count holdout; pairs="<<cfg.confirm_blocks<<". NOT a timing/algorithm discovery.";
  }else{
-  /* The resampling unit is the independent holdout CASE (not timed batches).
-     Exactly one exploratory hypothesis is frozen before this single-use
-     holdout. Repeated peeking/reconfirmation is prohibited by status gate. */
-  std::vector<double> differences;differences.reserve(20000);
-  std::uint64_t state=cfg.seed^0x5b86d2a7c9e3ULL;
-  for(int boot=0;boot<20000;boot++){
-   std::vector<double> l,r;l.reserve(side_estimates[0].size());r.reserve(side_estimates[1].size());
-   for(std::size_t i=0;i<side_estimates[0].size();i++)l.push_back(side_estimates[0][static_cast<std::size_t>(randbelow(state,side_estimates[0].size()))]);
-   for(std::size_t i=0;i<side_estimates[1].size();i++)r.push_back(side_estimates[1][static_cast<std::size_t>(randbelow(state,side_estimates[1].size()))]);
-   differences.push_back(median(r)-median(l));
-  }
-  std::sort(differences.begin(),differences.end());
-  const auto lower=differences[99],upper=differences[19900]; /* 0.5%, 99.5% */
-  std::ostringstream detail;detail<<std::setprecision(8)<<"99% case-level percentile bootstrap CI for right-minus-left log metric=["<<lower<<","<<upper<<"]"
-   <<"; holdout cases="<<cfg.confirm_blocks<<" per side; one frozen candidate, independent seeds."
-   <<" Remaining caveats: host noise and non-causal observational contrast.";
-  const auto threshold=std::log(cfg.min_ratio);
-  if(lower>threshold||upper< -threshold)
-   s.hypothesis(id,"CONFIRMED",axis,left,right,difference,detail.str());
-  else s.hypothesis(id,"NOT_CONFIRMED",axis,left,right,difference,detail.str()+" Practical effect not independently established.");
+  const auto interval=paired_case_bootstrap(paired_differences,cfg.seed^0x5b86d2a7c9e3ULL,0.99);
+  const auto ci_l=case_bootstrap(side_estimates[0],cfg.seed^0x7ac6314fe29ULL,0.99);
+  const auto ci_r=case_bootstrap(side_estimates[1],cfg.seed^0x87f3e195c1eULL,0.99);
+  const auto p=paired_sign_flip_p(paired_differences,cfg.seed^0xb3970a42e86ULL);
+  /* One preselected hypothesis per discovery, one isolated single-use
+     confirmation: BH for a family of size one is identical to p<=q.
+     A 99% CI further constrains the practical effect. */
+  const auto significant=bh_fdr({p},0.01)[0];
+  const auto practical=interval.lower>threshold||interval.upper< -threshold;
+  const auto signed_sides=(ci_l.upper< -std::log(1.02)&&ci_r.lower>std::log(1.02))||
+                           (ci_r.upper< -std::log(1.02)&&ci_l.lower>std::log(1.02));
+  confirmed=significant&&practical&&(kind!="PERFORMANCE_CROSSOVER"||signed_sides);
+  detail<<"99% seed-matched case-pair bootstrap (n="<<cfg.confirm_blocks<<") delta log metric CI=["
+        <<interval.lower<<","<<interval.upper<<"] p_signflip="<<p
+        <<"; BH-FDR one frozen hypothesis q=0.01; left CI=["<<ci_l.lower<<","<<ci_l.upper
+        <<"] right CI=["<<ci_r.lower<<","<<ci_r.upper<<"]";
+  detail<<"; exploratory selection independent of holdout, not causal proof";
  }
- report(run);std::cout<<s.summary().str()<<"\n";
+ /* Distant negative-control morphology: preserve the observation even when
+    timing too noisy to classify the control on its own. */
+ if(cfg.family!="calibration"&&cfg.axes.count(axis)){
+  auto values=cfg.axes.at(axis);std::vector<std::int64_t> numeric;
+  for(const auto& value:values){try{numeric.push_back(std::stoll(value));}catch(const std::exception&){}}
+  if(!numeric.empty()){
+   const auto lo=*std::min_element(numeric.begin(),numeric.end()),hi=*std::max_element(numeric.begin(),numeric.end());
+   const auto control=std::abs(lo-left)>std::abs(hi-right)?lo:hi;
+   if(control!=left&&control!=right){Case c=cfg.base;assign(c,axis,std::to_string(control));c.seed=cfg.seed+2000000ULL;c=make_case(c,cfg.max_bytes);
+    for(const auto& o:measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},1,cfg.warmup,cfg.sample_ms,cfg.rss_mb))store.add_observation(c,o,true);
+    detail<<"; negative-control axis="<<control<<" case="<<c.id;
+   }
+  }
+ }
+ store.hypothesis(id,confirmed?"CONFIRMED":"NOT_CONFIRMED",axis,left,right,std::abs(delta),detail.str()+(confirmed?"":"; prespecified evidence threshold not met"));
+ report(run);std::cout<<store.summary().str()<<"\n";
 }
 void ablate(const Config& cfg,const std::string& out){
  if(cfg.family!="calibration"||cfg.axis!="x")throw Error("v0.2 ablation supports deterministic one-axis calibration only");
@@ -319,7 +367,7 @@ void report(const std::string& run){
  Json report;report.put("schema_version",static_cast<std::int64_t>(1));report.put("experiment_id",cfg.experiment_id);report.put("family",cfg.family);report.put("algorithm_a",cfg.a);report.put("algorithm_b",cfg.b);report.put("environment",Json::parse(s.environment()));report.put("summary",std::move(summary));
  auto* raw=json_object_new_array();std::ostringstream csv;csv<<"case_id,family,axis_value,holdout,algorithm,status,batch_ns,batch_iterations,work_units,block,output_digest,detail\n";
  for(const auto& c:s.cases())for(int holdout=0;holdout<2;holdout++)for(const auto& o:s.observations(c.id,holdout!=0)){
-  Json row;row.put("case_id",c.id);row.put("family",c.family);row.put("axis_value",axis_value(c,cfg.axis));row.put("holdout",holdout!=0);row.put("algorithm",o.algorithm);row.put("status",o.status);row.put("batch_ns",o.ns);row.put("batch_iterations",o.batch);row.put("work_units",o.work);row.put("block",o.block);row.put("output_digest",o.digest);row.put("detail",o.detail);json_object_array_add(raw,row.p);row.p=nullptr;
+  Json row;row.put("case_id",c.id);row.put("family",c.family);row.put("observed_features",morphology_features(c));row.put("axis_value",axis_value(c,cfg.axis));row.put("holdout",holdout!=0);row.put("algorithm",o.algorithm);row.put("status",o.status);row.put("batch_ns",o.ns);row.put("batch_iterations",o.batch);row.put("work_units",o.work);row.put("block",o.block);row.put("output_digest",o.digest);row.put("detail",o.detail);json_object_array_add(raw,row.p);row.p=nullptr;
   csv<<csv_escape(c.id)<<','<<csv_escape(c.family)<<','<<axis_value(c,cfg.axis)<<','<<holdout<<','<<csv_escape(o.algorithm)<<','<<csv_escape(o.status)<<','<<o.ns<<','<<o.batch<<','<<o.work<<','<<o.block<<','<<csv_escape(o.digest)<<','<<csv_escape(o.detail)<<'\n';
  }
  json_object_object_add(report.p,"raw_samples",raw);write_file(run+"/report.json",report.str());write_file(run+"/samples.csv",csv.str());
@@ -331,15 +379,63 @@ void report(const std::string& run){
  md<<"\n## Scientific limitations\n\n- Synthetic work units are not time; this fixture is an engineered calibration, not a natural discovery.\n- CPU timings vary by host, cache, thermal conditions, and compiler settings.\n- Real performance candidates are **not confirmed** without calibrated paired-case intervals and multiplicity controls.\n- Observational morphology alone does not establish causality.\n- Reproduce with `phaseshift replay --run "<<run<<" --case <case-id>` and inspect raw rows.\n";
  write_file(run+"/report.md",md.str());write_file(run+"/report.html","<!doctype html><meta charset=\"utf-8\"><title>PHASESHIFT report</title><style>body{font:16px system-ui;max-width:900px;margin:3em auto;white-space:pre-wrap}</style><main>"+html_escape(md.str())+"</main>");
 }
+void verify_bundle(const std::string& bundle){
+ const auto path=fs::path(bundle);
+ if(!fs::is_directory(path)||!fs::is_regular_file(path/"SHA256.json"))throw Error("bundle directory/manifest missing");
+ const auto manifest=Json::file((path/"SHA256.json").string());
+ if(manifest.i("bundle_schema")!=1)throw Error("unsupported bundle schema");
+ const auto* files=manifest.get("files");if(!files||json_object_get_type(files)!=json_type_object)throw Error("invalid bundle file index");
+ std::set<std::string> expected;
+ json_object_object_foreach(files,key,value){
+  const auto name=std::string(key);
+  if(name.empty()||name=="SHA256.json"||name.find('/')!=std::string::npos||name.find('\\')!=std::string::npos||name=="."||name==".."||json_object_get_type(value)!=json_type_string)throw Error("unsafe bundle file path/hash");
+  const auto member=path/name;
+  if(!fs::is_regular_file(member)||fs::is_symlink(member))throw Error("bundle missing/nonregular file: "+name);
+  if(sha256_file(member.string())!=json_object_get_string(value))throw Error("bundle file digest mismatch: "+name);
+  expected.insert(name);
+ }
+ for(const auto& must:{"run.sqlite","report.json","report.md","samples.csv","README.md"})if(!expected.count(must))throw Error("bundle missing required member: "+std::string(must));
+ for(const auto& file:fs::directory_iterator(path)){
+  const auto name=file.path().filename().string();if(!file.is_regular_file()||(name!="SHA256.json"&&!expected.count(name)))throw Error("unexpected/unindexed bundle member: "+name);
+ }
+ Store store((path/"run.sqlite").string(),true);
+ const auto conf=store.config();
+ sqlite3_stmt* stmt=nullptr;
+ if(sqlite3_prepare_v2(store.raw(),"SELECT config_hash FROM experiments WHERE id=1",-1,&stmt,nullptr)!=SQLITE_OK)throw Error("missing config checksum in bundle");
+ const auto rc=sqlite3_step(stmt);const auto stored=rc==SQLITE_ROW?std::string(reinterpret_cast<const char*>(sqlite3_column_text(stmt,0))):"";sqlite3_finalize(stmt);
+ if(sha256(conf)!=stored)throw Error("bundle experiment config hash mismatch");
+ for(const auto& c:store.cases()){(void)c;} /* expensive but mandatory regeneration + digest verification */
+ std::cout<<"VERIFIED BUNDLE: "<<bundle<<" members="<<expected.size()<<" cases="<<store.summary().i("cases")<<"\n";
+}
 void export_run(const std::string& run,const std::string& out){
  if(fs::exists(out))throw Error("bundle output exists");
- fs::create_directories(out);report(run);
- for(const auto& file:{"run.sqlite","report.json","report.md","report.html","samples.csv"})fs::copy_file(run+"/"+file,out+"/"+file);
- if(fs::exists(run+"/witness.cpp"))fs::copy_file(run+"/witness.cpp",out+"/witness.cpp");
- if(fs::exists(run+"/witness.hex"))fs::copy_file(run+"/witness.hex",out+"/witness.hex");
- Json manifest;for(const auto& file:fs::directory_iterator(out))if(file.is_regular_file()){auto data=read_file(file.path().string());manifest.put(file.path().filename().string().c_str(),sha256(data));}
- write_file(out+"/SHA256.json",manifest.str());write_file(out+"/README.md","# PHASESHIFT portable evidence bundle\nVerify SHA256.json digests, then use the documented replay command with run.sqlite. SQLite WAL checkpointing must be complete before copying while closed.\n");
+ report(run);
+ /* A connection must not be copying a live SQLite WAL. */
+ {
+  Store db(run+"/run.sqlite");db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
+ }
+ fs::create_directories(out);
+ try{
+  for(const auto& file:{"run.sqlite","report.json","report.md","report.html","samples.csv"})fs::copy_file(run+"/"+file,out+"/"+file);
+  if(fs::exists(run+"/witness.cpp"))fs::copy_file(run+"/witness.cpp",out+"/witness.cpp");
+  if(fs::exists(run+"/witness.hex"))fs::copy_file(run+"/witness.hex",out+"/witness.hex");
+  write_file(out+"/README.md","# PHASESHIFT portable evidence bundle\nUse `phaseshift verify-bundle --bundle .` before importing. All member SHA-256 digests are in SHA256.json; case inputs are independently regenerated and validated.\n");
+  Json manifest;manifest.put("bundle_schema",static_cast<std::int64_t>(1));Json files;
+  for(const auto& f:fs::directory_iterator(out))if(f.is_regular_file())files.put(f.path().filename().string().c_str(),sha256_file(f.path().string()));
+  manifest.put("files",std::move(files));write_file(out+"/SHA256.json",manifest.str());
+  verify_bundle(out);
+ }catch(...){fs::remove_all(out);throw;}
  std::cout<<"Exported "<<out<<"\n";
+}
+void import_bundle(const std::string& bundle,const std::string& out){
+ verify_bundle(bundle);
+ if(fs::exists(out))throw Error("import destination already exists; refusing overwrite");
+ fs::create_directories(out);
+ try{
+  for(const auto& file:fs::directory_iterator(bundle))fs::copy_file(file.path(),fs::path(out)/file.path().filename());
+  verify_bundle(out);
+ }catch(...){fs::remove_all(out);throw;}
+ std::cout<<"Imported verified evidence into "<<out<<"\n";
 }
 void compare(const std::string& a,const std::string& b){Store left(a+"/run.sqlite"),right(b+"/run.sqlite");auto x=config_from_json(Json::parse(left.config())),y=config_from_json(Json::parse(right.config()));
  if(x.family!=y.family||x.a!=y.a||x.b!=y.b)throw Error("incompatible algorithm output contracts");

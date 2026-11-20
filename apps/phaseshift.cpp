@@ -1,4 +1,5 @@
 #include "phaseshift/experiment.hpp"
+#include "phaseshift/scaling.hpp"
 #include <csignal>
 #include <filesystem>
 #include <iostream>
@@ -12,11 +13,14 @@ Usage:
   phaseshift explore --config CONFIG --out RUN_DIRECTORY [--pause-after N]
   phaseshift resume --run RUN_DIRECTORY [--pause-after N]
   phaseshift ablate --config CONFIG --out DIRECTORY
+  phaseshift scaling --run RUN_DIRECTORY --out NEW_DIRECTORY [--seeds 3]
   phaseshift confirm --run RUN_DIRECTORY [--hypothesis H1]
   phaseshift minimize --run RUN_DIRECTORY [--hypothesis H1]
   phaseshift replay --run RUN_DIRECTORY --case CASE_ID_OR_PREFIX
   phaseshift report --run RUN_DIRECTORY [--format markdown,json,csv,html]
   phaseshift export --run RUN_DIRECTORY --out BUNDLE_DIRECTORY
+  phaseshift verify-bundle --bundle BUNDLE_DIRECTORY
+  phaseshift import --bundle BUNDLE_DIRECTORY --out NEW_RUN_DIRECTORY
   phaseshift compare --a RUN_DIRECTORY --b RUN_DIRECTORY
 )";}
 int main(int argc,char** argv){
@@ -43,12 +47,15 @@ int main(int argc,char** argv){
   if(cmd=="ablate"){auto config=option("--config"),out=option("--out");if(config.empty()||out.empty())throw ps::Error("ablate requires --config and --out");ps::ablate(ps::parse_config(config),out);return 0;}
   if(cmd=="explore"){const auto config=option("--config"),out=option("--out");if(config.empty()||out.empty())throw ps::Error("explore requires --config and --out");ps::explore(ps::parse_config(config),out,pause_after());return 0;}
   if(cmd=="resume"){if(run.empty())throw ps::Error("resume requires --run");ps::resume(run,pause_after());return 0;}
-  if(run.empty() && cmd!="compare")throw ps::Error("command requires --run");
+  if(run.empty() && cmd!="compare" && cmd!="verify-bundle" && cmd!="import")throw ps::Error("command requires --run");
   if(cmd=="confirm"){ps::confirm(run,option("--hypothesis","H1"));return 0;}
   if(cmd=="minimize"){ps::minimize(run,option("--hypothesis","H1"));return 0;}
   if(cmd=="replay"){auto c=option("--case");if(c.empty())throw ps::Error("replay requires --case");ps::replay(run,c);return 0;}
   if(cmd=="report"){ps::report(run);std::cout<<"Generated markdown/json/csv/html in "<<run<<"\n";return 0;}
   if(cmd=="export"){auto out=option("--out");if(out.empty())throw ps::Error("export requires --out");ps::export_run(run,out);return 0;}
+  if(cmd=="verify-bundle"){auto bundle=option("--bundle");if(bundle.empty())throw ps::Error("verify-bundle requires --bundle");ps::verify_bundle(bundle);return 0;}
+  if(cmd=="import"){auto bundle=option("--bundle"),out=option("--out");if(bundle.empty()||out.empty())throw ps::Error("import requires --bundle and --out");ps::import_bundle(bundle,out);return 0;}
+  if(cmd=="scaling"){auto out=option("--out");if(run.empty()||out.empty())throw ps::Error("scaling requires --run and --out");int seeds=3;auto value=option("--seeds");if(!value.empty())seeds=std::stoi(value);ps::scaling_study(run,out,seeds);return 0;}
   if(cmd=="compare"){auto a=option("--a"),b=option("--b");if(a.empty()||b.empty())throw ps::Error("compare requires --a and --b");ps::compare(a,b);return 0;}
   usage();throw ps::Error("unknown command: "+cmd);
  }catch(const std::exception& e){std::cerr<<"PHASESHIFT error: "<<e.what()<<"\n";return 2;}

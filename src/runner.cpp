@@ -152,6 +152,11 @@ std::vector<Observation> measure(const Case& c,const std::vector<std::string>& n
   reaped=-1; /* Parent-enforced kill is not a worker crash. */
  }
  else if(reaped<0&&errno==EINTR){while((reaped=waitpid(pid,&status,0))<0&&errno==EINTR){}}
+ if(reaped==pid&&WIFEXITED(status)&&WEXITSTATUS(status)!=0){
+  for(auto& obs:result)if(obs.status=="infrastructure_error"){
+   obs.status="crashed";obs.detail+="; worker nonzero exit "+std::to_string(WEXITSTATUS(status));
+  }
+ }
  if(reaped==pid&&WIFSIGNALED(status)){
   for(auto& obs:result)if(obs.status=="infrastructure_error"||obs.status=="crashed"){
    obs.status="signaled";obs.detail+="; worker signal "+std::to_string(WTERMSIG(status));

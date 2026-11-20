@@ -1,4 +1,7 @@
 #include "phaseshift/experiment.hpp"
+#include "phaseshift/statistics.hpp"
+#include "phaseshift/morphology.hpp"
+#include "phaseshift/scaling.hpp"
 #include <iostream>
 #include <algorithm>
 #include <filesystem>
@@ -47,13 +50,40 @@ int main(int argc,char** argv){if(argc>1&&std::string(argv[1])=="--worker")retur
    ps::Case c;c.family="integer_array";c.n=12;c=ps::make_case(c);
    const auto dir=std::filesystem::path(argv[0]).parent_path();
    auto bad=[&](int mode){auto lib=(dir/("fault_"+std::to_string(mode)+".so")).string();return ps::measure(c,{"plugin:"+lib},1,0,300,256);};
-   auto crashed=bad(1);require(crashed.size()==1&&crashed[0].status=="signaled","segfault must be isolated and marked signaled");
+   auto crashed=bad(1);
+#ifdef PHASESHIFT_ASAN_BUILD
+   require(crashed.size()==1&&crashed[0].status=="crashed","ASan interception of segfault must remain isolated");
+#else
+   require(crashed.size()==1&&crashed[0].status=="signaled","segfault must be isolated and marked signaled");
+#endif
    auto hung=bad(2);require(hung.size()==1&&hung[0].status=="timeout","hung worker must be terminated and timed out");
    auto oversize=bad(3);require(oversize.size()==1&&oversize[0].status=="infrastructure_error","oversized plugin output must fail");
    auto exception=bad(4);require(exception.size()==1&&exception[0].status=="infrastructure_error","plugin exception must not escape worker");
    auto rejected=bad(5);require(rejected.size()==1&&rejected[0].status=="invalid_input","plugin input rejection must not be timed");
    auto oom=bad(6);require(oom.size()==1&&oom[0].status=="out_of_memory","out-of-memory must not be timed");
    auto mismatch=bad(7);require(mismatch.size()==1&&mismatch[0].status=="infrastructure_error","ABI mismatch must fail");
+  }
+  {
+   auto ci=ps::paired_case_bootstrap(std::vector<double>(20,2.5),137);
+   require(ci.cases==20&&ci.lower==2.5&&ci.upper==2.5,"paired 99% interval deterministic reference");
+   auto null=ps::case_bootstrap(std::vector<double>(20,0.0),7);
+   require(null.lower==0.0&&null.upper==0.0,"bootstrap null cannot manufacture effect");
+   auto q=ps::bh_fdr({0.001,0.04,0.3},0.05);
+   require(q[0]&&!q[1]&&!q[2],"BH reference calculation");
+   require(ps::paired_sign_flip_p(std::vector<double>(20,2.5),9)<0.01,"sign-flip decisive matched signal");
+   require(ps::paired_sign_flip_p(std::vector<double>(20,0.0),9)==1.0,"sign-flip deterministic null");
+  }
+  {
+   ps::Case c;c.family="integer_array";c.n=100;c.distribution="all_equal";c=ps::make_case(c);
+   auto f=ps::morphology_features(c);require(f.i("unique_count")==1&&f.i("max_equal_run")==100,"observed array morphology");
+   c.family="graph";c.vertices=8;c.edges=12;c=ps::make_case(c);f=ps::morphology_features(c);
+   require(f.i("observed_vertices")==8&&f.i("observed_arcs")==12,"observed graph morphology");
+  }
+  {
+   std::vector<std::pair<double,double>> quadratic;
+   for(int n:{8,12,18,27,41,62,93,140})quadratic.emplace_back(static_cast<double>(n),3.0*n*n);
+   auto fits=ps::fit_growth_models(quadratic);
+   require(fits[0].model=="n_squared"&&fits[0].log_error<1e-12,"independent scaling shape reference");
   }
   std::cout<<"PASS: deterministic generator / sorting / topk / graphs / calibration / invalid input / isolated worker / plugin oracle\n";return 0;
  }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

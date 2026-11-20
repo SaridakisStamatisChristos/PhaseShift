@@ -33,6 +33,7 @@ struct Json {
 };
 std::string sha256(const Bytes& b);
 std::string sha256(const std::string& s);
+std::string sha256_file(const std::string& path);
 Bytes hex_decode(const std::string& s);
 std::string hex_encode(const Bytes& b);
 std::uint64_t splitmix64(std::uint64_t& state);
