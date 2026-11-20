@@ -30,7 +30,7 @@ Store::Store(const std::string& path,bool readonly){
  }
  check(sqlite3_open_v2(readonly?uri.c_str():path.c_str(),&db_,readonly?SQLITE_OPEN_READONLY|SQLITE_OPEN_URI:SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE,nullptr),db_,"SQL open");
  if(!readonly)exec("PRAGMA foreign_keys=ON;PRAGMA journal_mode=WAL;PRAGMA busy_timeout=5000;");
- auto old=sqlite3_get_autocommit(db_);(void)old;Statement st(db_,"PRAGMA user_version");auto rc=sqlite3_step(st.p);check(rc,db_,"schema version");auto version=sqlite3_column_int(st.p,0);if(version>4|| (readonly&&version!=4))throw Error("unsupported database schema version");
+ auto old=sqlite3_get_autocommit(db_);(void)old;Statement st(db_,"PRAGMA user_version");auto rc=sqlite3_step(st.p);check(rc,db_,"schema version");auto version=sqlite3_column_int(st.p,0);if(version>5|| (readonly&&version!=5))throw Error("unsupported database schema version");
  if(version==0&&!readonly){exec(R"SQL(
  BEGIN;
  CREATE TABLE IF NOT EXISTS experiments(id INTEGER PRIMARY KEY CHECK(id=1),config TEXT NOT NULL,config_hash TEXT NOT NULL,environment TEXT NOT NULL,created_at TEXT NOT NULL);
@@ -64,6 +64,12 @@ Store::Store(const std::string& path,bool readonly){
  PRAGMA user_version=4;
  COMMIT;
  )SQL");}
+ if(version<5&&!readonly){exec(R"SQL(
+ BEGIN IMMEDIATE;
+ ALTER TABLE hypotheses ADD COLUMN frozen_params TEXT NOT NULL DEFAULT '';
+ PRAGMA user_version=5;
+ COMMIT;
+ )SQL");}
 }
 Store::~Store(){if(db_)sqlite3_close(db_);}
 void Store::exec(const std::string& sql){char* err=nullptr;int rc=sqlite3_exec(db_,sql.c_str(),nullptr,nullptr,&err);if(rc!=SQLITE_OK){std::string msg=err?err:"unknown sqlite error";sqlite3_free(err);throw Error("SQL: "+msg);}}
@@ -77,9 +83,9 @@ void Store::add_observation(const Case& c,const Observation& v,bool holdout){
  add_case(c);Statement s(db_,"INSERT INTO samples(case_id,algorithm,status,ns,batch,work,block,holdout,output_digest,detail) VALUES(?,?,?,?,?,?,?,?,?,?)");
  s.text(1,c.id);s.text(2,v.algorithm);s.text(3,v.status);s.integer(4,v.ns);s.integer(5,v.batch);s.integer(6,v.work);s.integer(7,v.block);s.integer(8,holdout?1:0);s.text(9,v.digest);s.text(10,v.detail);s.done();
 }
-void Store::hypothesis(const std::string& id,const std::string& status,const std::string& axis,std::int64_t left,std::int64_t right,double effect,const std::string& detail,const std::string& kind){
- Statement s(db_,"INSERT INTO hypotheses(id,status,axis,left_value,right_value,effect,detail,kind) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,detail=excluded.detail");
- s.text(1,id);s.text(2,status);s.text(3,axis);s.integer(4,left);s.integer(5,right);s.real(6,effect);s.text(7,detail);s.text(8,kind);s.done();
+void Store::hypothesis(const std::string& id,const std::string& status,const std::string& axis,std::int64_t left,std::int64_t right,double effect,const std::string& detail,const std::string& kind,const std::string& frozen_params){
+ Statement s(db_,"INSERT INTO hypotheses(id,status,axis,left_value,right_value,effect,detail,kind,frozen_params) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,detail=excluded.detail");
+ s.text(1,id);s.text(2,status);s.text(3,axis);s.integer(4,left);s.integer(5,right);s.real(6,effect);s.text(7,detail);s.text(8,kind);s.text(9,frozen_params);s.done();
  Statement e(db_,"INSERT INTO events(at,event,detail) VALUES(?,?,?)");e.text(1,now_utc());e.text(2,"hypothesis:"+status);e.text(3,id+" "+detail);e.done();
 }
 std::vector<Store::SchedulerDecision> Store::scheduler_decisions(){
@@ -126,8 +132,8 @@ std::vector<Observation> Store::observations(const std::string& case_id,bool hol
 std::string Store::config(){Statement s(db_,"SELECT config FROM experiments WHERE id=1");if(sqlite3_step(s.p)!=SQLITE_ROW)throw Error("experiment manifest missing");return reinterpret_cast<const char*>(sqlite3_column_text(s.p,0));}
 std::string Store::environment(){Statement s(db_,"SELECT environment FROM experiments WHERE id=1");if(sqlite3_step(s.p)!=SQLITE_ROW)throw Error("stored environment missing");return reinterpret_cast<const char*>(sqlite3_column_text(s.p,0));}
 Json Store::summary(){
- Json report;auto* rows=json_object_new_array();Statement st(db_,"SELECT id,status,axis,left_value,right_value,effect,detail,kind FROM hypotheses ORDER BY id");
- while(sqlite3_step(st.p)==SQLITE_ROW){auto str=[&](int i){auto* t=sqlite3_column_text(st.p,i);return std::string(t?reinterpret_cast<const char*>(t):"");};Json x;x.put("id",str(0));x.put("status",str(1));x.put("axis",str(2));x.put("left",static_cast<std::int64_t>(sqlite3_column_int64(st.p,3)));x.put("right",static_cast<std::int64_t>(sqlite3_column_int64(st.p,4)));x.put("effect",sqlite3_column_double(st.p,5));x.put("detail",str(6));x.put("kind",str(7));json_object_array_add(rows,x.p);x.p=nullptr;}
+ Json report;auto* rows=json_object_new_array();Statement st(db_,"SELECT id,status,axis,left_value,right_value,effect,detail,kind,frozen_params FROM hypotheses ORDER BY id");
+ while(sqlite3_step(st.p)==SQLITE_ROW){auto str=[&](int i){auto* t=sqlite3_column_text(st.p,i);return std::string(t?reinterpret_cast<const char*>(t):"");};Json x;x.put("id",str(0));x.put("status",str(1));x.put("axis",str(2));x.put("left",static_cast<std::int64_t>(sqlite3_column_int64(st.p,3)));x.put("right",static_cast<std::int64_t>(sqlite3_column_int64(st.p,4)));x.put("effect",sqlite3_column_double(st.p,5));x.put("detail",str(6));x.put("kind",str(7));x.put("frozen_params",str(8));json_object_array_add(rows,x.p);x.p=nullptr;}
  json_object_object_add(report.p,"hypotheses",rows);
  auto count=[&](const char* q){Statement s(db_,q);if(sqlite3_step(s.p)!=SQLITE_ROW)throw Error("summary query error");return static_cast<std::int64_t>(sqlite3_column_int64(s.p,0));};
  report.put("cases",count("SELECT COUNT(*) FROM cases"));report.put("samples",count("SELECT COUNT(*) FROM samples"));report.put("invalid_samples",count("SELECT COUNT(*) FROM samples WHERE status != 'ok'"));

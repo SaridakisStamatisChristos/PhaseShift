@@ -1,6 +1,7 @@
 #include "phaseshift/experiment.hpp"
 #include "phaseshift/statistics.hpp"
 #include "phaseshift/morphology.hpp"
+#include "phaseshift/minimize.hpp"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -191,44 +192,91 @@ static std::optional<double> metric(Store& store,const Case& c,const Config& cfg
  if(paired.empty())return {};
  return sample_median(paired);
 }
-struct Detection {std::int64_t left=0,right=0;double effect=0;std::string kind;};
+/* Group every non-primary axis by exact typed parameter values, not by the
+   partially observed primary metric. Categorical dimensions are conditioned
+   on; they are never projected onto a fictitious numeric continuum. */
+static std::string scope_key(const Case& candidate,const Config& cfg){
+ Json canonical=Json::parse(case_params(candidate));Json scope;
+ for(const auto& [key,values]:cfg.axes){
+  if(key==cfg.axis||values.size()==1)continue;
+  std::string field=key;
+  if(key=="density")field="density_ppm";
+  else if(key=="degree_skew")field="degree_skew_ppm";
+  else if(key=="duplicate_fraction")field="duplicate_ppm";
+  else if(key=="disorder_fraction")field="disorder_ppm";
+  else if(key=="sign_fraction")field="sign_ppm";
+  auto* value=canonical.get(field.c_str());
+  if(!value)throw Error("scope axis missing in generator parameters: "+key);
+  scope.put(key.c_str(),Json(json_object_get(value)));
+ }
+ return scope.str();
+}
+static std::string formatted_axis_value(const std::string& axis,std::int64_t value){
+ if(axis=="density"||axis=="degree_skew"||axis=="duplicate_fraction"||
+    axis=="disorder_fraction"||axis=="sign_fraction"){
+  if(value<0||value>1000000)throw Error("fractional structural axis out of range");
+  return std::to_string(value/1000000)+"."+([&]{
+   std::ostringstream suffix;suffix<<std::setw(6)<<std::setfill('0')<<(value%1000000);return suffix.str();
+  }());
+ }
+ return std::to_string(value);
+}
+struct Detection {
+ std::int64_t left=0,right=0;
+ double effect=0;
+ std::string kind,frozen_params,scope;
+};
 static std::optional<Detection> detect(Store& store,const Config& cfg){
  if(!numeric_axis(cfg.axis))return {};
- for(const auto& [key,values]:cfg.axes){if(key!=cfg.axis&&values.size()>1)return {};}
- std::map<std::int64_t,std::vector<double>> grouped;
- for(const auto& c:store.cases(false))if(auto m=metric(store,c,cfg,false))grouped[axis_value(c,cfg.axis)].push_back(*m);
- if(grouped.size()<4)return {};
- std::vector<std::int64_t> x;std::vector<double> y;
- for(const auto& [key,values]:grouped){x.push_back(key);y.push_back(sample_median(values));}
- /* A crossover is an advantage sign change, not a discontinuity. The holdout
-    must later establish both advantage signs independently. */
- if(!cfg.b.empty()&&cfg.family!="calibration"){
-  std::optional<Detection> best;
-  for(std::size_t i=1;i<y.size();i++)if(y[i-1]*y[i]<0){
-   const auto effect=std::min(std::abs(y[i-1]),std::abs(y[i]));
-   if(effect>std::log(1.05)&&(!best||effect>best->effect))best=Detection{x[i-1],x[i],effect,"PERFORMANCE_CROSSOVER"};
+ std::map<std::string,std::map<std::int64_t,std::vector<double>>> groups;
+ std::map<std::string,Case> representatives;
+ for(const auto& candidate:store.cases(false)){
+  if(const auto m=metric(store,candidate,cfg,false)){
+   const auto context=scope_key(candidate,cfg);
+   groups[context][axis_value(candidate,cfg.axis)].push_back(*m);
+   representatives.emplace(context,candidate);
   }
-  if(best)return best;
  }
- const auto avg=std::accumulate(y.begin(),y.end(),0.0)/static_cast<double>(y.size());
- double null_sse=0;for(auto v:y)null_sse+=(v-avg)*(v-avg);
- double best_sse=std::numeric_limits<double>::infinity();std::size_t cut=0;
- for(std::size_t j=1;j<y.size();j++){
-  const auto ml=std::accumulate(y.begin(),y.begin()+static_cast<std::ptrdiff_t>(j),0.0)/static_cast<double>(j);
-  const auto mr=std::accumulate(y.begin()+static_cast<std::ptrdiff_t>(j),y.end(),0.0)/static_cast<double>(y.size()-j);
-  double sse=0;
-  for(std::size_t k=0;k<j;k++)sse+=(y[k]-ml)*(y[k]-ml);
-  for(std::size_t k=j;k<y.size();k++)sse+=(y[k]-mr)*(y[k]-mr);
-  if(sse<best_sse){best_sse=sse;cut=j;}
+ std::optional<Detection> overall;
+ for(const auto& [scope,grouped]:groups){
+  if(grouped.size()<4)continue;
+  std::vector<std::int64_t> x;std::vector<double> y;
+  for(const auto& [position,observed]:grouped){x.push_back(position);y.push_back(sample_median(observed));}
+  std::optional<Detection> group_candidate;
+  if(!cfg.b.empty()&&cfg.family!="calibration"){
+   for(std::size_t i=1;i<y.size();i++)if(y[i-1]*y[i]<0){
+    const auto effect=std::min(std::abs(y[i-1]),std::abs(y[i]));
+    if(effect>std::log(1.05)&&(!group_candidate||effect>group_candidate->effect))
+     group_candidate=Detection{x[i-1],x[i],effect,"PERFORMANCE_CROSSOVER","",scope};
+   }
+  }
+  if(!group_candidate){
+   const auto avg=std::accumulate(y.begin(),y.end(),0.0)/static_cast<double>(y.size());
+   double null_sse=0;for(auto v:y)null_sse+=(v-avg)*(v-avg);
+   double best_sse=std::numeric_limits<double>::infinity();std::size_t cut=0;
+   for(std::size_t j=1;j<y.size();j++){
+    const auto ml=std::accumulate(y.begin(),y.begin()+static_cast<std::ptrdiff_t>(j),0.0)/static_cast<double>(j);
+    const auto mr=std::accumulate(y.begin()+static_cast<std::ptrdiff_t>(j),y.end(),0.0)/static_cast<double>(y.size()-j);
+    double sse=0;
+    for(std::size_t k=0;k<j;k++)sse+=(y[k]-ml)*(y[k]-ml);
+    for(std::size_t k=j;k<y.size();k++)sse+=(y[k]-mr)*(y[k]-mr);
+    if(sse<best_sse){best_sse=sse;cut=j;}
+   }
+   const auto effect=std::abs(y[cut]-y[cut-1]);
+   const auto n=static_cast<double>(y.size());
+   const double bic0=n*std::log((null_sse+1e-12)/n)+std::log(n);
+   const double bic1=n*std::log((best_sse+1e-12)/n)+3.0*std::log(n);
+   double other=0;for(std::size_t i=1;i<y.size();i++)if(i!=cut)other=std::max(other,std::abs(y[i]-y[i-1]));
+   if(bic0-bic1>=6&&effect>=std::log(cfg.min_ratio)&&effect>=2.0*other)
+    group_candidate=Detection{x[cut-1],x[cut],effect,
+     cfg.family=="calibration"?"SYNTHETIC_CALIBRATION":"PERFORMANCE_CLIFF","",scope};
+  }
+  if(group_candidate){
+   group_candidate->frozen_params=case_params(representatives.at(scope));
+   if(!overall||group_candidate->effect>overall->effect)overall=group_candidate;
+  }
  }
- const auto effect=std::abs(y[cut]-y[cut-1]);
- const auto n=static_cast<double>(y.size());
- const double bic0=n*std::log((null_sse+1e-12)/n)+std::log(n);
- const double bic1=n*std::log((best_sse+1e-12)/n)+3.0*std::log(n);
- if(bic0-bic1<6||effect<std::log(cfg.min_ratio))return {};
- double other=0;for(std::size_t i=1;i<y.size();i++)if(i!=cut)other=std::max(other,std::abs(y[i]-y[i-1]));
- if(effect<2.0*other)return {};
- return Detection{x[cut-1],x[cut],effect,cfg.family=="calibration"?"SYNTHETIC_CALIBRATION":"PERFORMANCE_CLIFF"};
+ return overall;
 }
 static std::size_t adaptive_next(Store& store,const Config& cfg,const std::vector<Case>& pool,const std::vector<bool>& chosen,std::uint64_t& random_state){
  std::vector<std::size_t> available;available.reserve(pool.size());
@@ -237,17 +285,21 @@ static std::size_t adaptive_next(Store& store,const Config& cfg,const std::vecto
  const auto count=pool.size()-available.size();
  if(count==0)return available.front();
  if(count==1)return available.back();
- /* One in five proposals remains an independent uniform exploration sample. */
+ /* Predeclare 20% independent uniform exploration, even if a locally
+    attractive candidate exists. Do not pool unrelated structural contexts. */
  if(count%5==4)return available[static_cast<std::size_t>(randbelow(random_state,available.size()))];
- std::map<std::int64_t,double> observed;
+ std::map<std::string,std::map<std::int64_t,double>> observed;
  for(std::size_t i=0;i<pool.size();i++)if(chosen[i]){
   auto c=make_case(pool[i],cfg.max_bytes);
-  if(auto m=metric(store,c,cfg,false))observed[axis_value(c,cfg.axis)]=*m;
+  if(auto m=metric(store,c,cfg,false))observed[scope_key(c,cfg)][axis_value(c,cfg.axis)]=*m;
  }
  std::size_t best=available.front();double priority=-1;
  for(auto index:available){
-  const auto x=axis_value(pool[index],cfg.axis);auto upper=observed.lower_bound(x);
-  if(upper==observed.end()||upper==observed.begin())continue;
+  const auto x=axis_value(pool[index],cfg.axis);
+  const auto context=scope_key(pool[index],cfg);
+  auto& context_values=observed[context];
+  auto upper=context_values.lower_bound(x);
+  if(upper==context_values.end()||upper==context_values.begin())continue;
   auto lower=std::prev(upper);
   const auto gap=static_cast<double>(upper->first-lower->first);
   if(gap<=0)continue;
@@ -260,8 +312,7 @@ static std::size_t adaptive_next(Store& store,const Config& cfg,const std::vecto
 }
 static void execute_schedule(const Config& cfg,const std::string& out,Store& store,std::size_t pause_after){
  auto choices=scheduled(cfg);std::vector<bool> chosen(choices.size(),false);
- const bool feedback=cfg.method=="adaptive_partition"&&numeric_axis(cfg.axis)&&
-  std::all_of(cfg.axes.begin(),cfg.axes.end(),[&](const auto& a){return a.first==cfg.axis||a.second.size()==1;});
+ const bool feedback=cfg.method=="adaptive_partition"&&numeric_axis(cfg.axis);
  auto completed=std::size_t{0};std::uint64_t rng=cfg.seed^0xf39b247bf04aULL;
  /* The scheduler transcript, samples, and case are committed atomically.
     Resume trusts neither a reported counter nor an unverified case digest. */
@@ -291,7 +342,7 @@ static void execute_schedule(const Config& cfg,const std::string& out,Store& sto
  }
  if(completed==cfg.max_cases||completed==choices.size()){
   if(auto d=detect(store,cfg)){
-   store.hypothesis("H1","HYPOTHESIZED",cfg.axis,d->left,d->right,d->effect,"Exploratory candidate, single preselected hypothesis with separate holdout; confirmation required",d->kind);
+   store.hypothesis("H1","HYPOTHESIZED",cfg.axis,d->left,d->right,d->effect,"Exploratory candidate, one frozen hypothesis with independent holdout; conditioned scope="+d->scope,d->kind,d->frozen_params);
   }else store.hypothesis("H1","NO_CONFIRMED_BOUNDARY",cfg.axis,0,0,0,"No convincing isolated structural discontinuity under declared thresholds");
   store.event("search_complete",std::to_string(completed));
  }else store.event("search_paused",std::to_string(completed));
@@ -317,9 +368,27 @@ static std::tuple<std::string,std::string,std::int64_t,std::int64_t> read_hypoth
  sqlite3_bind_text(st,1,id.c_str(),-1,SQLITE_TRANSIENT);if(sqlite3_step(st)!=SQLITE_ROW){sqlite3_finalize(st);throw Error("unknown hypothesis "+id);}
  std::string status=reinterpret_cast<const char*>(sqlite3_column_text(st,0)),axis=reinterpret_cast<const char*>(sqlite3_column_text(st,1));auto l=sqlite3_column_int64(st,2),r=sqlite3_column_int64(st,3);sqlite3_finalize(st);return {status,axis,l,r};
 }
+static Case frozen_case(Store& store,const Config& cfg,const std::string& id){
+ Case frozen=cfg.base;
+ sqlite3_stmt* st=nullptr;
+ if(sqlite3_prepare_v2(store.raw(),"SELECT frozen_params FROM hypotheses WHERE id=?",-1,&st,nullptr)!=SQLITE_OK)
+  throw Error("frozen hypothesis query failed");
+ sqlite3_bind_text(st,1,id.c_str(),-1,SQLITE_TRANSIENT);
+ const auto rc=sqlite3_step(st);
+ if(rc!=SQLITE_ROW){sqlite3_finalize(st);throw Error("frozen hypothesis missing");}
+ const auto* p=sqlite3_column_text(st,0);
+ const auto serialized=std::string(p?reinterpret_cast<const char*>(p):"");
+ sqlite3_finalize(st);
+ if(!serialized.empty()){
+  auto j=Json::parse(serialized);
+  json_object_object_foreach(j.p,key,value){apply_field(frozen,key,value);}
+ }
+ return frozen;
+}
 void confirm(const std::string& run,const std::string& id){
  Store store(run+"/run.sqlite");const auto cfg=config_from_json(Json::parse(store.config()));
  auto [status,axis,left,right]=read_hypothesis(store,id);
+ const auto frozen=frozen_case(store,cfg,id);
  if(status=="NO_CONFIRMED_BOUNDARY"){std::cout<<"No candidate to confirm\n";return;}
  if(status!="HYPOTHESIZED")throw Error("confirmation already attempted or candidate not eligible: "+status);
  sqlite3_stmt* kind_stmt=nullptr;
@@ -339,7 +408,7 @@ void confirm(const std::string& run,const std::string& id){
   for(int order=0;order<2;order++){
    const auto side=static_cast<std::size_t>((i+order)%2);
    if(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now()-begin).count()>=cfg.total_wall_s){reject("Holdout stopped by declared wall budget");return;}
-   Case c=cfg.base;assign(c,axis,std::to_string(side==0?left:right));c.seed=seed;c=make_case(c,cfg.max_bytes);
+   Case c=frozen;assign(c,axis,formatted_axis_value(axis,side==0?left:right));c.seed=seed;c=make_case(c,cfg.max_bytes);
    if(discovery_ids.count(c.id)){reject("Held-out input overlaps discovery: confirmation invalid");return;}
    auto obs=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},1,cfg.warmup,cfg.sample_ms,cfg.rss_mb);
    for(const auto& o:obs)store.add_observation(c,o,true);
@@ -384,7 +453,7 @@ void confirm(const std::string& run,const std::string& id){
   if(!numeric.empty()){
    const auto lo=*std::min_element(numeric.begin(),numeric.end()),hi=*std::max_element(numeric.begin(),numeric.end());
    const auto control=std::abs(lo-left)>std::abs(hi-right)?lo:hi;
-   if(control!=left&&control!=right){Case c=cfg.base;assign(c,axis,std::to_string(control));c.seed=cfg.seed+2000000ULL;c=make_case(c,cfg.max_bytes);
+   if(control!=left&&control!=right){Case c=frozen;assign(c,axis,formatted_axis_value(axis,control));c.seed=cfg.seed+2000000ULL;c=make_case(c,cfg.max_bytes);
     for(const auto& o:measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},1,cfg.warmup,cfg.sample_ms,cfg.rss_mb))store.add_observation(c,o,true);
     detail<<"; negative-control axis="<<control<<" case="<<c.id;
    }
@@ -419,7 +488,7 @@ void minimize(const std::string& run,const std::string& id){
  if(cfg.family!="calibration"||axis!="x"){
   s.hypothesis(id,"MINIMIZATION_FAILED",axis,left,right,0,"No validated family-aware minimization predicate available");return;
  }
- Case c=cfg.base;c.x=right;c.seed=cfg.seed+2000000;c=make_case(c,cfg.max_bytes);
+ Case c=frozen_case(s,cfg,id);c.x=right;c.seed=cfg.seed+2000000;c=make_case(c,cfg.max_bytes);
  const auto w=execute(c,"calibration").work;
  if(c.x<cfg.base.threshold||w!=static_cast<std::uint64_t>(c.x+10000))throw Error("synthetic preservation predicate failed");
  /* For the controlled fixture, right is the first observed threshold bin, so the
@@ -431,6 +500,70 @@ void minimize(const std::string& run,const std::string& id){
  write_file(run+"/witness.cpp",o.str());write_file(run+"/witness.hex",hex_encode(c.bytes)+"\n");
  s.hypothesis(id,"MINIMIZED_CONFIRMED",axis,left,right,static_cast<double>(w),"Exact synthetic threshold witness, reproducible input and standalone C++ assertion");report(run);
  std::cout<<"Minimal fixture witness: x="<<right<<" case="<<c.id<<"\n";
+}
+static Case locate_case(Store& store,const std::string& identity){
+ std::optional<Case> selected;
+ for(const auto& c:store.cases())if(c.id==identity||c.id.rfind(identity,0)==0){
+  if(selected)throw Error("ambiguous witness case-id prefix; supply more characters");
+  selected=c;
+ }
+ if(!selected)throw Error("witness case ID not in run");
+ return *selected;
+}
+void minimize_failure_case(const std::string& run,const std::string& case_id,const std::string& algorithm){
+ if(algorithm.empty())throw Error("minimize-case requires an explicit algorithm");
+ Store store(run+"/run.sqlite");const auto cfg=config_from_json(Json::parse(store.config()));
+ const auto origin=locate_case(store,case_id);
+ bool observed=false;
+ for(const auto& o:store.observations(origin.id,false))
+  if(o.algorithm==algorithm&&(o.status=="wrong_answer"||o.status=="signaled"||o.status=="crashed"))observed=true;
+ if(!observed)throw Error("cannot shrink unrecorded or successful correctness case");
+ if(fs::exists(run+"/witness.json")||fs::exists(run+"/witness.hex"))throw Error("witness artifacts already exist; refusing to overwrite");
+ const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(std::min(cfg.total_wall_s,120));
+ auto predicate=[&](const Case& candidate){
+  if(std::chrono::steady_clock::now()>deadline)throw Error("witness minimization wall budget exhausted");
+  /* Worker validation includes oracle comparison before collecting timing. */
+  const auto result=measure(candidate,{algorithm},1,0,cfg.sample_ms,cfg.rss_mb);
+  return result.size()==1&&result[0].status=="wrong_answer";
+ };
+ /* A crash is NOT automatically a wrong answer: only repeatable semantic
+    mismatches are accepted by this correctness minimizer. */
+ bool old_wrong_answer=false;
+ for(const auto& o:store.observations(origin.id,false))if(o.algorithm==algorithm&&o.status=="wrong_answer")old_wrong_answer=true;
+ if(!old_wrong_answer)throw Error("crashes and resource failures require distinct preservation predicates; refusing wrong-answer minimization");
+ auto result=shrink_case(origin,predicate,32,cfg.max_bytes);
+ bool repeatable=true;
+ for(int i=0;i<3;i++)if(!predicate(result.smallest)){repeatable=false;break;}
+ Json record;record.put("schema_version",static_cast<std::int64_t>(1));record.put("category","CORRECTNESS_BOUNDARY");
+ record.put("original_case_id",result.original.id);record.put("case_id",result.smallest.id);
+ record.put("algorithm",algorithm);record.put("input_sha256",sha256(result.smallest.bytes));
+ record.put("parameters",Json::parse(case_params(result.smallest)));
+ record.put("input_bytes",static_cast<std::int64_t>(result.smallest.bytes.size()));
+ record.put("evaluations",static_cast<std::int64_t>(result.evaluations));
+ record.put("original_input_bytes",static_cast<std::int64_t>(result.original.bytes.size()));
+ const auto verdict=repeatable&&result.reduced?"MINIMIZED_CONFIRMED":repeatable?"MINIMIZATION_FAILED":"MINIMIZED_PROVISIONAL";
+ record.put("status",verdict);record.put("verification_repeats",static_cast<std::int64_t>(3));
+ auto* trace=json_object_new_array();for(const auto& step:result.trace){Json event;event.put("case_id",step.case_id);
+  event.put("input_bytes",static_cast<std::int64_t>(step.input_bytes));event.put("action",step.action);event.put("preserved",step.predicate_preserved);
+  json_object_array_add(trace,event.p);event.p=nullptr;}
+ json_object_object_add(record.p,"shrink_trace",trace);
+ record.put("replay_command","phaseshift replay --run <RUN> --case "+result.smallest.id+" --algorithm <PLUGIN> --expect wrong_answer");
+ store.add_case(result.smallest);
+ store.event("witness_correctness",record.str());
+ write_file(run+"/witness.json",record.str());write_file(run+"/witness.hex",hex_encode(result.smallest.bytes)+"\n");
+ report(run);
+ std::cout<<"Correctness witness "<<verdict<<" case="<<result.smallest.id<<" original="<<origin.bytes.size()
+          <<" bytes minimal="<<result.smallest.bytes.size()<<" bytes\n";
+}
+void replay_expected_failure(const std::string& run,const std::string& case_id,const std::string& algorithm,const std::string& expected_status){
+ if(expected_status!="wrong_answer"||algorithm.empty())throw Error("expected failure replay supports wrong_answer with explicit algorithm only");
+ Store store(run+"/run.sqlite");auto c=locate_case(store,case_id);
+ for(const auto& o:measure(c,{algorithm},1,0,3000,1024)){
+  if(o.status!=expected_status)throw Error("witness failure did not reproduce: expected "+expected_status+" got "+o.status);
+  std::cout<<"REPLAY EXPECTED_FAILURE status="<<o.status<<" case="<<c.id<<" input_sha256="<<sha256(c.bytes)<<"\n";
+  return;
+ }
+ throw Error("empty witness replay");
 }
 void replay(const std::string& run,const std::string& case_id){
  Store s(run+"/run.sqlite");auto cfg=config_from_json(Json::parse(s.config()));
@@ -499,6 +632,7 @@ void export_run(const std::string& run,const std::string& out){
   for(const auto& file:{"run.sqlite","report.json","report.md","report.html","samples.csv"})fs::copy_file(run+"/"+file,out+"/"+file);
   if(fs::exists(run+"/witness.cpp"))fs::copy_file(run+"/witness.cpp",out+"/witness.cpp");
   if(fs::exists(run+"/witness.hex"))fs::copy_file(run+"/witness.hex",out+"/witness.hex");
+  if(fs::exists(run+"/witness.json"))fs::copy_file(run+"/witness.json",out+"/witness.json");
   write_file(out+"/README.md","# PHASESHIFT portable evidence bundle\nUse `phaseshift verify-bundle --bundle .` before importing. All member SHA-256 digests are in SHA256.json; case inputs are independently regenerated and validated.\n");
   Json manifest;manifest.put("bundle_schema",static_cast<std::int64_t>(1));Json files;
   for(const auto& f:fs::directory_iterator(out))if(f.is_regular_file())files.put(f.path().filename().string().c_str(),sha256_file(f.path().string()));

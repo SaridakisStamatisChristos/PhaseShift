@@ -17,6 +17,8 @@ void ablate(const Config& cfg,const std::string& out);
 void confirm(const std::string& run,const std::string& id="H1");
 void minimize(const std::string& run,const std::string& id="H1");
 void replay(const std::string& run,const std::string& case_id);
+void minimize_failure_case(const std::string& run,const std::string& case_id,const std::string& algorithm);
+void replay_expected_failure(const std::string& run,const std::string& case_id,const std::string& algorithm,const std::string& expected_status);
 void report(const std::string& run);
 void export_run(const std::string& run,const std::string& out);
 void verify_bundle(const std::string& bundle);
