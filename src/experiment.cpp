@@ -5,6 +5,7 @@
 #include "phaseshift/reproducer.hpp"
 #include "phaseshift/lazy_search.hpp"
 #include "phaseshift/scheduler_v2.hpp"
+#include "phaseshift/interaction_v2.hpp"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -642,6 +643,35 @@ static std::size_t adaptive_next(Store& store,const Config& cfg,const std::vecto
  }
  return best;
 }
+// Discovery-only conditional 2x2 screen. All four nominal cells must be
+// independently sampled under every replicate seed; missing cells abstain.
+static void v2_factorial_diagnostic(Store& store,const Config& cfg){
+ if(cfg.axes.size()!=2||cfg.replicate_count<3)return;
+ auto first=cfg.axes.begin(),second=std::next(first);
+ if(first->second.size()!=2||second->second.size()!=2)return;
+ std::vector<FactorialCellV2> cells;
+ for(const auto& c:store.cases(false)){
+  auto m=metric(store,c,cfg,false);
+  std::string status="ok";
+  if(!m){
+   status="incomplete";
+   for(const auto& obs:store.observations(c.id,false))
+    if(obs.algorithm==cfg.a&&obs.status!="ok"){status=obs.status;break;}
+  }
+  cells.push_back(FactorialCellV2{axis_label(c,first->first),axis_label(c,second->first),c.seed,m,status});
+ }
+ const auto result=screen_factorial_v2(
+  {first->second[0],first->second[1]},
+  {second->second[0],second->second[1]},cells,3,std::log(cfg.min_ratio));
+ Json record;record.put("classification",result.kind);
+ record.put("effect",result.median_contrast);
+ record.put("complete_cohorts",static_cast<std::int64_t>(result.complete_cohorts));
+ record.put("incomplete_cohorts",static_cast<std::int64_t>(result.incomplete_cohorts));
+ record.put("failure_status",result.failure_status);
+ record.put("axis_a",first->first);record.put("axis_b",second->first);
+ store.event("v2_factorial_screen_discovery_only",record.str());
+}
+
 // V2 uniform baseline: virtual candidate indices, no Cartesian materialization.
 // Case IDs and RNG are checked against the committed decision transcript.
 static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& store,std::size_t pause_after){
@@ -718,6 +748,7 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
   ++completed;++this_call;
  }
  if(completed==cfg.max_cases||exhausted){
+  v2_factorial_diagnostic(store,cfg);
   if(auto d=detect(store,cfg)){
    store.hypothesis("H1","OBSERVED",cfg.axis,d->left,d->right,d->effect,
     "Exploratory v2 candidate, not independently confirmed",d->kind,d->frozen_params);

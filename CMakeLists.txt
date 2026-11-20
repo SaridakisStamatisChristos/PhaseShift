@@ -8,7 +8,7 @@ find_package(OpenSSL REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(JSONC REQUIRED IMPORTED_TARGET json-c)
 option(PHASESHIFT_SANITIZE "Build with AddressSanitizer and UBSan" OFF)
-add_library(phaseshift_core STATIC src/core.cpp src/algorithms.cpp src/morphology.cpp src/statistics.cpp src/scaling.cpp src/minimize.cpp src/reproducer.cpp src/runner.cpp src/store.cpp src/experiment.cpp src/boundary_v2.cpp)
+add_library(phaseshift_core STATIC src/core.cpp src/algorithms.cpp src/morphology.cpp src/statistics.cpp src/scaling.cpp src/minimize.cpp src/reproducer.cpp src/runner.cpp src/store.cpp src/experiment.cpp src/boundary_v2.cpp src/interaction_v2.cpp)
 target_include_directories(phaseshift_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 # Record actual compilation profile and checkout provenance for every run.
 set(PHASESHIFT_EFFECTIVE_FLAGS "${CMAKE_CXX_FLAGS}")
@@ -274,3 +274,11 @@ set_tests_properties(v2_frozen_equal_case_budget_smoke PROPERTIES TIMEOUT 120 RU
 configure_file(tests/run_v2_replicates.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_replicates.cmake @ONLY)
 add_test(NAME v2_replicated_seeds_resume COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_replicates.cmake)
 set_tests_properties(v2_replicated_seeds_resume PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+
+add_executable(phaseshift_interaction_v2_tests tests/interaction_v2.cpp)
+target_link_libraries(phaseshift_interaction_v2_tests PRIVATE phaseshift_core)
+add_test(NAME factorial_interaction_v2 COMMAND phaseshift_interaction_v2_tests)
+
+configure_file(tests/run_v2_factorial.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_factorial.cmake @ONLY)
+add_test(NAME v2_conditional_factorial_discovery COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_factorial.cmake)
+set_tests_properties(v2_conditional_factorial_discovery PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)

@@ -18,7 +18,8 @@ Preserve historical generator bytes/IDs, v1 CLI behavior, SQLite v7 evidence, na
 | M3 hierarchical boundary policy | PARTIAL | Opt-in single ordered-axis midpoint prioritization, contrast/cost heuristics, deterministic exploration/replay and persisted selection origin; no calibrated uncertainty, independent paired replication, mixed interactions or held-out superiority |
 | M7 multi-hypothesis correction | PARTIAL | Holm FWER fixed-family primitive + reference/negative tests; campaign sealing and selection-family persistence not implemented |
 | M10 frozen calibration comparison harness | PARTIAL | Added independently executed two-policy CTest smoke, fixed seed/budget, actual worker CPU and wall logging, negative results preserved. Not equal CPU budgets, not sufficient repeats, no external SOTA |
-| M4, M6, M8–M9, M11–M12 | UNVERIFIED | Implementation pending |
+| M4 controlled two-way interaction | PARTIAL | Independent 2x2 matched-seed difference-in-differences and status contrast; explicit invalid/partial abstention; opt-in v2 emits an immutable discovery event only, not independent confirmation or higher-order interactions |
+| M6, M8–M9, M11–M12 | UNVERIFIED | Implementation pending |
 | G1–G14 v2 hard gates | UNVERIFIED | No branch CI or held-out comparison yet |
 
 Research claim: **none**. Any synthetic fixture is a correctness calibration, not scientific novelty. No PR merge, license or release is authorized.
