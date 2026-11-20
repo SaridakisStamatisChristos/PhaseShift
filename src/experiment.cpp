@@ -6,6 +6,7 @@
 #include "phaseshift/lazy_search.hpp"
 #include "phaseshift/scheduler_v2.hpp"
 #include "phaseshift/interaction_v2.hpp"
+#include "phaseshift/boundary_v2.hpp"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -82,6 +83,7 @@ static Json config_json(const Config& c){
  Json j;j.put("schema_version",static_cast<std::int64_t>(1));j.put("experiment_id",c.experiment_id);j.put("problem_family",c.family);j.put("algorithm_a",c.a);j.put("algorithm_b",c.b);j.put("search_method",c.method);j.put("primary_axis",c.axis);j.put("seed",static_cast<std::int64_t>(c.seed));j.put("max_cases",static_cast<std::int64_t>(c.max_cases));j.put("max_case_bytes",static_cast<std::int64_t>(c.max_bytes));j.put("max_search_queue",static_cast<std::int64_t>(c.max_queue));j.put("max_report_bytes",static_cast<std::int64_t>(c.max_report_bytes));j.put("discovery_blocks",static_cast<std::int64_t>(c.blocks));j.put("confirm_blocks",static_cast<std::int64_t>(c.confirm_blocks));j.put("warmup",static_cast<std::int64_t>(c.warmup));j.put("sample_ms",static_cast<std::int64_t>(c.sample_ms));j.put("rss_mb",static_cast<std::int64_t>(c.rss_mb));j.put("total_wall_seconds",static_cast<std::int64_t>(c.total_wall_s));j.put("min_practical_ratio",c.min_ratio);j.put("confirmation_confidence",c.confirmation_confidence);j.put("fdr_q",c.fdr_q);j.put("multiple_testing",c.multiple_testing);j.put("exploration_fraction",c.exploration_fraction);j.put("minimum_batch_ms",static_cast<std::int64_t>(c.minimum_batch_ms));j.put("isolation_mode",c.isolation_mode);if(c.policy_version=="v2"){
    j.put("policy_version",c.policy_version);
    if(c.replicate_count>1){Json search;search.put("replicates",static_cast<std::int64_t>(c.replicate_count));j.put("search",std::move(search));}
+   if(c.detector_version!="boundary_v1"){Json detection;detection.put("detector_version",c.detector_version);j.put("detection",std::move(detection));}
   }
   j.put("base_params",case_params(c.base));
  Json axes;for(const auto& [name,values]:c.axes){auto* arr=json_object_new_array();for(const auto& val:values)json_object_array_add(arr,json_object_new_string(val.c_str()));json_object_object_add(axes.p,name.c_str(),arr);}j.put("axes",std::move(axes));return j;
@@ -143,7 +145,7 @@ static void validate_configuration_shape(const Json& j){
   throw Error("unsupported objective");
  if(auto* v=j.get("search"))check(v,"search",{"max_cases","replicates"},{"exploration_fraction"},{"method","policy_version"},{});
  if(auto* v=j.get("measurement"))check(v,"measurement",{"paired_discovery_blocks","paired_confirm_blocks","warmup_iterations","minimum_batch_ms"},{},{"primary_metric","isolation_mode"},{});
- if(auto* v=j.get("detection"))check(v,"detection",{},{"min_practical_ratio","confirmation_confidence","fdr_q"},{"multiple_testing"},{});
+ if(auto* v=j.get("detection"))check(v,"detection",{},{"min_practical_ratio","confirmation_confidence","fdr_q"},{"multiple_testing","detector_version"},{});
  if(auto* v=j.get("limits"))check(v,"limits",{"total_wall_seconds","max_cases","max_case_bytes","max_worker_rss_mb","max_sample_wall_ms","max_report_bytes","max_search_queue"},{},{},{});
  if(auto* v=j.get("fixed"))if(json_object_get_type(v)!=json_type_object)throw Error("fixed must be an object");
  if(auto* v=j.get("base_params")){
@@ -208,7 +210,7 @@ Config config_from_json(const Json& j){
   if(const auto* v=x.get("minimum_batch_ms");v&&json_object_get_type(v)!=json_type_int)
    throw Error("minimum_batch_ms must be integral");
   c.blocks=static_cast<int>(x.i("paired_discovery_blocks",c.blocks));c.confirm_blocks=static_cast<int>(x.i("paired_confirm_blocks",c.confirm_blocks));c.warmup=static_cast<int>(x.i("warmup_iterations",c.warmup));c.minimum_batch_ms=static_cast<int>(x.i("minimum_batch_ms",c.minimum_batch_ms));c.isolation_mode=x.s("isolation_mode",c.isolation_mode);}
- if(auto* d=j.get("detection")){Json x(json_object_get(d));c.min_ratio=x.d("min_practical_ratio",c.min_ratio);c.confirmation_confidence=x.d("confirmation_confidence",c.confirmation_confidence);c.fdr_q=x.d("fdr_q",c.fdr_q);c.multiple_testing=x.s("multiple_testing",c.multiple_testing);}
+ if(auto* d=j.get("detection")){Json x(json_object_get(d));c.min_ratio=x.d("min_practical_ratio",c.min_ratio);c.confirmation_confidence=x.d("confirmation_confidence",c.confirmation_confidence);c.fdr_q=x.d("fdr_q",c.fdr_q);c.multiple_testing=x.s("multiple_testing",c.multiple_testing);c.detector_version=x.s("detector_version",c.detector_version);}
  if(auto* l=j.get("limits")){Json x(json_object_get(l));c.total_wall_s=static_cast<int>(x.i("total_wall_seconds",c.total_wall_s));c.max_cases=static_cast<std::uint64_t>(x.i("max_cases",static_cast<std::int64_t>(c.max_cases)));c.max_bytes=static_cast<std::uint64_t>(x.i("max_case_bytes",static_cast<std::int64_t>(c.max_bytes)));c.rss_mb=static_cast<int>(x.i("max_worker_rss_mb",c.rss_mb));c.sample_ms=static_cast<int>(x.i("max_sample_wall_ms",c.sample_ms));c.max_queue=static_cast<std::uint64_t>(x.i("max_search_queue",static_cast<std::int64_t>(c.max_queue)));c.max_report_bytes=static_cast<std::uint64_t>(x.i("max_report_bytes",static_cast<std::int64_t>(c.max_report_bytes)));}
  c.base.family=c.family;c.base.seed=c.seed;
  if(auto* base=j.get("base_params")){Json p=json_object_get_type(base)==json_type_string?Json::parse(json_object_get_string(base)):Json(json_object_get(base));
@@ -225,6 +227,10 @@ Config config_from_json(const Json& j){
  }
  if(c.axes.empty())c.axes[c.axis]={"0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15"};
  if(c.policy_version=="v1"){
+  if(auto* detector=j.get("detection")){
+   Json policy(json_object_get(detector));
+   if(policy.get("detector_version"))throw Error("v1 does not accept detection.detector_version");
+  }
   if(auto* nested=j.get("search")){
    Json search(json_object_get(nested));
    if(search.get("replicates"))throw Error("v1 does not accept search.replicates");
@@ -232,6 +238,10 @@ Config config_from_json(const Json& j){
   if(c.method!="grid"&&c.method!="random"&&c.method!="stratified"&&c.method!="adaptive_partition")throw Error("unknown search method");
  }else if(c.policy_version=="v2"){
   if(c.method!="uniform_v2"&&c.method!="hierarchical_boundary_v2")throw Error("unsupported v2 search method");
+  if(c.detector_version!="boundary_v1"&&c.detector_version!="multi_change_v2")
+   throw Error("unsupported v2 detector version");
+  if(c.detector_version=="multi_change_v2"&&!numeric_axis(c.axis))
+   throw Error("multi_change_v2 requires an ordered numeric primary axis");
   if(c.max_cases>c.max_queue)throw Error("v2 candidate budget exceeds memory bound");
   if(c.seed>static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())-static_cast<std::uint64_t>(c.replicate_count-1))
    throw Error("v2 replicate seeds overflow signed persistence");
@@ -587,6 +597,43 @@ static std::optional<Detection> detect(Store& store,const Config& cfg){
  }
  return overall;
 }
+// Multi-change discovery scores are exploratory only. They neither supply
+// p-values nor convert the finite-range segmentation into a proof of Big-O.
+static std::vector<Detection> detect_multi_v2(Store& store,const Config& cfg){
+ std::map<std::string,std::map<std::int64_t,std::vector<double>>> cohorts;
+ std::map<std::string,Case> representatives;
+ for(const auto& c:store.cases(false)){
+  if(const auto value=metric(store,c,cfg,false)){
+   const auto scope=scope_key(c,cfg);
+   cohorts[scope][axis_value(c,cfg.axis)].push_back(*value);
+   representatives.emplace(scope,c);
+  }
+ }
+ std::vector<Detection> found;
+ for(const auto& [scope,points]:cohorts){
+  if(points.size()<6)continue;
+  std::vector<std::int64_t> x;std::vector<double> y;
+  for(const auto& [pos,values]:points){x.push_back(pos);y.push_back(sample_median(values));}
+  std::vector<double> gradients;
+  for(std::size_t j=1;j<y.size();++j)gradients.push_back(std::abs(y[j]-y[j-1]));
+  const auto baseline=sample_median(gradients);
+  const auto penalty=std::max(1e-6,4.0*baseline*baseline*std::log(static_cast<double>(y.size())));
+  const auto fit=fit_multi_change_v2(y,2,3,penalty);
+  for(const auto at:fit.changes){
+   const auto effect=std::abs(y[at]-y[at-1]);
+   std::vector<double> alternatives;
+   for(std::size_t j=1;j<y.size();++j)if(j!=at)alternatives.push_back(std::abs(y[j]-y[j-1]));
+   const auto background=sample_median(alternatives);
+   if(effect<std::log(cfg.min_ratio)||effect<2.5*background)continue;
+   found.push_back(Detection{x[at-1],x[at],effect,
+    cfg.family=="calibration"?"SYNTHETIC_CALIBRATION":"PERFORMANCE_CLIFF",
+    case_params(representatives.at(scope)),scope,""});
+  }
+ }
+ std::stable_sort(found.begin(),found.end(),[](const auto& a,const auto& b){return a.effect>b.effect;});
+ return found;
+}
+
 static std::size_t adaptive_next(Store& store,const Config& cfg,const std::vector<Case>& pool,const std::vector<bool>& chosen,std::uint64_t& random_state){
  std::vector<std::size_t> available;available.reserve(pool.size());
  for(std::size_t i=0;i<pool.size();i++)if(!chosen[i])available.push_back(i);
@@ -749,7 +796,22 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
  }
  if(completed==cfg.max_cases||exhausted){
   v2_factorial_diagnostic(store,cfg);
-  if(auto d=detect(store,cfg)){
+  std::optional<Detection> selected=detect(store,cfg);
+  if(cfg.detector_version=="multi_change_v2"){
+   const auto candidates=detect_multi_v2(store,cfg);
+   std::size_t rank=0;
+   for(const auto& c:candidates){
+    Json evidence;evidence.put("rank",static_cast<std::int64_t>(++rank));
+    evidence.put("left",c.left);evidence.put("right",c.right);
+    evidence.put("effect",c.effect);evidence.put("scope",c.scope);
+    evidence.put("model_version",cfg.detector_version);
+    store.event("v2_multiple_change_discovery_only",evidence.str());
+   }
+   if(!candidates.empty()&&(!selected||
+      (selected->kind!="CORRECTNESS_BOUNDARY"&&selected->kind!="MEMORY_OR_RESOURCE_BOUNDARY")))
+    selected=candidates.front();
+  }
+  if(auto d=selected){
    store.hypothesis("H1","OBSERVED",cfg.axis,d->left,d->right,d->effect,
     "Exploratory v2 candidate, not independently confirmed",d->kind,d->frozen_params);
    store.hypothesis("H1","HYPOTHESIZED",cfg.axis,d->left,d->right,d->effect,

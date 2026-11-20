@@ -282,3 +282,7 @@ add_test(NAME factorial_interaction_v2 COMMAND phaseshift_interaction_v2_tests)
 configure_file(tests/run_v2_factorial.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_factorial.cmake @ONLY)
 add_test(NAME v2_conditional_factorial_discovery COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_factorial.cmake)
 set_tests_properties(v2_conditional_factorial_discovery PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+
+configure_file(tests/run_v2_multi.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_multi.cmake @ONLY)
+add_test(NAME v2_multi_change_worker_smoke COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_multi.cmake)
+set_tests_properties(v2_multi_change_worker_smoke PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)

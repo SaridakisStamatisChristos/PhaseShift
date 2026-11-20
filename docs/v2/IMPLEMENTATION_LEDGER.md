@@ -14,7 +14,7 @@ Preserve historical generator bytes/IDs, v1 CLI behavior, SQLite v7 evidence, na
 | M0 frozen SOTA benchmark contract | PARTIAL | Scenario inventory only; equal-budget runs outstanding |
 | M2 lazy mixed-radix index and uniform sparse sampler | PARTIAL | Opt-in uniform_v2 CLI+resume added, CI verification pending; independent per-coordinate replicate cohorts added to uniform_v2 (not adaptive); conditional subspaces remain unimplemented |
 | M1 explicit policy version | PARTIAL | v1 default, v2 opt-in; cached evidence/budget ledger pending |
-| M5 multi-change model | PARTIAL | Exact K-bounded DP and exhaustive brute-force differential unit test added; no v2 detector routing, PELT, noisy held-out validation or confirmation ranking |
+| M5 multi-change model | PARTIAL | Exact K-bounded DP and brute-force differential test; opt-in multi_change_v2 now emits ranked discovery-only candidate events and selects best H1 for fresh confirmation; no PELT, noisy held-out validation or campaign correction |
 | M3 hierarchical boundary policy | PARTIAL | Opt-in single ordered-axis midpoint prioritization, contrast/cost heuristics, deterministic exploration/replay and persisted selection origin; no calibrated uncertainty, independent paired replication, mixed interactions or held-out superiority |
 | M7 multi-hypothesis correction | PARTIAL | Holm FWER fixed-family primitive + reference/negative tests; campaign sealing and selection-family persistence not implemented |
 | M10 frozen calibration comparison harness | PARTIAL | Added independently executed two-policy CTest smoke, fixed seed/budget, actual worker CPU and wall logging, negative results preserved. Not equal CPU budgets, not sufficient repeats, no external SOTA |
