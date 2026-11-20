@@ -54,3 +54,8 @@ set_tests_properties(evidence_bundle PROPERTIES TIMEOUT 90)
 configure_file(tests/run_scaling.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_scaling.cmake @ONLY)
 add_test(NAME scaling_fingerprint COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_scaling.cmake)
 set_tests_properties(scaling_fingerprint PROPERTIES TIMEOUT 90)
+
+add_executable(phaseshift_morphology_tests tests/morphology_v2.cpp)
+target_link_libraries(phaseshift_morphology_tests PRIVATE phaseshift_core)
+add_test(NAME morphology_v2 COMMAND phaseshift_morphology_tests)
+set_tests_properties(morphology_v2 PROPERTIES TIMEOUT 90)

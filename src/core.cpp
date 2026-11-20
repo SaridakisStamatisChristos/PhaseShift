@@ -66,11 +66,191 @@ std::uint64_t randbelow(std::uint64_t& s,std::uint64_t bound){if(!bound)throw Er
 Bytes encode_values(const std::vector<std::int64_t>& v){Bytes b;b.reserve(v.size()*8);for(auto x:v){auto n=static_cast<std::uint64_t>(x);for(int j=0;j<8;j++)b.push_back(static_cast<std::uint8_t>((n>>(8*j))&255));}return b;}
 std::vector<std::int64_t> decode_values(const Bytes& b){if(b.size()%8)throw Error("invalid little-endian int64 payload");std::vector<std::int64_t> v;v.reserve(b.size()/8);for(std::size_t i=0;i<b.size();i+=8){std::uint64_t x=0;for(int j=0;j<8;j++)x|=static_cast<std::uint64_t>(b[i+static_cast<std::size_t>(j)])<<(8*j);v.push_back(static_cast<std::int64_t>(x));}return v;}
 std::string case_params(const Case& c){
- Json j;j.put("distribution",c.distribution);j.put("weight_class",c.weight_class);j.put("x",c.x);j.put("n",c.n);j.put("k",c.k);j.put("vertices",c.vertices);j.put("edges",c.edges);j.put("source",c.source);j.put("threshold",c.threshold);j.put("negative",c.negative);return j.str();
+ Json j;j.put("distribution",c.distribution);j.put("weight_class",c.weight_class);j.put("x",c.x);j.put("n",c.n);j.put("k",c.k);j.put("vertices",c.vertices);j.put("edges",c.edges);j.put("source",c.source);j.put("threshold",c.threshold);j.put("negative",c.negative);
+ if(c.generator_version==2){
+  j.put("generator_version",c.generator_version);
+  j.put("value_range",c.value_range);j.put("unique_count",c.unique_count);j.put("run_length",c.run_length);
+  j.put("duplicate_ppm",c.duplicate_ppm);j.put("disorder_ppm",c.disorder_ppm);j.put("sign_ppm",c.sign_ppm);
+  j.put("density_ppm",c.density_ppm);j.put("degree_skew_ppm",c.degree_skew_ppm);
+  j.put("community_count",c.community_count);j.put("max_weight",c.max_weight);
+  j.put("directed",c.directed);j.put("connectivity",c.connectivity);
+ }
+ return j.str();
 }
-Case make_case(const Case& params,std::uint64_t max_bytes){
- Case c=params;std::vector<std::int64_t> v;std::uint64_t state=c.seed;
+void validate_case_schema(const Case& c,std::uint64_t max_bytes){
+ if(c.generator_version!=1&&c.generator_version!=2)throw Error("invalid generator version");
  if(c.family=="calibration"){
+  if(c.x<0||c.x>1000000||c.threshold<1||c.threshold>1000000||max_bytes<24)throw Error("invalid calibration schema/budget");
+  return;
+ }
+ if(c.family=="integer_array"||c.family=="topk"){
+  if(c.n<0||c.n>50000||(c.family=="topk"&&(c.k<0||c.k>c.n))||static_cast<std::uint64_t>(c.n)>max_bytes/8)
+   throw Error("invalid array dimensions, Top-K k or byte limit");
+  static const std::vector<std::string> distributions={"uniform","ascending","descending","nearly_sorted","organ_pipe","sawtooth","alternating","all_equal","heavy_duplicate","few_unique","zipf_like"};
+  if(std::find(distributions.begin(),distributions.end(),c.distribution)==distributions.end())throw Error("unknown array distribution");
+  if(c.generator_version==2){
+   if(c.value_range<1||c.value_range>1000000000||c.run_length<1||c.run_length>50000||
+      c.duplicate_ppm< -1||c.duplicate_ppm>1000000||c.disorder_ppm<0||c.disorder_ppm>1000000||
+      c.sign_ppm<0||c.sign_ppm>1000000||c.unique_count<0||c.unique_count>50000)throw Error("invalid v2 array parameters");
+   if(c.unique_count!=0&&c.distribution!="few_unique")throw Error("unique_count requires few_unique distribution");
+   if(c.distribution=="few_unique"&&c.unique_count>std::min<std::int64_t>(c.n,2*c.value_range+1))throw Error("unique_count exceeds array domain");
+  }
+  return;
+ }
+ if(c.family=="graph"){
+  if(c.vertices<1||c.vertices>4096||c.edges<0||c.edges>200000||c.source<0||c.source>=c.vertices)
+   throw Error("invalid graph dimensions/source");
+  if(c.weight_class!="zero_one"&&c.weight_class!="general")throw Error("invalid weight class");
+  const auto vertices=static_cast<std::uint64_t>(c.vertices);
+  if(c.generator_version==1){
+   if(static_cast<std::uint64_t>(c.edges)>vertices*(vertices-1)||(3ULL+static_cast<std::uint64_t>(c.edges)*3)*8>max_bytes)throw Error("legacy graph edges exceed budget");
+  }else{
+   if(c.community_count<1||c.community_count>c.vertices||c.degree_skew_ppm<0||c.degree_skew_ppm>1000000||
+      c.density_ppm< -1||c.density_ppm>1000000||c.max_weight<0||c.max_weight>1000000)throw Error("invalid graph morphology parameters");
+   if(c.connectivity!="none"&&c.connectivity!="weak"&&c.connectivity!="strong")throw Error("invalid connectivity class");
+   if(!c.directed&&c.connectivity=="strong")throw Error("strong connectivity requires directed graph");
+   const auto capacity=c.directed?vertices*(vertices-1):vertices*(vertices-1)/2;
+   auto count=c.density_ppm<0?static_cast<std::uint64_t>(c.edges):(capacity*static_cast<std::uint64_t>(c.density_ppm)+500000)/1000000;
+   const auto minimum=c.connectivity=="strong"?(vertices>1?vertices:0):(c.connectivity=="weak"?vertices-1:0);
+   if(count>capacity||count>200000||count<minimum)throw Error("graph topology cannot satisfy edges/connectivity");
+   const auto arcs=count*(c.directed?1ULL:2ULL);
+   if(arcs>400000||(3ULL+arcs*3)*8>max_bytes)throw Error("graph arc bytes exceed memory budget");
+  }
+  return;
+ }
+ throw Error("unknown case family");
+}
+static void synthesize_v2(Case& c,std::vector<std::int64_t>& v,std::uint64_t& state,std::uint64_t max_bytes){
+ if(c.family=="calibration"){
+  if(c.x<0||c.x>1000000||c.threshold<1||c.threshold>1000000)throw Error("invalid calibration x/threshold");
+  v={c.x,c.threshold,c.negative?1:0};return;
+ }
+ if(c.family=="integer_array"||c.family=="topk"){
+  if(c.n<0||c.n>50000||(c.family=="topk"&&(c.k<0||c.k>c.n)))throw Error("invalid array length or Top-K k");
+  if(static_cast<std::uint64_t>(c.n)>max_bytes/8)throw Error("array exceeds case-byte budget");
+  if(c.value_range<1||c.value_range>1000000000||c.run_length<1||c.run_length>50000||
+     c.duplicate_ppm< -1||c.duplicate_ppm>1000000||c.disorder_ppm<0||c.disorder_ppm>1000000||
+     c.sign_ppm<0||c.sign_ppm>1000000||c.unique_count<0||c.unique_count>50000)
+   throw Error("invalid typed array morphology controls");
+  static const std::vector<std::string> valid={"uniform","ascending","descending","nearly_sorted","organ_pipe","sawtooth","alternating","all_equal","heavy_duplicate","few_unique","zipf_like"};
+  if(std::find(valid.begin(),valid.end(),c.distribution)==valid.end())throw Error("unknown distribution: "+c.distribution);
+  if(c.unique_count!=0&&c.distribution!="few_unique")throw Error("unique_count only applies to few_unique");
+  if(c.distribution=="few_unique"&&c.unique_count>c.n)throw Error("unique_count must not exceed n");
+  if(c.distribution=="few_unique"&&c.unique_count>2*c.value_range+1)throw Error("unique_count exceeds value_range domain");
+  v.resize(static_cast<std::size_t>(c.n));
+  for(std::int64_t i=0;i<c.n;i++){
+   auto raw=static_cast<std::int64_t>(randbelow(state,static_cast<std::uint64_t>(c.value_range)+1));
+   const auto neg=randbelow(state,1000000)<static_cast<std::uint64_t>(c.sign_ppm);
+   auto value=neg?-raw:raw;
+   const auto sorted_value=std::clamp(i-c.n/2,-c.value_range,c.value_range);
+   if(c.distribution=="ascending"||c.distribution=="descending"||c.distribution=="nearly_sorted")value=sorted_value;
+   else if(c.distribution=="organ_pipe")value=std::min<std::int64_t>(i<=c.n/2?i:c.n-i,c.value_range);
+   else if(c.distribution=="sawtooth")value=(i%c.run_length)% (c.value_range+1);
+   else if(c.distribution=="alternating")value=std::min<std::int64_t>(i%2?c.n-i:i,c.value_range);
+   else if(c.distribution=="all_equal")value=std::min<std::int64_t>(42,c.value_range);
+   else if(c.distribution=="heavy_duplicate")value=static_cast<std::int64_t>(randbelow(state,static_cast<std::uint64_t>(std::min<std::int64_t>(3,2*c.value_range+1))));
+   else if(c.distribution=="few_unique"){
+    const auto count=c.unique_count==0?std::min<std::int64_t>({16,c.n,2*c.value_range+1}):c.unique_count;
+    value=count==0?0:static_cast<std::int64_t>(randbelow(state,static_cast<std::uint64_t>(count)))-count/2;
+   }else if(c.distribution=="zipf_like"){
+    auto u=randbelow(state,10000);value=std::min<std::int64_t>(c.value_range,u<6000?0:u<8000?1:u<9000?2:static_cast<std::int64_t>(randbelow(state,64)));
+   }
+   v[static_cast<std::size_t>(i)]=value;
+  }
+  if(c.duplicate_ppm>=0&&c.n>1){
+   for(std::size_t i=1;i<v.size();i++)if(randbelow(state,1000000)<static_cast<std::uint64_t>(c.duplicate_ppm))
+    v[i]=v[static_cast<std::size_t>(randbelow(state,i))];
+  }
+  if(c.distribution=="ascending"||c.distribution=="descending"||c.distribution=="nearly_sorted"){
+   std::sort(v.begin(),v.end());
+   if(c.distribution=="descending")std::reverse(v.begin(),v.end());
+   if(c.distribution=="nearly_sorted"&&v.size()>1){
+    const auto swaps=static_cast<std::int64_t>((c.n*c.disorder_ppm+500000)/1000000);
+    for(std::int64_t i=0;i<swaps;i++){
+     const auto a=static_cast<std::size_t>(randbelow(state,v.size()));
+     const auto b=static_cast<std::size_t>(randbelow(state,v.size()));
+     std::swap(v[a],v[b]);
+    }
+   }
+  }
+  return;
+ }
+ if(c.family!="graph")throw Error("unknown input family: "+c.family);
+ if(c.vertices<1||c.vertices>4096||c.edges<0||c.edges>200000||c.source<0||c.source>=c.vertices||
+    c.community_count<1||c.community_count>c.vertices||c.degree_skew_ppm<0||c.degree_skew_ppm>1000000||
+    c.density_ppm< -1||c.density_ppm>1000000||c.max_weight<0||c.max_weight>1000000)
+  throw Error("invalid graph morphology controls");
+ if(c.weight_class!="general"&&c.weight_class!="zero_one")throw Error("unknown graph weight class");
+ if(c.connectivity!="none"&&c.connectivity!="weak"&&c.connectivity!="strong")throw Error("unknown graph connectivity class");
+ if(!c.directed&&c.connectivity=="strong")throw Error("strong directed connectivity not meaningful for undirected graph");
+ const auto n=static_cast<std::uint64_t>(c.vertices);
+ const auto capacity=c.directed?n*(n-1):n*(n-1)/2;
+ if(c.density_ppm>=0)c.edges=static_cast<std::int64_t>((capacity*static_cast<std::uint64_t>(c.density_ppm)+500000)/1000000);
+ const auto needed=static_cast<std::uint64_t>(c.edges);
+ if(needed>capacity||needed>200000)throw Error("graph edge count exceeds topology or generation budget");
+ const auto minimum=c.connectivity=="strong"?(n>1?n:0):(c.connectivity=="weak"?n-1:0);
+ if(needed<minimum)throw Error("insufficient edges for requested connectivity");
+ const auto arcs=needed*(c.directed?1ULL:2ULL);
+ if(arcs>400000||(3ULL+arcs*3ULL)>max_bytes/8)throw Error("graph arcs exceed input-byte budget");
+ v={c.vertices,static_cast<std::int64_t>(arcs),c.source};
+ std::unordered_set<std::uint64_t> selected;
+ selected.reserve(static_cast<std::size_t>(needed)*2+1);
+ std::vector<std::uint64_t> positions;positions.reserve(static_cast<std::size_t>(needed));
+ const auto insert=[&](std::uint64_t position){if(selected.insert(position).second)positions.push_back(position);};
+ const auto edge_index=[&](std::uint64_t a,std::uint64_t b){
+  if(a==b||a>=n||b>=n)throw Error("invalid requested graph connectivity edge");
+  if(c.directed)return a*(n-1)+(b<a?b:b-1);
+  if(a>b)std::swap(a,b);
+  return a*(2*n-a-1)/2+(b-a-1);
+ };
+ const auto edge_at=[&](std::uint64_t position){
+  if(c.directed){auto a=position/(n-1),offset=position%(n-1);return std::pair<std::uint64_t,std::uint64_t>{a,offset>=a?offset+1:offset};}
+  std::uint64_t lo=0,hi=n;
+  while(lo+1<hi){const auto mid=(lo+hi)/2;const auto prefix=mid*(2*n-mid-1)/2;if(prefix<=position)lo=mid;else hi=mid;}
+  auto prefix=lo*(2*n-lo-1)/2;return std::pair<std::uint64_t,std::uint64_t>{lo,lo+1+position-prefix};
+ };
+ if(c.connectivity!="none"){
+  for(std::uint64_t i=1;i<n;i++)insert(edge_index(i-1,i));
+  if(c.connectivity=="strong"&&n>1)insert(edge_index(n-1,0));
+ }
+ /* Floyd uniform baseline is rejection-free when the search space is dense.
+    Biased generators use bounded rejection followed by a finite fallback. */
+ if(c.connectivity=="none"&&c.degree_skew_ppm==0&&c.community_count==1){
+  for(std::uint64_t j=capacity-needed;j<capacity;j++){
+   auto t=randbelow(state,j+1);auto pos=selected.count(t)?j:t;insert(pos);
+  }
+ }else{
+  std::uint64_t attempts=0,limit=std::max<std::uint64_t>(1024,needed*8);
+  while(positions.size()<needed&&attempts++<limit){
+   std::uint64_t a=randbelow(state,n),b=randbelow(state,n);
+   if(c.degree_skew_ppm>0&&randbelow(state,1000000)<static_cast<std::uint64_t>(c.degree_skew_ppm))
+    a=randbelow(state,std::max<std::uint64_t>(1,n/8));
+   if(c.community_count>1&&randbelow(state,100)<75){
+    const auto first=a%static_cast<std::uint64_t>(c.community_count);
+    const auto count=(n-1-first)/static_cast<std::uint64_t>(c.community_count)+1;
+    b=first+randbelow(state,count)*static_cast<std::uint64_t>(c.community_count);
+   }
+   if(a!=b)insert(edge_index(a,b));
+  }
+  if(positions.size()<needed){
+   const auto start=randbelow(state,capacity);
+   for(std::uint64_t i=0;i<capacity&&positions.size()<needed;i++)insert((start+i)%capacity);
+  }
+  if(positions.size()!=needed)throw Error("graph generator failed finite edge fill");
+ }
+ for(const auto position:positions){
+  const auto [a,b]=edge_at(position);
+  const auto w=static_cast<std::int64_t>(randbelow(state,c.weight_class=="zero_one"?2ULL:static_cast<std::uint64_t>(c.max_weight)+1));
+  v.push_back(static_cast<std::int64_t>(a));v.push_back(static_cast<std::int64_t>(b));v.push_back(w);
+  if(!c.directed){v.push_back(static_cast<std::int64_t>(b));v.push_back(static_cast<std::int64_t>(a));v.push_back(w);}
+ }
+}
+
+Case make_case(const Case& params,std::uint64_t max_bytes){
+ Case c=params;validate_case_schema(c,max_bytes);std::vector<std::int64_t> v;std::uint64_t state=c.seed;
+ if(c.generator_version!=1&&c.generator_version!=2)throw Error("unsupported generator version");
+ if(c.generator_version==2)synthesize_v2(c,v,state,max_bytes);
+ else if(c.family=="calibration"){
   if(c.x<0||c.x>1000000||c.threshold<1||c.threshold>1000000)throw Error("calibration x or threshold out of range");
   v={c.x,c.threshold,c.negative?1:0};
  }else if(c.family=="integer_array"||c.family=="topk"){
@@ -112,10 +292,20 @@ Case make_case(const Case& params,std::uint64_t max_bytes){
   }
  }else throw Error("unknown family: "+c.family);
  c.bytes=encode_values(v);if(c.bytes.size()>max_bytes)throw Error("input exceeds byte budget");
- c.id=sha256(std::string("ps-case-v1|")+c.family+"|generator-v1|"+case_params(c)+"|"+std::to_string(c.seed)+"|"+hex_encode(c.bytes));return c;
+ c.id=sha256(std::string("ps-case-v1|")+c.family+"|generator-v"+std::to_string(c.generator_version)+"|"+case_params(c)+"|"+std::to_string(c.seed)+"|"+hex_encode(c.bytes));return c;
 }
 Case decode_case(const std::string& family,const std::string& params,std::uint64_t seed,const Bytes& bytes){
- auto j=Json::parse(params);Case c;c.family=family;c.seed=seed;c.distribution=j.s("distribution","uniform");c.weight_class=j.s("weight_class","general");c.n=j.i("n",32);c.x=j.i("x",0);c.k=j.i("k",8);c.vertices=j.i("vertices",16);c.edges=j.i("edges",32);c.source=j.i("source",0);c.threshold=j.i("threshold",8);c.negative=j.b("negative",false);c=make_case(c);if(c.bytes!=bytes)throw Error("case regeneration digest/bytes mismatch");return c;
+ auto j=Json::parse(params);Case c;c.family=family;c.seed=seed;
+ c.generator_version=j.i("generator_version",1);
+ c.distribution=j.s("distribution","uniform");c.weight_class=j.s("weight_class","general");
+ c.n=j.i("n",32);c.x=j.i("x",0);c.k=j.i("k",8);c.vertices=j.i("vertices",16);
+ c.edges=j.i("edges",32);c.source=j.i("source",0);c.threshold=j.i("threshold",8);c.negative=j.b("negative",false);
+ c.value_range=j.i("value_range",1000000);c.unique_count=j.i("unique_count",0);c.run_length=j.i("run_length",17);
+ c.duplicate_ppm=j.i("duplicate_ppm",-1);c.disorder_ppm=j.i("disorder_ppm",10000);c.sign_ppm=j.i("sign_ppm",500000);
+ c.density_ppm=j.i("density_ppm",-1);c.degree_skew_ppm=j.i("degree_skew_ppm",0);
+ c.community_count=j.i("community_count",1);c.max_weight=j.i("max_weight",100);
+ c.directed=j.b("directed",true);c.connectivity=j.s("connectivity","none");
+ c=make_case(c);if(c.bytes!=bytes)throw Error("case regeneration digest/bytes mismatch");return c;
 }
 std::string now_utc(){std::time_t t=std::time(nullptr);std::tm utc{};gmtime_r(&t,&utc);char b[32];std::strftime(b,sizeof(b),"%Y-%m-%dT%H:%M:%SZ",&utc);return b;}
 std::string environment(){

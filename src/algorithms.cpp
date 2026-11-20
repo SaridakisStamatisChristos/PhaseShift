@@ -15,7 +15,7 @@ std::vector<std::string> algorithms_for(const std::string& family){
 struct Graph {std::size_t n;std::size_t src;std::vector<std::vector<std::pair<std::size_t,std::int64_t>>> adj;std::vector<std::tuple<std::size_t,std::size_t,std::int64_t>> edges;};
 static Graph graph_from(const Case& c){
  auto v=decode_values(c.bytes);
- if(v.size()<3||v[0]<1||v[0]>4096||v[1]<0||v[1]>200000||v[2]<0||v[2]>=v[0]||v.size()!=3+static_cast<std::size_t>(v[1])*3)throw Error("bad graph encoding");
+ if(v.size()<3||v[0]<1||v[0]>4096||v[1]<0||v[1]>400000||v[2]<0||v[2]>=v[0]||v.size()!=3+static_cast<std::size_t>(v[1])*3)throw Error("bad graph encoding");
  Graph g;g.n=static_cast<std::size_t>(v[0]);g.src=static_cast<std::size_t>(v[2]);g.adj.resize(g.n);
  for(std::size_t i=3;i<v.size();i+=3){if(v[i]<0||v[i]>=v[0]||v[i+1]<0||v[i+1]>=v[0]||v[i+2]<0||v[i+2]>1000000)throw Error("invalid graph edge");auto a=static_cast<std::size_t>(v[i]),b=static_cast<std::size_t>(v[i+1]);auto w=v[i+2];g.edges.emplace_back(a,b,w);g.adj[a].emplace_back(b,w);}
  return g;

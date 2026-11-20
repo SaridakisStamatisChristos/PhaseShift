@@ -21,7 +21,8 @@ Store::Store(const std::string& path,bool readonly){
  if(readonly){
   static constexpr char hex[]="0123456789ABCDEF";
   uri="file:";
-  for(unsigned char ch:path){
+  for(char c:path){
+   const auto ch=static_cast<unsigned char>(c);
    if((ch>='a'&&ch<='z')||(ch>='A'&&ch<='Z')||(ch>='0'&&ch<='9')||ch=='/'||ch=='.'||ch=='_'||ch=='-')uri+=static_cast<char>(ch);
    else{uri+='%';uri+=hex[ch>>4];uri+=hex[ch&15];}
   }

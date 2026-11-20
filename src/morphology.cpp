@@ -8,7 +8,7 @@
 namespace ps {
 Json morphology_features(const Case& c){
  const auto values=decode_values(c.bytes);Json f;
- f.put("generator_version",c.family=="calibration"?"calibration-v1":"morphology-v1");
+ f.put("generator_version",std::string("generator-v")+std::to_string(c.generator_version));
  if(c.family=="integer_array"||c.family=="topk"){
   const auto n=values.size();f.put("observed_n",static_cast<std::int64_t>(n));
   std::map<std::int64_t,std::size_t> counts;std::size_t decreases=0,longest=0,run=0;

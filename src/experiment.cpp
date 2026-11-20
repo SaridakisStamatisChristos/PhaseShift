@@ -15,16 +15,64 @@
 #include <sstream>
 namespace ps {
 namespace fs=std::filesystem;
-static std::string value_string(json_object* v){if(!v)throw Error("null axis value");auto t=json_object_get_type(v);if(t==json_type_string)return json_object_get_string(v);if(t==json_type_int)return std::to_string(json_object_get_int64(v));throw Error("axis values must be strings or integers");}
-static void assign(Case& c,const std::string& key,const std::string& v){
- if(key=="distribution"){c.distribution=v;return;}if(key=="weight_class"){c.weight_class=v;return;}
- std::int64_t n;try{std::size_t p=0;n=std::stoll(v,&p);if(p!=v.size())throw Error("invalid numeric axis");}catch(const std::exception&){throw Error("invalid numeric parameter "+key+"="+v);}
- if(key=="x")c.x=n;else if(key=="n")c.n=n;else if(key=="k")c.k=n;else if(key=="vertices")c.vertices=n;else if(key=="edges")c.edges=n;else if(key=="source")c.source=n;else if(key=="threshold")c.threshold=n;else throw Error("unknown axis: "+key);
+static std::string value_string(json_object* v){if(!v)throw Error("null axis value");auto t=json_object_get_type(v);if(t==json_type_string)return json_object_get_string(v);if(t==json_type_int)return std::to_string(json_object_get_int64(v));
+ if(t==json_type_double)return json_object_to_json_string_ext(v,JSON_C_TO_STRING_PLAIN);
+ if(t==json_type_boolean)return json_object_get_boolean(v)?"true":"false";
+ throw Error("axis values must be string/integer/fraction/bool");}
+static std::int64_t parse_ppm(const std::string& value){
+ /* Locale-independent exact fixed-point conversion (six decimal places). */
+ if(value.empty()||value[0]=='-'||value[0]=='+')throw Error("fraction outside [0,1]: "+value);
+ const auto point=value.find('.');const auto whole=value.substr(0,point);
+ if(whole!="0"&&whole!="1")throw Error("fraction outside [0,1]: "+value);
+ const auto fraction=point==std::string::npos?"":value.substr(point+1);
+ if(fraction.size()>6||std::any_of(fraction.begin(),fraction.end(),[](unsigned char ch){return ch<'0'||ch>'9';}))throw Error("fraction requires at most six decimal places");
+ std::int64_t ppm=whole=="1"?1000000:0,mult=100000;
+ for(char digit:fraction){ppm+=static_cast<std::int64_t>(digit-'0')*mult;mult/=10;}
+ if(ppm>1000000)throw Error("fraction exceeds 1");
+ return ppm;
 }
-static void apply_field(Case& c,const std::string& key,json_object* value){if(key=="negative"){if(json_object_get_type(value)!=json_type_boolean)throw Error("negative must be bool");c.negative=json_object_get_boolean(value)!=0;return;}assign(c,key,value_string(value));}
-static bool numeric_axis(const std::string& s){return s!="distribution"&&s!="weight_class";}
+static void assign(Case& c,const std::string& key,const std::string& v){
+ if(key=="distribution"){c.distribution=v;return;}
+ if(key=="weight_class"){c.weight_class=v;return;}
+ if(key=="connectivity"){c.connectivity=v;return;}
+ if(key=="directed"){
+  if(v!="true"&&v!="false")throw Error("directed must be boolean");
+  c.directed=v=="true";return;
+ }
+ if(key=="negative"){
+  if(v!="true"&&v!="false")throw Error("negative must be boolean");
+  c.negative=v=="true";return;
+ }
+ if(key=="duplicate_fraction"||key=="disorder_fraction"||key=="sign_fraction"||key=="density"||key=="degree_skew"){
+  auto ppm=parse_ppm(v);
+  if(key=="duplicate_fraction")c.duplicate_ppm=ppm;
+  else if(key=="disorder_fraction")c.disorder_ppm=ppm;
+  else if(key=="sign_fraction")c.sign_ppm=ppm;
+  else if(key=="density")c.density_ppm=ppm;
+  else c.degree_skew_ppm=ppm;
+  return;
+ }
+ std::int64_t n;
+ try{std::size_t p=0;n=std::stoll(v,&p);if(p!=v.size())throw Error("invalid numeric axis");}
+ catch(const std::exception&){throw Error("invalid numeric parameter "+key+"="+v);}
+ if(key=="x")c.x=n;else if(key=="n")c.n=n;else if(key=="k")c.k=n;
+ else if(key=="vertices")c.vertices=n;else if(key=="edges")c.edges=n;
+ else if(key=="source")c.source=n;else if(key=="threshold")c.threshold=n;
+ else if(key=="generator_version")c.generator_version=n;
+ else if(key=="value_range")c.value_range=n;else if(key=="unique_count")c.unique_count=n;
+ else if(key=="run_length")c.run_length=n;else if(key=="duplicate_ppm")c.duplicate_ppm=n;
+ else if(key=="disorder_ppm")c.disorder_ppm=n;else if(key=="sign_ppm")c.sign_ppm=n;
+ else if(key=="density_ppm")c.density_ppm=n;else if(key=="degree_skew_ppm")c.degree_skew_ppm=n;
+ else if(key=="community_count")c.community_count=n;else if(key=="max_weight")c.max_weight=n;
+ else throw Error("unknown morphology parameter: "+key);
+}
+static void apply_field(Case& c,const std::string& key,json_object* value){assign(c,key,value_string(value));}
+static bool numeric_axis(const std::string& s){
+ static const std::set<std::string> supported={"x","n","k","edges","vertices","value_range","unique_count","run_length","duplicate_ppm","disorder_ppm","sign_ppm","density_ppm","density","degree_skew_ppm","degree_skew","community_count","max_weight","duplicate_fraction","disorder_fraction","sign_fraction"};
+ return supported.count(s)>0;
+}
 static Json config_json(const Config& c){
- Json j;j.put("schema_version",static_cast<std::int64_t>(1));j.put("experiment_id",c.experiment_id);j.put("problem_family",c.family);j.put("algorithm_a",c.a);j.put("algorithm_b",c.b);j.put("search_method",c.method);j.put("primary_axis",c.axis);j.put("seed",static_cast<std::int64_t>(c.seed));j.put("max_cases",static_cast<std::int64_t>(c.max_cases));j.put("max_case_bytes",static_cast<std::int64_t>(c.max_bytes));j.put("discovery_blocks",static_cast<std::int64_t>(c.blocks));j.put("confirm_blocks",static_cast<std::int64_t>(c.confirm_blocks));j.put("warmup",static_cast<std::int64_t>(c.warmup));j.put("sample_ms",static_cast<std::int64_t>(c.sample_ms));j.put("rss_mb",static_cast<std::int64_t>(c.rss_mb));j.put("total_wall_seconds",static_cast<std::int64_t>(c.total_wall_s));j.put("min_practical_ratio",c.min_ratio);j.put("base_params",case_params(c.base));
+ Json j;j.put("schema_version",static_cast<std::int64_t>(1));j.put("experiment_id",c.experiment_id);j.put("problem_family",c.family);j.put("algorithm_a",c.a);j.put("algorithm_b",c.b);j.put("search_method",c.method);j.put("primary_axis",c.axis);j.put("seed",static_cast<std::int64_t>(c.seed));j.put("max_cases",static_cast<std::int64_t>(c.max_cases));j.put("max_case_bytes",static_cast<std::int64_t>(c.max_bytes));j.put("max_search_queue",static_cast<std::int64_t>(c.max_queue));j.put("max_report_bytes",static_cast<std::int64_t>(c.max_report_bytes));j.put("discovery_blocks",static_cast<std::int64_t>(c.blocks));j.put("confirm_blocks",static_cast<std::int64_t>(c.confirm_blocks));j.put("warmup",static_cast<std::int64_t>(c.warmup));j.put("sample_ms",static_cast<std::int64_t>(c.sample_ms));j.put("rss_mb",static_cast<std::int64_t>(c.rss_mb));j.put("total_wall_seconds",static_cast<std::int64_t>(c.total_wall_s));j.put("min_practical_ratio",c.min_ratio);j.put("base_params",case_params(c.base));
  Json axes;for(const auto& [name,values]:c.axes){auto* arr=json_object_new_array();for(const auto& val:values)json_object_array_add(arr,json_object_new_string(val.c_str()));json_object_object_add(axes.p,name.c_str(),arr);}j.put("axes",std::move(axes));return j;
 }
 Config config_from_json(const Json& j){
@@ -35,12 +83,13 @@ Config config_from_json(const Json& j){
  if(c.a.empty())c.a=c.family=="calibration"?"calibration":c.family=="integer_array"?"std_sort":c.family=="topk"?"topk_heap":"dijkstra_heap";
  c.method=j.s("search_method",j.s("method","grid"));if(auto* search=j.get("search")){Json k(json_object_get(search));c.method=k.s("method",c.method);c.max_cases=static_cast<std::uint64_t>(k.i("max_cases",static_cast<std::int64_t>(c.max_cases)));}
  c.axis=j.s("primary_axis",c.family=="calibration"?"x":c.family=="graph"?"edges":"n");
- c.seed=static_cast<std::uint64_t>(j.i("seed",137));c.max_cases=static_cast<std::uint64_t>(j.i("max_cases",static_cast<std::int64_t>(c.max_cases)));c.max_bytes=static_cast<std::uint64_t>(j.i("max_case_bytes",64*1024*1024));c.blocks=static_cast<int>(j.i("discovery_blocks",9));c.confirm_blocks=static_cast<int>(j.i("confirm_blocks",20));c.warmup=static_cast<int>(j.i("warmup",2));c.sample_ms=static_cast<int>(j.i("sample_ms",3000));c.rss_mb=static_cast<int>(j.i("rss_mb",1024));c.total_wall_s=static_cast<int>(j.i("total_wall_seconds",600));c.min_ratio=j.d("min_practical_ratio",1.2);
+ c.seed=static_cast<std::uint64_t>(j.i("seed",137));c.max_cases=static_cast<std::uint64_t>(j.i("max_cases",static_cast<std::int64_t>(c.max_cases)));c.max_bytes=static_cast<std::uint64_t>(j.i("max_case_bytes",64*1024*1024));c.max_queue=static_cast<std::uint64_t>(j.i("max_search_queue",10000));c.max_report_bytes=static_cast<std::uint64_t>(j.i("max_report_bytes",10000000));c.blocks=static_cast<int>(j.i("discovery_blocks",9));c.confirm_blocks=static_cast<int>(j.i("confirm_blocks",20));c.warmup=static_cast<int>(j.i("warmup",2));c.sample_ms=static_cast<int>(j.i("sample_ms",3000));c.rss_mb=static_cast<int>(j.i("rss_mb",1024));c.total_wall_s=static_cast<int>(j.i("total_wall_seconds",600));c.min_ratio=j.d("min_practical_ratio",1.2);
  if(auto* m=j.get("measurement")){Json x(json_object_get(m));c.blocks=static_cast<int>(x.i("paired_discovery_blocks",c.blocks));c.confirm_blocks=static_cast<int>(x.i("paired_confirm_blocks",c.confirm_blocks));c.warmup=static_cast<int>(x.i("warmup_iterations",c.warmup));}
  if(auto* d=j.get("detection")){Json x(json_object_get(d));c.min_ratio=x.d("min_practical_ratio",c.min_ratio);}
- if(auto* l=j.get("limits")){Json x(json_object_get(l));c.total_wall_s=static_cast<int>(x.i("total_wall_seconds",c.total_wall_s));c.max_cases=static_cast<std::uint64_t>(x.i("max_cases",static_cast<std::int64_t>(c.max_cases)));c.max_bytes=static_cast<std::uint64_t>(x.i("max_case_bytes",static_cast<std::int64_t>(c.max_bytes)));c.rss_mb=static_cast<int>(x.i("max_worker_rss_mb",c.rss_mb));c.sample_ms=static_cast<int>(x.i("max_sample_wall_ms",c.sample_ms));}
+ if(auto* l=j.get("limits")){Json x(json_object_get(l));c.total_wall_s=static_cast<int>(x.i("total_wall_seconds",c.total_wall_s));c.max_cases=static_cast<std::uint64_t>(x.i("max_cases",static_cast<std::int64_t>(c.max_cases)));c.max_bytes=static_cast<std::uint64_t>(x.i("max_case_bytes",static_cast<std::int64_t>(c.max_bytes)));c.rss_mb=static_cast<int>(x.i("max_worker_rss_mb",c.rss_mb));c.sample_ms=static_cast<int>(x.i("max_sample_wall_ms",c.sample_ms));c.max_queue=static_cast<std::uint64_t>(x.i("max_search_queue",static_cast<std::int64_t>(c.max_queue)));c.max_report_bytes=static_cast<std::uint64_t>(x.i("max_report_bytes",static_cast<std::int64_t>(c.max_report_bytes)));}
  c.base.family=c.family;c.base.seed=c.seed;
  if(auto* base=j.get("base_params")){Json p=json_object_get_type(base)==json_type_string?Json::parse(json_object_get_string(base)):Json(json_object_get(base));
+  if(!p.get("generator_version"))c.base.generator_version=1; /* v0.1 manifest compatibility */
   json_object_object_foreach(p.p,key,value){apply_field(c.base,key,value);}
  }
  if(auto* fixed=j.get("fixed")){Json p(json_object_get(fixed));json_object_object_foreach(p.p,key,value){apply_field(c.base,key,value);}}
@@ -53,32 +102,46 @@ Config config_from_json(const Json& j){
  }
  if(c.axes.empty())c.axes[c.axis]={"0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15"};
  if(c.method!="grid"&&c.method!="random"&&c.method!="stratified"&&c.method!="adaptive_partition")throw Error("unknown search method");
- if(c.max_cases==0||c.max_cases>20000||c.max_bytes<64||c.max_bytes>64ULL*1024*1024||c.blocks<1||c.blocks>100||c.confirm_blocks<1||c.confirm_blocks>100||c.warmup<0||c.warmup>100||c.sample_ms<100||c.sample_ms>60000||c.total_wall_s<1||c.total_wall_s>86400||c.rss_mb<64||c.rss_mb>65536||!std::isfinite(c.min_ratio)||c.min_ratio<1.01||c.min_ratio>100000)throw Error("configuration resource/measurement bounds invalid");
+ if(c.max_cases==0||c.max_cases>20000||c.max_queue==0||c.max_queue>100000||c.max_report_bytes<4096||c.max_report_bytes>1000000000||c.max_bytes<64||c.max_bytes>64ULL*1024*1024||c.blocks<1||c.blocks>100||c.confirm_blocks<1||c.confirm_blocks>100||c.warmup<0||c.warmup>100||c.sample_ms<100||c.sample_ms>60000||c.total_wall_s<1||c.total_wall_s>86400||c.rss_mb<64||c.rss_mb>65536||!std::isfinite(c.min_ratio)||c.min_ratio<1.01||c.min_ratio>100000)throw Error("configuration resource/measurement bounds invalid");
  if(!c.axes.count(c.axis))c.axis=c.axes.begin()->first;
  auto valid=algorithms_for(c.family);if(std::find(valid.begin(),valid.end(),c.a)==valid.end()&&c.a.rfind("plugin:",0)!=0)throw Error("unknown primary algorithm for family");
  if(!c.b.empty()&&std::find(valid.begin(),valid.end(),c.b)==valid.end()&&c.b.rfind("plugin:",0)!=0)throw Error("unknown secondary algorithm for family");
- for(const auto& [key,values]:c.axes){for(const auto& v:values){Case sample=c.base;assign(sample,key,v); /* validate full cartesian separately below */}}
+ std::uint64_t product=1;
+ for(const auto& [key,values]:c.axes){
+  if(values.size()>c.max_queue||product>c.max_queue/values.size())throw Error("search grid exceeds max_search_queue; split the experiment");
+  product*=values.size();
+  for(const auto& v:values){Case sample=c.base;assign(sample,key,v);}
+ }
+ if(c.base.density_ppm>=0&&c.axes.count("edges"))throw Error("density and edges cannot both be independent axes");
+ /* Validate every combination without allocating experiment inputs. */
+ std::vector<std::pair<std::string,std::vector<std::string>>> dims(c.axes.begin(),c.axes.end());
+ std::function<void(std::size_t,Case)> visit=[&](std::size_t index,Case candidate){
+  if(index==dims.size()){validate_case_schema(candidate,c.max_bytes);return;}
+  for(const auto& value:dims[index].second){Case next=candidate;assign(next,dims[index].first,value);visit(index+1,next);}
+ };
+ visit(0,c.base);
  return c;
 }
 Config parse_config(const std::string& path){return config_from_json(Json::file(path));}
 static std::vector<Case> grid_cases(const Config& c){
  std::vector<Case> out;std::vector<std::pair<std::string,std::vector<std::string>>> axes(c.axes.begin(),c.axes.end());
  std::function<void(std::size_t,Case)> recurse=[&](std::size_t i,Case base){
-  if(out.size()>=10000)return;
   if(i==axes.size()){
+   if(out.size()>=c.max_queue)throw Error("search queue bound exceeded");
    base.seed=c.seed+static_cast<std::uint64_t>(out.size());
    out.push_back(std::move(base));return;
   }
-  for(const auto& value:axes[i].second){auto candidate=base;assign(candidate,axes[i].first,value);recurse(i+1,candidate);if(out.size()>=10000)return;}
+  for(const auto& value:axes[i].second){auto candidate=base;assign(candidate,axes[i].first,value);recurse(i+1,candidate);}
  };recurse(0,c.base);return out;
 }
+static std::int64_t axis_value(const Case& c,const std::string& axis);
 static std::vector<Case> scheduled(const Config& c){
  auto cases=grid_cases(c);
  if(c.method=="random"){
   std::uint64_t seed=c.seed^0x925c42;
   for(std::size_t i=cases.size();i>1;i--){auto j=randbelow(seed,i);std::swap(cases[i-1],cases[static_cast<std::size_t>(j)]);}
  }else if(c.method=="stratified" && numeric_axis(c.axis)){
-  std::sort(cases.begin(),cases.end(),[&](const Case& a,const Case& b){auto v=[&](const Case& q){if(c.axis=="x")return q.x;if(c.axis=="n")return q.n;if(c.axis=="k")return q.k;if(c.axis=="edges")return q.edges;return q.vertices;};return v(a)<v(b);});
+  std::sort(cases.begin(),cases.end(),[&](const Case& a,const Case& b){return axis_value(a,c.axis)<axis_value(b,c.axis);});
   std::vector<Case> order;order.reserve(cases.size());
   const std::size_t strata=std::min<std::size_t>(8,cases.size());
   for(std::size_t offset=0;offset<cases.size();offset++)for(std::size_t i=0;i<strata;i++){
@@ -89,7 +152,24 @@ static std::vector<Case> scheduled(const Config& c){
  }
  return cases;
 }
-static std::int64_t axis_value(const Case& c,const std::string& axis){if(axis=="x")return c.x;if(axis=="n")return c.n;if(axis=="k")return c.k;if(axis=="edges")return c.edges;if(axis=="vertices")return c.vertices;return 0;}
+static std::int64_t axis_value(const Case& c,const std::string& axis){
+ if(axis=="x")return c.x;
+ if(axis=="n")return c.n;
+ if(axis=="k")return c.k;
+ if(axis=="edges")return c.edges;
+ if(axis=="vertices")return c.vertices;
+ if(axis=="value_range")return c.value_range;
+ if(axis=="unique_count")return c.unique_count;
+ if(axis=="run_length")return c.run_length;
+ if(axis=="duplicate_fraction"||axis=="duplicate_ppm")return c.duplicate_ppm;
+ if(axis=="disorder_fraction"||axis=="disorder_ppm")return c.disorder_ppm;
+ if(axis=="sign_fraction"||axis=="sign_ppm")return c.sign_ppm;
+ if(axis=="density"||axis=="density_ppm")return c.density_ppm;
+ if(axis=="degree_skew"||axis=="degree_skew_ppm")return c.degree_skew_ppm;
+ if(axis=="community_count")return c.community_count;
+ if(axis=="max_weight")return c.max_weight;
+ throw Error("unsupported structural axis: "+axis);
+}
 static std::optional<double> metric(Store& store,const Case& c,const Config& cfg,bool holdout){
  const auto obs=store.observations(c.id,holdout);
  std::map<std::int64_t,std::vector<double>> a,b;
