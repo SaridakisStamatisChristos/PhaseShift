@@ -36,6 +36,19 @@ std::vector<bool> bh_fdr(const std::vector<double>& p,double q){
  for(std::size_t i=0;i<indexes.size();i++)if(p[indexes[i]]<=q*static_cast<double>(i+1)/static_cast<double>(p.size()))accepted=i+1;
  std::vector<bool> verdict(p.size(),false);for(std::size_t i=0;i<accepted;i++)verdict[indexes[i]]=true;return verdict;
 }
+std::vector<bool> holm_fwer(const std::vector<double>& p,double alpha){
+ if(!std::isfinite(alpha)||alpha<=0||alpha>=1)throw Error("invalid Holm FWER alpha");
+ for(const auto value:p)if(!std::isfinite(value)||value<0||value>1)throw Error("invalid Holm p-value");
+ std::vector<std::size_t> sorted(p.size());std::iota(sorted.begin(),sorted.end(),0);
+ std::stable_sort(sorted.begin(),sorted.end(),[&](std::size_t a,std::size_t b){return p[a]<p[b];});
+ std::vector<bool> verdict(p.size(),false);
+ for(std::size_t i=0;i<sorted.size();++i){
+  const auto threshold=alpha/static_cast<double>(sorted.size()-i);
+  if(p[sorted[i]]>threshold)break;
+  verdict[sorted[i]]=true;
+ }
+ return verdict;
+}
 double paired_sign_flip_p(const std::vector<double>& d,std::uint64_t seed,std::size_t draws){
  if(d.size()<2||draws<100||draws>200000)throw Error("invalid sign-flip parameters");
  for(auto x:d)if(!std::isfinite(x))throw Error("non-finite matched difference");

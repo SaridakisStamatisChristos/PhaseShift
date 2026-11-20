@@ -2,6 +2,7 @@
 #include "phaseshift/experiment.hpp"
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <string>
 #include <vector>
 namespace {
@@ -19,6 +20,19 @@ int main(){try{
  auto accept=ps::bh_fdr({0.001,0.04,0.025,0.7},0.05);
  require(accept==std::vector<bool>({true,false,true,false}),"BH known-reference decisions");
  require(ps::bh_fdr({0.90,0.87,1.0},0.01)==std::vector<bool>({false,false,false}),"BH null abstention");
+ const auto holm=ps::holm_fwer({0.001,0.04,0.025,0.7},0.05);
+ require(holm==std::vector<bool>({true,false,true,false}),"Holm known-reference decisions");
+ require(ps::holm_fwer({0.01,0.015,0.03},0.05)==std::vector<bool>({true,true,true}),"Holm sequential thresholds");
+ require(ps::holm_fwer({0.9,1.0},0.01)==std::vector<bool>({false,false}),"Holm null abstention");
+ require(ps::holm_fwer({},0.05).empty(),"empty predeclared family");
+ {
+  for(const double invalid_p:{-0.1,1.1,std::numeric_limits<double>::quiet_NaN()}){
+   bool rejected=false;try{(void)ps::holm_fwer({invalid_p},0.05);}catch(const ps::Error&){rejected=true;}
+   require(rejected,"Holm invalid p-value rejection");
+  }
+  bool rejected=false;try{(void)ps::holm_fwer({0.01},1.0);}catch(const ps::Error&){rejected=true;}
+  require(rejected,"Holm invalid alpha rejection");
+ }
  auto positive=ps::paired_case_bootstrap(std::vector<double>(25,0.4),42,0.99,2000);
  require(std::abs(positive.lower-0.4)<1e-10&&std::abs(positive.upper-0.4)<1e-10,"positive stable effect interval");
  auto zero=ps::paired_sign_flip_p(std::vector<double>(25,0.0),17,2000);

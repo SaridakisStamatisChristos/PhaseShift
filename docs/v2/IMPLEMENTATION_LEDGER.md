@@ -16,7 +16,8 @@ Preserve historical generator bytes/IDs, v1 CLI behavior, SQLite v7 evidence, na
 | M1 explicit policy version | PARTIAL | v1 default, v2 opt-in; cached evidence/budget ledger pending |
 | M5 multi-change model | PARTIAL | Exact K-bounded DP and exhaustive brute-force differential unit test added; no v2 detector routing, PELT, noisy held-out validation or confirmation ranking |
 | M3 hierarchical boundary policy | PARTIAL | Opt-in single ordered-axis midpoint prioritization, contrast/cost heuristics, deterministic exploration/replay and persisted selection origin; no calibrated uncertainty, independent paired replication, mixed interactions or held-out superiority |
-| M4, M6–M12 | UNVERIFIED | Implementation pending |
+| M7 multi-hypothesis correction | PARTIAL | Holm FWER fixed-family primitive + reference/negative tests; campaign sealing and selection-family persistence not implemented |
+| M4, M6, M8–M12 | UNVERIFIED | Implementation pending |
 | G1–G14 v2 hard gates | UNVERIFIED | No branch CI or held-out comparison yet |
 
 Research claim: **none**. Any synthetic fixture is a correctness calibration, not scientific novelty. No PR merge, license or release is authorized.
