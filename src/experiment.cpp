@@ -175,6 +175,12 @@ static std::optional<double> metric(Store& store,const Case& c,const Config& cfg
  const auto obs=store.observations(c.id,holdout);
  std::map<std::int64_t,std::vector<double>> a,b;
  for(const auto& o:obs){
+  /* A case with *any* failed target execution is inadmissible. Otherwise a
+     fast valid batch could mask a wrong answer later in the same case. */
+  if((o.algorithm==cfg.a||o.algorithm==cfg.b)&&
+      (o.status!="ok"||o.batch<1||(o.ns<=0&&!(cfg.family=="calibration"&&o.work>0))))return {};
+ }
+ for(const auto& o:obs){
   if(o.status!="ok"||o.batch<1)continue;
   double value=0;
   if(cfg.family=="calibration")value=static_cast<double>(o.work);
@@ -220,6 +226,15 @@ static std::string formatted_axis_value(const std::string& axis,std::int64_t val
   }());
  }
  return std::to_string(value);
+}
+static std::string axis_label(const Case& c,const std::string& axis){
+ if(numeric_axis(axis))return formatted_axis_value(axis,axis_value(c,axis));
+ if(axis=="distribution")return c.distribution;
+ if(axis=="weight_class")return c.weight_class;
+ if(axis=="connectivity")return c.connectivity;
+ if(axis=="directed")return c.directed?"true":"false";
+ if(axis=="negative")return c.negative?"true":"false";
+ throw Error("unrecognized categorical report axis: "+axis);
 }
 struct Detection {
  std::int64_t left=0,right=0;
@@ -434,7 +449,7 @@ void confirm(const std::string& run,const std::string& id){
   /* One preselected hypothesis per discovery, one isolated single-use
      confirmation: BH for a family of size one is identical to p<=q.
      A 99% CI further constrains the practical effect. */
-  const auto significant=bh_fdr({p},0.01)[0];
+  const bool significant=bh_fdr({p},0.01)[0]; /* vector<bool> proxy must not outlive temporary */
   const auto practical=interval.lower>threshold||interval.upper< -threshold;
   const auto signed_sides=(ci_l.upper< -std::log(1.02)&&ci_r.lower>std::log(1.02))||
                            (ci_r.upper< -std::log(1.02)&&ci_l.lower>std::log(1.02));
@@ -449,7 +464,12 @@ void confirm(const std::string& run,const std::string& id){
     timing too noisy to classify the control on its own. */
  if(cfg.family!="calibration"&&cfg.axes.count(axis)){
   auto values=cfg.axes.at(axis);std::vector<std::int64_t> numeric;
-  for(const auto& value:values){try{numeric.push_back(std::stoll(value));}catch(const std::exception&){}}
+  for(const auto& value:values){
+   try{
+    if(axis=="density"||axis=="degree_skew"||axis=="duplicate_fraction"||axis=="disorder_fraction"||axis=="sign_fraction")numeric.push_back(parse_ppm(value));
+    else {std::size_t end=0;const auto x=std::stoll(value,&end);if(end==value.size())numeric.push_back(x);}
+   }catch(const std::exception&){}
+  }
   if(!numeric.empty()){
    const auto lo=*std::min_element(numeric.begin(),numeric.end()),hi=*std::max_element(numeric.begin(),numeric.end());
    const auto control=std::abs(lo-left)>std::abs(hi-right)?lo:hi;
@@ -463,7 +483,7 @@ void confirm(const std::string& run,const std::string& id){
  report(run);std::cout<<store.summary().str()<<"\n";
 }
 void ablate(const Config& cfg,const std::string& out){
- if(cfg.family!="calibration"||cfg.axis!="x")throw Error("v0.2 ablation supports deterministic one-axis calibration only");
+ if(!numeric_axis(cfg.axis))throw Error("ablation requires an ordered numeric primary axis; categorical axes must be conditioned on");
  if(fs::exists(out))throw Error("ablation output already exists");
  fs::create_directories(out);
  std::ostringstream csv;csv<<"method,case_budget,discovery_cases,total_cases,raw_samples,seconds,status,left,right,localization_error\n";
@@ -477,16 +497,148 @@ void ablate(const Config& cfg,const std::string& out){
   if(sqlite3_prepare_v2(store.raw(),"SELECT COUNT(DISTINCT case_id) FROM samples WHERE holdout=0",-1,&st,nullptr)!=SQLITE_OK)throw Error("ablation discovery count query");
   if(sqlite3_step(st)!=SQLITE_ROW){sqlite3_finalize(st);throw Error("ablation discovery count missing");}
   const auto discovery_cases=sqlite3_column_int64(st,0);sqlite3_finalize(st);
-  const auto err=status=="CONFIRMED"?std::abs(right-c.base.threshold):-1;
+  const auto err=cfg.family=="calibration"&&status=="CONFIRMED"?std::to_string(std::abs(right-c.base.threshold)):"NA";
   csv<<name<<','<<c.max_cases<<','<<discovery_cases<<','<<summary.i("cases")<<','<<summary.i("samples")<<','<<sec<<','<<status<<','<<left<<','<<right<<','<<err<<'\n';
  }
- write_file(out+"/ablation.csv",csv.str());std::cout<<csv.str();
+ write_file(out+"/ablation.csv",csv.str());
+ write_file(out+"/README.md","# Equal-budget search comparison\n\nRows summarize grid, random, stratified and adaptive runs with identical user-specified evaluation and wall budgets. `localization_error=NA` for real algorithms because no ground-truth boundary is assumed. Rows include actual discovery case counts to expose incomplete runs; equal requested budgets do not guarantee equal completed counts. All raw cases and timing measurements remain in each method subdirectory.\n");
+ std::cout<<csv.str();
 }
+/* A performance witness is a *measured* predicate, unlike a wrong-answer
+ * witness. Candidate selection and final validation use disjoint independent
+ * seeds, and the original independent confirmation is never recycled. Raw
+ * minimization observations live in a dedicated database to keep the original
+ * exploration/confirmation populations immutable and auditable. */
+static void minimize_performance(const std::string& run,const std::string& id,
+                                 Store& source,const Config& cfg,
+                                 const std::string& axis,std::int64_t left,std::int64_t right){
+ if(fs::exists(run+"/minimization.sqlite")||fs::exists(run+"/witness.json"))
+  throw Error("minimization evidence already exists; refusing to overwrite");
+ const auto base=frozen_case(source,cfg,id);
+ if(!numeric_axis(axis)||left>=right)throw Error("performance minimization requires a frozen numeric boundary");
+ Case initial=base;assign(initial,axis,formatted_axis_value(axis,right));
+ initial.seed=cfg.seed+50000000ULL;
+ initial=make_case(initial,cfg.max_bytes);
+ const auto scope=scope_key(initial,cfg);
+ std::vector<double> exploration_left,exploration_right;
+ for(const auto& observed:source.cases(false)){
+  if(scope_key(observed,cfg)!=scope)continue;
+  const auto x=axis_value(observed,axis);
+  if(x!=left&&x!=right)continue;
+  if(const auto value=metric(source,observed,cfg,false)){
+   if(x==left)exploration_left.push_back(*value);
+   else exploration_right.push_back(*value);
+  }
+ }
+ if(exploration_left.empty()||exploration_right.empty())throw Error("cannot recover pre-minimization effect direction");
+ const auto exploratory_change=sample_median(exploration_right)-sample_median(exploration_left);
+ if(exploratory_change==0)throw Error("original boundary has no nonzero effect direction");
+ const int expected_direction=exploratory_change>0?1:-1;
+ sqlite3_stmt* statement=nullptr;
+ if(sqlite3_prepare_v2(source.raw(),"SELECT kind FROM hypotheses WHERE id=?",-1,&statement,nullptr)!=SQLITE_OK)throw Error("minimization kind lookup failed");
+ sqlite3_bind_text(statement,1,id.c_str(),-1,SQLITE_TRANSIENT);
+ if(sqlite3_step(statement)!=SQLITE_ROW){sqlite3_finalize(statement);throw Error("hypothesis unavailable to minimizer");}
+ const auto kind=std::string(reinterpret_cast<const char*>(sqlite3_column_text(statement,0)));
+ sqlite3_finalize(statement);
+ Store evidence(run+"/minimization.sqlite");evidence.experiment(config_json(cfg).str(),environment());
+ evidence.event("frozen_witness_predicate", "id="+id+" kind="+kind+" axis="+axis+" left="+std::to_string(left)+" right="+std::to_string(right)+" effect_direction="+std::to_string(expected_direction));
+ const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(std::min(180,cfg.total_wall_s));
+ const int samples=std::max(20,cfg.confirm_blocks);
+ std::size_t attempts=0,accepted=0;
+ auto check=[&](const Case& candidate,const std::string& stage)->bool{
+  ++attempts;
+  if(axis_value(candidate,axis)!=right || scope_key(candidate,cfg)!=scope)return false;
+  std::array<std::vector<double>,2> sides;
+  std::vector<double> differences;
+  /* Unique seed blocks per attempted candidate/stage: no data re-use for
+     selecting, testing and final re-confirming a minimized input. */
+  const auto base_seed=cfg.seed+50000000ULL+static_cast<std::uint64_t>(attempts)*100003ULL;
+  for(int block=0;block<samples;block++){
+   if(std::chrono::steady_clock::now()>=deadline){evidence.event("minimization_budget",stage+" timed out before complete holdout");return false;}
+   std::array<double,2> estimates{};
+   for(int step=0;step<2;step++){
+    const auto side=static_cast<std::size_t>((block+step)%2);
+    Case c=candidate;assign(c,axis,formatted_axis_value(axis,side==0?left:right));
+    c.seed=base_seed+static_cast<std::uint64_t>(block)*97ULL;
+    try{c=make_case(c,cfg.max_bytes);}catch(const Error&){return false;}
+    auto observations=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},
+                              1,cfg.warmup,cfg.sample_ms,cfg.rss_mb);
+    for(const auto& o:observations)evidence.add_observation(c,o,true);
+    const auto m=metric(evidence,c,cfg,true);
+    if(!m){evidence.event("minimization_invalid",stage+" worker or oracle invalid case="+c.id);return false;}
+    estimates[side]=*m;
+   }
+   sides[0].push_back(estimates[0]);sides[1].push_back(estimates[1]);
+   differences.push_back(estimates[1]-estimates[0]);
+  }
+  const auto confidence=paired_case_bootstrap(differences,base_seed^0xadd61317aULL,0.99);
+  const auto p=paired_sign_flip_p(differences,base_seed^0xff197e1ULL);
+  const auto threshold=std::log(cfg.min_ratio);
+  const bool positive=expected_direction>0;
+  const bool practical=positive?confidence.lower>threshold:confidence.upper< -threshold;
+  bool crosses=true;
+  if(kind=="PERFORMANCE_CROSSOVER"){
+   const auto l=case_bootstrap(sides[0],base_seed^0x17399ULL,0.99);
+   const auto r=case_bootstrap(sides[1],base_seed^0x1cc7ULL,0.99);
+   crosses=positive?l.upper< -std::log(1.02)&&r.lower>std::log(1.02):
+                    r.upper< -std::log(1.02)&&l.lower>std::log(1.02);
+  }
+  const bool preserved=practical&&p<=0.01&&crosses;
+  std::ostringstream explanation;explanation<<std::setprecision(10)<<stage<<" candidate="<<candidate.id
+     <<" n="<<differences.size()<<" delta="<<sample_median(differences)
+     <<" ci99=["<<confidence.lower<<","<<confidence.upper<<"] sign_flip_p="<<p
+     <<" expected_sign="<<expected_direction<<" preserved="<<preserved;
+  evidence.event("minimization_candidate",explanation.str());
+  if(preserved)++accepted;
+  return preserved;
+ };
+ ShrinkResult result;result.original=initial;result.smallest=initial;
+ bool initially_valid=false,finally_valid=false;
+ try{
+  /* The original witness must first survive an independent, fresh
+     correctness/statistical check before any morphology modification. */
+  initially_valid=check(initial,"baseline_recheck");
+  if(initially_valid){
+   /* Bound evaluations and wall time. Every candidate consumes its own
+      fresh, independent set of paired case-level observations. */
+   result=shrink_case(initial,[&](const Case& c){return check(c,"candidate_selection");},12,cfg.max_bytes);
+   finally_valid=check(result.smallest,"final_independent_reconfirmation");
+  }
+ }catch(const std::exception& error){
+  evidence.event("minimization_error",error.what());
+ }
+ const auto& smallest=initially_valid?result.smallest:initial;
+ const auto status=finally_valid&&result.reduced?"MINIMIZED_CONFIRMED":
+                   finally_valid?"MINIMIZATION_FAILED":"MINIMIZED_PROVISIONAL";
+ Json record;record.put("schema_version",static_cast<std::int64_t>(1));record.put("category","PERFORMANCE_WITNESS");
+ record.put("status",status);record.put("hypothesis_id",id);record.put("axis",axis);
+ record.put("left",left);record.put("right",right);
+ record.put("kind",kind);record.put("effect_direction",static_cast<std::int64_t>(expected_direction));
+ record.put("baseline_independently_valid",initially_valid);record.put("final_independently_valid",finally_valid);
+ record.put("original_case_id",initial.id);record.put("case_id",smallest.id);
+ record.put("original_input_bytes",static_cast<std::int64_t>(initial.bytes.size()));
+ record.put("input_bytes",static_cast<std::int64_t>(smallest.bytes.size()));
+ record.put("input_sha256",sha256(smallest.bytes));record.put("parameters",Json::parse(case_params(smallest)));
+ record.put("evaluations",static_cast<std::int64_t>(attempts));record.put("valid_experiments",static_cast<std::int64_t>(accepted));
+ record.put("holdout_case_pairs_per_evaluation",static_cast<std::int64_t>(samples));
+ record.put("minimization_evidence","minimization.sqlite");
+ auto* path=json_object_new_array();
+ if(initially_valid)for(const auto& step:result.trace){Json item;item.put("case_id",step.case_id);
+  item.put("input_bytes",static_cast<std::int64_t>(step.input_bytes));item.put("action",step.action);
+  item.put("preserved",step.predicate_preserved);json_object_array_add(path,item.p);item.p=nullptr;}
+ json_object_object_add(record.p,"shrink_trace",path);
+ source.add_case(smallest);source.witness(id,smallest.id,status,record.str());
+ source.hypothesis(id,status,axis,left,right,0, "Performance witness "+std::string(status)+"; independent minimization evidence in minimization.sqlite; raw observation and null outcomes retained");
+ write_file(run+"/witness.json",record.str());write_file(run+"/witness.hex",hex_encode(smallest.bytes)+"\n");
+ report(run);
+ std::cout<<"Performance witness "<<status<<" case="<<smallest.id<<" evaluated="<<attempts<<"\n";
+}
+
 void minimize(const std::string& run,const std::string& id){
  Store s(run+"/run.sqlite");auto cfg=config_from_json(Json::parse(s.config()));auto [status,axis,left,right]=read_hypothesis(s,id);
  if(status!="CONFIRMED")throw Error("only confirmed hypotheses can be minimized");
  if(cfg.family!="calibration"||axis!="x"){
-  s.hypothesis(id,"MINIMIZATION_FAILED",axis,left,right,0,"No validated family-aware minimization predicate available");return;
+  minimize_performance(run,id,s,cfg,axis,left,right);return;
  }
  Case c=frozen_case(s,cfg,id);c.x=right;c.seed=cfg.seed+2000000;c=make_case(c,cfg.max_bytes);
  const auto w=execute(c,"calibration").work;
@@ -576,21 +728,49 @@ void replay(const std::string& run,const std::string& case_id){
 static std::string csv_escape(const std::string& s){std::string o="\"";for(char c:s){if(c=='\"')o+="\"\"";else o+=c;}return o+"\"";}
 static std::string html_escape(const std::string& s){std::string o;for(char c:s){if(c=='&')o+="&amp;";else if(c=='<')o+="&lt;";else if(c=='>')o+="&gt;";else if(c=='\"')o+="&quot;";else o+=c;}return o;}
 void report(const std::string& run){
- Store s(run+"/run.sqlite");auto summary=s.summary();auto cfg=config_from_json(Json::parse(s.config()));
+ Store s(run+"/run.sqlite");s.refresh_aggregates();auto summary=s.summary();auto cfg=config_from_json(Json::parse(s.config()));
  Json report;report.put("schema_version",static_cast<std::int64_t>(1));report.put("experiment_id",cfg.experiment_id);report.put("family",cfg.family);report.put("algorithm_a",cfg.a);report.put("algorithm_b",cfg.b);report.put("environment",Json::parse(s.environment()));report.put("summary",std::move(summary));
- auto* raw=json_object_new_array();std::ostringstream csv;csv<<"case_id,family,axis_value,holdout,algorithm,status,batch_ns,batch_iterations,work_units,block,output_digest,detail\n";
+ auto* raw=json_object_new_array();std::ostringstream csv;csv<<"case_id,family,axis_value,holdout,algorithm,status,batch_ns,batch_iterations,work_units,block,cpu_ns,peak_rss_bytes,order_position,order_seed,output_digest,detail\n";
+ std::uint64_t raw_size=0;bool truncated=false;
+ const auto export_limit=cfg.max_report_bytes/2;
  for(const auto& c:s.cases())for(int holdout=0;holdout<2;holdout++)for(const auto& o:s.observations(c.id,holdout!=0)){
-  Json row;row.put("case_id",c.id);row.put("family",c.family);row.put("observed_features",morphology_features(c));row.put("axis_value",axis_value(c,cfg.axis));row.put("holdout",holdout!=0);row.put("algorithm",o.algorithm);row.put("status",o.status);row.put("batch_ns",o.ns);row.put("batch_iterations",o.batch);row.put("work_units",o.work);row.put("block",o.block);row.put("output_digest",o.digest);row.put("detail",o.detail);json_object_array_add(raw,row.p);row.p=nullptr;
-  csv<<csv_escape(c.id)<<','<<csv_escape(c.family)<<','<<axis_value(c,cfg.axis)<<','<<holdout<<','<<csv_escape(o.algorithm)<<','<<csv_escape(o.status)<<','<<o.ns<<','<<o.batch<<','<<o.work<<','<<o.block<<','<<csv_escape(o.digest)<<','<<csv_escape(o.detail)<<'\n';
+  if(truncated)continue;
+  Json row;row.put("case_id",c.id);row.put("family",c.family);row.put("observed_features",morphology_features(c));if(numeric_axis(cfg.axis))row.put("axis_value",axis_value(c,cfg.axis));
+  else row.put("axis_value",axis_label(c,cfg.axis));
+  row.put("holdout",holdout!=0);row.put("algorithm",o.algorithm);row.put("status",o.status);row.put("batch_ns",o.ns);row.put("batch_iterations",o.batch);row.put("work_units",o.work);row.put("block",o.block);
+  if(o.cpu_ns>=0)row.put("cpu_ns",o.cpu_ns);else json_object_object_add(row.p,"cpu_ns",nullptr);
+  if(o.peak_rss_bytes>=0)row.put("peak_rss_bytes",o.peak_rss_bytes);else json_object_object_add(row.p,"peak_rss_bytes",nullptr);
+  if(o.order_position>=0)row.put("order_position",o.order_position);else json_object_object_add(row.p,"order_position",nullptr);
+  if(!o.order_seed.empty())row.put("order_seed",o.order_seed);else json_object_object_add(row.p,"order_seed",nullptr);
+  json_object_object_add(row.p,"cycles",nullptr);json_object_object_add(row.p,"instructions",nullptr);
+  row.put("output_digest",o.digest);row.put("detail",o.detail);
+  std::ostringstream line;
+  line<<csv_escape(c.id)<<','<<csv_escape(c.family)<<','<<csv_escape(axis_label(c,cfg.axis))<<','<<holdout
+      <<','<<csv_escape(o.algorithm)<<','<<csv_escape(o.status)<<','<<o.ns<<','<<o.batch<<','<<o.work
+      <<','<<o.block<<','<<(o.cpu_ns>=0?std::to_string(o.cpu_ns):"")
+      <<','<<(o.peak_rss_bytes>=0?std::to_string(o.peak_rss_bytes):"")
+      <<','<<(o.order_position>=0?std::to_string(o.order_position):"")
+      <<','<<csv_escape(o.order_seed)<<','<<csv_escape(o.digest)<<','<<csv_escape(o.detail)<<'\n';
+  const auto row_bytes=row.str().size(),csv_bytes=line.str().size();
+  if(raw_size+row_bytes+csv_bytes>export_limit){truncated=true;continue;}
+  raw_size+=row_bytes+csv_bytes;json_object_array_add(raw,row.p);row.p=nullptr;
+  csv<<line.str();
  }
- json_object_object_add(report.p,"raw_samples",raw);write_file(run+"/report.json",report.str());write_file(run+"/samples.csv",csv.str());
+ report.put("raw_samples_truncated",truncated);
+ report.put("raw_export_budget_bytes",static_cast<std::int64_t>(cfg.max_report_bytes));
+ json_object_object_add(report.p,"raw_samples",raw);
+ if(report.str().size()>cfg.max_report_bytes)throw Error("JSON report exceeds max_report_bytes");
+ if(csv.str().size()>cfg.max_report_bytes)throw Error("CSV report exceeds max_report_bytes");
+ write_file(run+"/report.json",report.str());write_file(run+"/samples.csv",csv.str());
  auto* summary_obj=report.get("summary");Json summ(json_object_get(summary_obj));
  std::ostringstream md;md<<"# PHASESHIFT experimental report\n\n- Experiment: "<<cfg.experiment_id<<"\n- Family: "<<cfg.family<<"\n- Comparison: "<<cfg.a<<(cfg.b.empty()?"":" vs "+cfg.b)<<"\n- Discovered cases and holdouts: "<<summ.i("cases")<<" total\n- Raw observations: "<<summ.i("samples")<<"\n- Incorrect, timeout, crash or invalid observations: "<<summ.i("invalid_samples")<<"\n- Primary axis: "<<cfg.axis<<"\n- Full raw evidence: `samples.csv`, `report.json`, `run.sqlite`\n\n## Boundary candidates and verdicts\n\n";
  auto* hypotheses=summ.get("hypotheses");for(std::size_t i=0;i<json_object_array_length(hypotheses);i++){
   Json x(json_object_get(json_object_array_get_idx(hypotheses,i)));md<<"- "<<x.s("id")<<": **"<<x.s("status")<<"**; between "<<x.i("left")<<" and "<<x.i("right")<<" (effect="<<x.d("effect")<<"). "<<x.s("detail")<<"\n";
  }
- md<<"\n## Scientific limitations\n\n- Synthetic work units are not time; this fixture is an engineered calibration, not a natural discovery.\n- CPU timings vary by host, cache, thermal conditions, and compiler settings.\n- Real performance candidates are **not confirmed** without calibrated paired-case intervals and multiplicity controls.\n- Observational morphology alone does not establish causality.\n- Reproduce with `phaseshift replay --run "<<run<<" --case <case-id>` and inspect raw rows.\n";
+ md<<"\n## Export completeness\n\n- Raw CSV/JSON projection "<<(truncated?"TRUNCATED by max_report_bytes; authoritative complete raw data remain in run.sqlite":"contains every recorded sample")<<".\n\n## Scientific limitations\n\n- Synthetic work units are not time; this fixture is an engineered calibration, not a natural discovery.\n- CPU timings vary by host, cache, thermal conditions, and compiler settings.\n- Real performance candidates are **not confirmed** without calibrated paired-case intervals and multiplicity controls.\n- Observational morphology alone does not establish causality.\n- Reproduce with `phaseshift replay --run "<<run<<" --case <case-id>` and inspect raw rows.\n";
  write_file(run+"/report.md",md.str());write_file(run+"/report.html","<!doctype html><meta charset=\"utf-8\"><title>PHASESHIFT report</title><style>body{font:16px system-ui;max-width:900px;margin:3em auto;white-space:pre-wrap}</style><main>"+html_escape(md.str())+"</main>");
+ for(const auto& filename:{"report.json","samples.csv","report.md","report.html"})
+  s.artifact(filename,sha256_file(run+"/"+filename),"experiment-report");
 }
 void verify_bundle(const std::string& bundle){
  const auto path=fs::path(bundle);
@@ -618,6 +798,19 @@ void verify_bundle(const std::string& bundle){
  const auto rc=sqlite3_step(stmt);const auto stored=rc==SQLITE_ROW?std::string(reinterpret_cast<const char*>(sqlite3_column_text(stmt,0))):"";sqlite3_finalize(stmt);
  if(sha256(conf)!=stored)throw Error("bundle experiment config hash mismatch");
  for(const auto& c:store.cases()){(void)c;} /* expensive but mandatory regeneration + digest verification */
+ if(expected.count("minimization.sqlite")){
+  Store minimized((path/"minimization.sqlite").string(),true);
+  if(minimized.config()!=conf)throw Error("minimization config differs from original evidence");
+  for(const auto& c:minimized.cases()){(void)c;}
+ }
+ if(expected.count("witness.json")){
+  if(!expected.count("witness.hex"))throw Error("witness metadata lacks canonical input bytes");
+  const auto witness=Json::file((path/"witness.json").string());
+  const auto encoded=read_file((path/"witness.hex").string());
+  auto cleaned=encoded;while(!cleaned.empty()&&(cleaned.back()=='\n'||cleaned.back()=='\r'))cleaned.pop_back();
+  if(sha256(hex_decode(cleaned))!=witness.s("input_sha256"))throw Error("witness input digest mismatch");
+  if(witness.s("category")=="PERFORMANCE_WITNESS"&&!expected.count("minimization.sqlite"))throw Error("performance witness lacks independently recorded minimization data");
+ }
  std::cout<<"VERIFIED BUNDLE: "<<bundle<<" members="<<expected.size()<<" cases="<<store.summary().i("cases")<<"\n";
 }
 void export_run(const std::string& run,const std::string& out){
@@ -630,6 +823,10 @@ void export_run(const std::string& run,const std::string& out){
  fs::create_directories(out);
  try{
   for(const auto& file:{"run.sqlite","report.json","report.md","report.html","samples.csv"})fs::copy_file(run+"/"+file,out+"/"+file);
+  if(fs::exists(run+"/minimization.sqlite")){
+   {Store minimized(run+"/minimization.sqlite");minimized.exec("PRAGMA wal_checkpoint(TRUNCATE)");}
+   fs::copy_file(run+"/minimization.sqlite",out+"/minimization.sqlite");
+  }
   if(fs::exists(run+"/witness.cpp"))fs::copy_file(run+"/witness.cpp",out+"/witness.cpp");
   if(fs::exists(run+"/witness.hex"))fs::copy_file(run+"/witness.hex",out+"/witness.hex");
   if(fs::exists(run+"/witness.json"))fs::copy_file(run+"/witness.json",out+"/witness.json");

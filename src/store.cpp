@@ -1,6 +1,9 @@
 #include "phaseshift/store.hpp"
 #include "phaseshift/morphology.hpp"
 #include <filesystem>
+#include <algorithm>
+#include <tuple>
+#include <vector>
 #include <cstring>
 #include <sstream>
 namespace ps {
@@ -13,6 +16,7 @@ struct Statement {
  void integer(int col,std::int64_t x){check(sqlite3_bind_int64(p,col,x),db,"bind integer");}
  void real(int col,double x){check(sqlite3_bind_double(p,col,x),db,"bind real");}
  void blob(int col,const Bytes& b){check(sqlite3_bind_blob(p,col,b.data(),static_cast<int>(b.size()),SQLITE_TRANSIENT),db,"bind blob");}
+ void null(int col){check(sqlite3_bind_null(p,col),db,"bind null");}
  void done(){check(sqlite3_step(p),db,"SQL step");}
 };
 Store::Store(const std::string& path,bool readonly){
@@ -30,7 +34,7 @@ Store::Store(const std::string& path,bool readonly){
  }
  check(sqlite3_open_v2(readonly?uri.c_str():path.c_str(),&db_,readonly?SQLITE_OPEN_READONLY|SQLITE_OPEN_URI:SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE,nullptr),db_,"SQL open");
  if(!readonly)exec("PRAGMA foreign_keys=ON;PRAGMA journal_mode=WAL;PRAGMA busy_timeout=5000;");
- auto old=sqlite3_get_autocommit(db_);(void)old;Statement st(db_,"PRAGMA user_version");auto rc=sqlite3_step(st.p);check(rc,db_,"schema version");auto version=sqlite3_column_int(st.p,0);if(version>5|| (readonly&&version!=5))throw Error("unsupported database schema version");
+ auto old=sqlite3_get_autocommit(db_);(void)old;Statement st(db_,"PRAGMA user_version");auto rc=sqlite3_step(st.p);check(rc,db_,"schema version");auto version=sqlite3_column_int(st.p,0);if(version>6|| (readonly&&version!=6))throw Error("unsupported database schema version");
  if(version==0&&!readonly){exec(R"SQL(
  BEGIN;
  CREATE TABLE IF NOT EXISTS experiments(id INTEGER PRIMARY KEY CHECK(id=1),config TEXT NOT NULL,config_hash TEXT NOT NULL,environment TEXT NOT NULL,created_at TEXT NOT NULL);
@@ -70,22 +74,71 @@ Store::Store(const std::string& path,bool readonly){
  PRAGMA user_version=5;
  COMMIT;
  )SQL");}
+ if(version<6&&!readonly){exec(R"SQL(
+ BEGIN IMMEDIATE;
+ ALTER TABLE samples ADD COLUMN cpu_ns INTEGER;
+ ALTER TABLE samples ADD COLUMN peak_rss_bytes INTEGER;
+ ALTER TABLE samples ADD COLUMN order_position INTEGER;
+ ALTER TABLE samples ADD COLUMN order_seed TEXT;
+ CREATE TABLE IF NOT EXISTS environments(
+  fingerprint TEXT PRIMARY KEY,metadata TEXT NOT NULL,recorded_at TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS algorithms(
+  algorithm_id TEXT PRIMARY KEY,version TEXT NOT NULL,adapter_abi INTEGER NOT NULL,
+  output_contract TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS generators(
+  family TEXT NOT NULL,generator_version INTEGER NOT NULL,schema_version INTEGER NOT NULL,
+  PRIMARY KEY(family,generator_version));
+ CREATE TABLE IF NOT EXISTS aggregates(
+  case_id TEXT NOT NULL REFERENCES cases(case_id),algorithm TEXT NOT NULL,
+  holdout INTEGER NOT NULL,metric TEXT NOT NULL,completed_samples INTEGER NOT NULL,
+  median_value REAL NOT NULL,analysis_version INTEGER NOT NULL,
+  PRIMARY KEY(case_id,algorithm,holdout,metric));
+ CREATE TABLE IF NOT EXISTS confirmations(
+  hypothesis_id TEXT PRIMARY KEY REFERENCES hypotheses(id),verdict TEXT NOT NULL,
+  detail TEXT NOT NULL,confirmed_at TEXT NOT NULL);
+ CREATE TABLE IF NOT EXISTS artifacts(
+  path TEXT PRIMARY KEY,role TEXT NOT NULL,sha256 TEXT NOT NULL,recorded_at TEXT NOT NULL);
+ CREATE INDEX IF NOT EXISTS idx_samples_algorithm_block ON samples(algorithm,block,holdout);
+ PRAGMA user_version=6;
+ COMMIT;
+ )SQL");}
 }
 Store::~Store(){if(db_)sqlite3_close(db_);}
 void Store::exec(const std::string& sql){char* err=nullptr;int rc=sqlite3_exec(db_,sql.c_str(),nullptr,nullptr,&err);if(rc!=SQLITE_OK){std::string msg=err?err:"unknown sqlite error";sqlite3_free(err);throw Error("SQL: "+msg);}}
 void Store::experiment(const std::string& config,const std::string& env){
  Statement s(db_,"INSERT INTO experiments(id,config,config_hash,environment,created_at) VALUES (1,?,?,?,?)");s.text(1,config);s.text(2,sha256(config));s.text(3,env);s.text(4,now_utc());s.done();
+ Statement metadata(db_,"INSERT OR IGNORE INTO environments(fingerprint,metadata,recorded_at) VALUES (?,?,?)");
+ metadata.text(1,sha256(env));metadata.text(2,env);metadata.text(3,now_utc());metadata.done();
 }
 void Store::add_case(const Case& c){
+ Statement registered(db_,"INSERT OR IGNORE INTO generators(family,generator_version,schema_version) VALUES(?,?,?)");
+ registered.text(1,c.family);registered.integer(2,c.generator_version);registered.integer(3,1);registered.done();
  Statement s(db_,"INSERT OR IGNORE INTO cases(case_id,family,params,seed,input,input_sha256,features) VALUES(?,?,?,?,?,?,?)");s.text(1,c.id);s.text(2,c.family);s.text(3,case_params(c));s.integer(4,static_cast<std::int64_t>(c.seed));s.blob(5,c.bytes);s.text(6,sha256(c.bytes));s.text(7,morphology_features(c).str());s.done();
 }
 void Store::add_observation(const Case& c,const Observation& v,bool holdout){
- add_case(c);Statement s(db_,"INSERT INTO samples(case_id,algorithm,status,ns,batch,work,block,holdout,output_digest,detail) VALUES(?,?,?,?,?,?,?,?,?,?)");
- s.text(1,c.id);s.text(2,v.algorithm);s.text(3,v.status);s.integer(4,v.ns);s.integer(5,v.batch);s.integer(6,v.work);s.integer(7,v.block);s.integer(8,holdout?1:0);s.text(9,v.digest);s.text(10,v.detail);s.done();
+ add_case(c);
+ Statement registered(db_,"INSERT OR IGNORE INTO algorithms(algorithm_id,version,adapter_abi,output_contract) VALUES(?,?,?,?)");
+ registered.text(1,v.algorithm);registered.text(2,v.algorithm.rfind("plugin:",0)==0?"external-abi-v1":"builtin-v1");
+ registered.integer(3,v.algorithm.rfind("plugin:",0)==0?1:0);registered.text(4,c.family+":exact-oracle-values");registered.done();
+ Statement s(db_,"INSERT INTO samples(case_id,algorithm,status,ns,batch,work,block,holdout,output_digest,detail,cpu_ns,peak_rss_bytes,order_position,order_seed) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+ s.text(1,c.id);s.text(2,v.algorithm);s.text(3,v.status);
+ if(v.status=="ok")s.integer(4,v.ns);else s.null(4);
+ if(v.status=="ok")s.integer(5,v.batch);else s.null(5);
+ if(v.status=="ok")s.integer(6,v.work);else s.null(6);
+ s.integer(7,v.block);s.integer(8,holdout?1:0);s.text(9,v.digest);s.text(10,v.detail);
+ if(v.status=="ok"&&v.cpu_ns>=0)s.integer(11,v.cpu_ns);else s.null(11);
+ if(v.peak_rss_bytes>=0)s.integer(12,v.peak_rss_bytes);else s.null(12);
+ if(v.order_position>=0)s.integer(13,v.order_position);else s.null(13);
+ if(!v.order_seed.empty())s.text(14,v.order_seed);else s.null(14);
+ s.done();
 }
 void Store::hypothesis(const std::string& id,const std::string& status,const std::string& axis,std::int64_t left,std::int64_t right,double effect,const std::string& detail,const std::string& kind,const std::string& frozen_params){
  Statement s(db_,"INSERT INTO hypotheses(id,status,axis,left_value,right_value,effect,detail,kind,frozen_params) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,detail=excluded.detail");
  s.text(1,id);s.text(2,status);s.text(3,axis);s.integer(4,left);s.integer(5,right);s.real(6,effect);s.text(7,detail);s.text(8,kind);s.text(9,frozen_params);s.done();
+ if(status=="CONFIRMED"||status=="NOT_CONFIRMED") {
+  Statement conf(db_,"INSERT OR REPLACE INTO confirmations(hypothesis_id,verdict,detail,confirmed_at) VALUES (?,?,?,?)");
+  conf.text(1,id);conf.text(2,status);conf.text(3,detail);conf.text(4,now_utc());conf.done();
+ }
  Statement e(db_,"INSERT INTO events(at,event,detail) VALUES(?,?,?)");e.text(1,now_utc());e.text(2,"hypothesis:"+status);e.text(3,id+" "+detail);e.done();
 }
 std::vector<Store::SchedulerDecision> Store::scheduler_decisions(){
@@ -111,6 +164,28 @@ void Store::event(const std::string& name,const std::string& detail){
  Statement s(db_,"INSERT INTO events(at,event,detail) VALUES(?,?,?)");
  s.text(1,now_utc());s.text(2,name);s.text(3,detail);s.done();
 }
+void Store::refresh_aggregates(){
+ Statement query(db_,"SELECT case_id,algorithm,holdout,CAST(ns AS REAL)/batch FROM samples WHERE status='ok' AND ns>0 AND batch>0 ORDER BY case_id,algorithm,holdout");
+ std::map<std::tuple<std::string,std::string,int>,std::vector<double>> by_group;
+ while(sqlite3_step(query.p)==SQLITE_ROW){
+  const auto* id=sqlite3_column_text(query.p,0),*alg=sqlite3_column_text(query.p,1);
+  auto key=std::tuple{std::string(reinterpret_cast<const char*>(id)),std::string(reinterpret_cast<const char*>(alg)),sqlite3_column_int(query.p,2)};
+  by_group[key].push_back(sqlite3_column_double(query.p,3));
+ }
+ for(auto& [key,values]:by_group){
+  std::sort(values.begin(),values.end());
+  const auto middle=values.size()/2;
+  const auto median=values.size()%2?values[middle]:(values[middle-1]+values[middle])*0.5;
+  Statement insert(db_,"INSERT OR REPLACE INTO aggregates(case_id,algorithm,holdout,metric,completed_samples,median_value,analysis_version) VALUES(?,?,?,?,?,?,?)");
+  insert.text(1,std::get<0>(key));insert.text(2,std::get<1>(key));insert.integer(3,std::get<2>(key));
+  insert.text(4,"wall_ns_per_operation");insert.integer(5,static_cast<std::int64_t>(values.size()));
+  insert.real(6,median);insert.integer(7,1);insert.done();
+ }
+}
+void Store::artifact(const std::string& relative_path,const std::string& digest,const std::string& kind){
+ Statement s(db_,"INSERT OR REPLACE INTO artifacts(path,role,sha256,recorded_at) VALUES(?,?,?,?)");
+ s.text(1,relative_path);s.text(2,kind);s.text(3,digest);s.text(4,now_utc());s.done();
+}
 void Store::witness(const std::string& id,const std::string& case_id,const std::string& status,const std::string& trace){
  Statement s(db_,"INSERT INTO witnesses(hypothesis_id,case_id,status,trace) VALUES(?,?,?,?)");s.text(1,id);s.text(2,case_id);s.text(3,status);s.text(4,trace);s.done();
 }
@@ -126,8 +201,12 @@ std::vector<Case> Store::cases(bool include_holdout){
  }return v;
 }
 std::vector<Observation> Store::observations(const std::string& case_id,bool holdout){
- Statement s(db_,"SELECT algorithm,status,ns,batch,work,block,output_digest,detail FROM samples WHERE case_id=? AND holdout=? ORDER BY id");s.text(1,case_id);s.integer(2,holdout?1:0);std::vector<Observation> v;
- while(sqlite3_step(s.p)==SQLITE_ROW){Observation o;auto str=[&](int i){auto* t=sqlite3_column_text(s.p,i);return std::string(t?reinterpret_cast<const char*>(t):"");};o.algorithm=str(0);o.status=str(1);o.ns=sqlite3_column_int64(s.p,2);o.batch=sqlite3_column_int64(s.p,3);o.work=sqlite3_column_int64(s.p,4);o.block=sqlite3_column_int64(s.p,5);o.digest=str(6);o.detail=str(7);v.push_back(o);}return v;
+ Statement s(db_,"SELECT algorithm,status,ns,batch,work,block,output_digest,detail,cpu_ns,peak_rss_bytes,order_position,order_seed FROM samples WHERE case_id=? AND holdout=? ORDER BY id");s.text(1,case_id);s.integer(2,holdout?1:0);std::vector<Observation> v;
+ while(sqlite3_step(s.p)==SQLITE_ROW){Observation o;auto str=[&](int i){auto* t=sqlite3_column_text(s.p,i);return std::string(t?reinterpret_cast<const char*>(t):"");};o.algorithm=str(0);o.status=str(1);o.ns=sqlite3_column_int64(s.p,2);o.batch=sqlite3_column_int64(s.p,3);o.work=sqlite3_column_int64(s.p,4);o.block=sqlite3_column_int64(s.p,5);o.digest=str(6);o.detail=str(7);
+  o.cpu_ns=sqlite3_column_type(s.p,8)==SQLITE_NULL?-1:sqlite3_column_int64(s.p,8);
+  o.peak_rss_bytes=sqlite3_column_type(s.p,9)==SQLITE_NULL?-1:sqlite3_column_int64(s.p,9);
+  o.order_position=sqlite3_column_type(s.p,10)==SQLITE_NULL?-1:sqlite3_column_int64(s.p,10);
+  o.order_seed=str(11);v.push_back(o);}return v;
 }
 std::string Store::config(){Statement s(db_,"SELECT config FROM experiments WHERE id=1");if(sqlite3_step(s.p)!=SQLITE_ROW)throw Error("experiment manifest missing");return reinterpret_cast<const char*>(sqlite3_column_text(s.p,0));}
 std::string Store::environment(){Statement s(db_,"SELECT environment FROM experiments WHERE id=1");if(sqlite3_step(s.p)!=SQLITE_ROW)throw Error("stored environment missing");return reinterpret_cast<const char*>(sqlite3_column_text(s.p,0));}
@@ -137,6 +216,8 @@ Json Store::summary(){
  json_object_object_add(report.p,"hypotheses",rows);
  auto count=[&](const char* q){Statement s(db_,q);if(sqlite3_step(s.p)!=SQLITE_ROW)throw Error("summary query error");return static_cast<std::int64_t>(sqlite3_column_int64(s.p,0));};
  report.put("cases",count("SELECT COUNT(*) FROM cases"));report.put("samples",count("SELECT COUNT(*) FROM samples"));report.put("invalid_samples",count("SELECT COUNT(*) FROM samples WHERE status != 'ok'"));
+ report.put("aggregates",count("SELECT COUNT(*) FROM aggregates"));report.put("environment_records",count("SELECT COUNT(*) FROM environments"));
+ report.put("algorithm_records",count("SELECT COUNT(*) FROM algorithms"));report.put("generator_records",count("SELECT COUNT(*) FROM generators"));
  return report;
 }
 }

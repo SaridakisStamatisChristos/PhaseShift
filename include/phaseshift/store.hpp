@@ -16,6 +16,8 @@ public:
  std::vector<SchedulerDecision> scheduler_decisions();
  void record_decision(std::size_t index,const std::string& case_id,std::uint64_t next_rng_state);
  void event(const std::string& name,const std::string& detail);
+ void refresh_aggregates();
+ void artifact(const std::string& relative_path,const std::string& digest,const std::string& kind);
  void witness(const std::string& hypothesis_id,const std::string& case_id,const std::string& status,const std::string& trace);
  std::vector<Case> cases(bool include_holdout=true);
  std::vector<Observation> observations(const std::string& case_id,bool holdout=false);

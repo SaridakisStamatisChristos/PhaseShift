@@ -5,6 +5,11 @@
 #include <cerrno>
 #include <csignal>
 #include <cstring>
+#include <filesystem>
+#include <iomanip>
+#include <map>
+#include <memory>
+#include <sstream>
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -14,39 +19,89 @@
 #include <unistd.h>
 namespace ps {
 static volatile std::uint64_t observable_sink=0;
+/* One persistent child-worker registry per experiment case. Shared libraries
+   are loaded exactly once before calibration and kept mapped until worker
+   exit; dlopen/dlsym/dlclose are never part of the timed operation. */
+struct LoadedPlugin {
+ void* handle=nullptr;
+ const ps_algorithm_v1* api=nullptr;
+ explicit LoadedPlugin(const std::string& path){
+  handle=dlopen(path.c_str(),RTLD_NOW|RTLD_LOCAL);
+  if(!handle)throw Error(std::string("dlopen: ")+dlerror());
+  auto get=reinterpret_cast<ps_get_algorithm_v1>(dlsym(handle,"phaseshift_get_algorithm_v1"));
+  if(!get){dlclose(handle);handle=nullptr;throw Error("missing phaseshift_get_algorithm_v1");}
+  api=get();
+  if(!api||api->abi_version!=PHASESHIFT_PLUGIN_ABI_VERSION||!api->run||!api->algorithm_id){
+   dlclose(handle);handle=nullptr;throw Error("invalid plugin ABI/version");
+  }
+ }
+ ~LoadedPlugin(){if(handle)dlclose(handle);}
+ LoadedPlugin(const LoadedPlugin&)=delete;
+ LoadedPlugin& operator=(const LoadedPlugin&)=delete;
+};
+static LoadedPlugin& get_plugin(const std::string& path){
+ static std::map<std::string,std::unique_ptr<LoadedPlugin>> registry;
+ auto it=registry.find(path);
+ if(it==registry.end())it=registry.emplace(path,std::make_unique<LoadedPlugin>(path)).first;
+ return *it->second;
+}
 static Result run_plugin(const Case& c,const std::string& path){
  if(c.family!="integer_array")throw Error("v1 plugin adapter supports integer_array only");
- void* handle=dlopen(path.c_str(),RTLD_NOW|RTLD_LOCAL);if(!handle)throw Error(std::string("dlopen: ")+dlerror());
- struct Close {void* h;~Close(){if(h)dlclose(h);}} guard{handle};
- auto get=reinterpret_cast<ps_get_algorithm_v1>(dlsym(handle,"phaseshift_get_algorithm_v1"));
- if(!get)throw Error("missing phaseshift_get_algorithm_v1");
- const ps_algorithm_v1* api=get();
- if(!api||api->abi_version!=PHASESHIFT_PLUGIN_ABI_VERSION||!api->run||!api->algorithm_id)throw Error("invalid plugin ABI/version");
- const ps_input_v1 in{c.bytes.data(),c.bytes.size()};if(api->validate_input&&api->validate_input(in)!=PHASESHIFT_PLUGIN_OK)throw Error("plugin invalid input");
+ const auto* api=get_plugin(path).api;
+ const ps_input_v1 in{c.bytes.data(),c.bytes.size()};
+ if(api->validate_input&&api->validate_input(in)!=PHASESHIFT_PLUGIN_OK)throw Error("plugin invalid input");
  if(api->reset)api->reset();
  ps_output_v1 out{};
  int status=PHASESHIFT_PLUGIN_ERROR;
- try{status=api->run(in,&out);}catch(const std::bad_alloc&){if(out.release&&out.data)out.release(out.data,out.len);throw;}catch(...){if(out.release&&out.data)out.release(out.data,out.len);throw Error("plugin threw exception across C ABI");}
- if(status!=PHASESHIFT_PLUGIN_OK){if(out.release&&out.data)out.release(out.data,out.len);if(status==PHASESHIFT_PLUGIN_OUT_OF_MEMORY)throw std::bad_alloc();throw Error("plugin run returned failure: "+std::to_string(status));}
- if(!out.release || (out.len&&!out.data)||out.len>c.bytes.size()||out.len%8){if(out.release&&out.data)out.release(out.data,out.len);throw Error("plugin output shape/ownership invalid");}
- Bytes bytes;if(out.len)bytes.assign(out.data,out.data+out.len);out.release(out.data,out.len);
+ try{status=api->run(in,&out);}catch(const std::bad_alloc&){if(out.release&&out.data)out.release(out.data,out.len);throw;}
+ catch(...){if(out.release&&out.data)out.release(out.data,out.len);throw Error("plugin threw exception across C ABI");}
+ if(status!=PHASESHIFT_PLUGIN_OK){
+  if(out.release&&out.data)out.release(out.data,out.len);
+  if(status==PHASESHIFT_PLUGIN_OUT_OF_MEMORY)throw std::bad_alloc();
+  throw Error("plugin run returned failure: "+std::to_string(status));
+ }
+ if(!out.release || (out.len&&!out.data)||out.len>c.bytes.size()||out.len%8){
+  if(out.release&&out.data)out.release(out.data,out.len);
+  throw Error("plugin output shape/ownership invalid");
+ }
+ Bytes bytes;
+ if(out.len)bytes.assign(out.data,out.data+out.len);
+ out.release(out.data,out.len);
  return {decode_values(bytes),0};
 }
 static Result run_any(const Case& c,const std::string& algorithm){if(algorithm.rfind("plugin:",0)==0)return run_plugin(c,algorithm.substr(7));return execute(c,algorithm);}
-static Json measure_one(const Case& c,const std::string& algorithm,int block,int warmup){
+static Json measure_one(const Case& c,const std::string& algorithm,int block,int warmup,int order_position,std::uint64_t order_seed){
  Json v;v.put("algorithm",algorithm);v.put("block",static_cast<std::int64_t>(block));v.put("status","ok");
+ v.put("order_position",static_cast<std::int64_t>(order_position));
+ {std::ostringstream h;h<<std::hex<<order_seed;v.put("order_seed",h.str());}
  try{
   const auto expected=oracle(c).values;
   auto trial=run_any(c,algorithm);
   if(trial.values!=expected){v.put("status","wrong_answer");v.put("detail","candidate disagrees with independent oracle");v.put("digest",sha256(encode_values(trial.values)));v.put("work",static_cast<std::int64_t>(trial.work));v.put("ns",static_cast<std::int64_t>(0));v.put("batch",static_cast<std::int64_t>(0));return v;}
-  for(int i=0;i<warmup;i++){auto w=run_any(c,algorithm);observable_sink=observable_sink^w.work;}
+  for(int i=0;i<warmup;i++){
+   auto w=run_any(c,algorithm);
+   if(w.values!=expected){v.put("status","wrong_answer");v.put("detail","warmup output disagrees with oracle");return v;}
+   observable_sink=observable_sink^w.work;
+  }
   std::uint64_t iterations=1,ns=0;Result last;
+  struct rusage before{},after{};int cpu_valid=0;
   for(;;){
+   const bool cpu_before=getrusage(RUSAGE_SELF,&before)==0;
    const auto start=std::chrono::steady_clock::now();
    for(std::uint64_t i=0;i<iterations;i++){last=run_any(c,algorithm);observable_sink=observable_sink^last.work;}
-   const auto stop=std::chrono::steady_clock::now();ns=static_cast<std::uint64_t>(std::max<std::int64_t>(1,std::chrono::duration_cast<std::chrono::nanoseconds>(stop-start).count()));
+   const auto stop=std::chrono::steady_clock::now();
+   if(last.values!=expected){v.put("status","wrong_answer");v.put("detail","timed-batch final output disagrees with oracle; timings excluded");return v;}
+   cpu_valid=cpu_before&&getrusage(RUSAGE_SELF,&after)==0;ns=static_cast<std::uint64_t>(std::max<std::int64_t>(1,std::chrono::duration_cast<std::chrono::nanoseconds>(stop-start).count()));
    if(ns>=1000000||iterations>=2048||ns>500000000)break;
    iterations=std::min<std::uint64_t>(2048,iterations*2);
+  }
+  if(cpu_valid){
+   const auto before_us=static_cast<std::int64_t>(before.ru_utime.tv_sec)*1000000+before.ru_utime.tv_usec+
+                        static_cast<std::int64_t>(before.ru_stime.tv_sec)*1000000+before.ru_stime.tv_usec;
+   const auto after_us=static_cast<std::int64_t>(after.ru_utime.tv_sec)*1000000+after.ru_utime.tv_usec+
+                       static_cast<std::int64_t>(after.ru_stime.tv_sec)*1000000+after.ru_stime.tv_usec;
+   v.put("cpu_ns",(after_us-before_us)*1000);
+   v.put("peak_rss_bytes",static_cast<std::int64_t>(after.ru_maxrss)*1024); /* Linux ru_maxrss in KiB */
   }
   v.put("ns",static_cast<std::int64_t>(ns));v.put("batch",static_cast<std::int64_t>(iterations));v.put("work",static_cast<std::int64_t>(trial.work));v.put("digest",sha256(encode_values(last.values)));
  }catch(const std::bad_alloc&){v.put("status","out_of_memory");v.put("detail","std::bad_alloc");}
@@ -64,8 +119,18 @@ Json worker_measure(const Json& request,const Bytes& bytes){
  if(blocks<1||blocks>100||warmup<0||warmup>100)throw Error("invalid measurement bounds");
  Json answer;auto* list=json_object_new_array();
  for(int i=0;i<blocks;i++){
-  std::vector<std::string> order=names;if(names.size()==2){if(i%2==0)order={names[0],names[1],names[1],names[0]};else order={names[1],names[0],names[0],names[1]};}
-  for(const auto& alg:order){auto v=measure_one(c,alg,i,warmup);json_object_array_add(list,v.p);v.p=nullptr;}
+  const std::uint64_t order_seed=c.seed^static_cast<std::uint64_t>(0xbdb8244b79c7ULL)^
+      (static_cast<std::uint64_t>(i)*static_cast<std::uint64_t>(0x9e3779b97f4a7c15ULL));
+  std::vector<std::string> order=names;
+  if(names.size()==2){
+   auto rand_state=order_seed;
+   if((splitmix64(rand_state)&1ULL)==0)order={names[0],names[1],names[1],names[0]};
+   else order={names[1],names[0],names[0],names[1]};
+  }
+  for(std::size_t position=0;position<order.size();position++){
+   auto v=measure_one(c,order[position],i,warmup,static_cast<int>(position),order_seed);
+   json_object_array_add(list,v.p);v.p=nullptr;
+  }
  }
  json_object_object_add(answer.p,"observations",list);return answer;
 }
@@ -106,6 +171,12 @@ static Bytes read_frame(int fd,int timeout_ms,std::size_t limit){
 }
 std::vector<Observation> measure(const Case& c,const std::vector<std::string>& names,int blocks,int warmup,int timeout_ms,int memory_mb){
  if(names.empty()||names.size()>2||blocks<1||blocks>100||timeout_ms<100||timeout_ms>60000||memory_mb<64||memory_mb>65536)throw Error("invalid runner limits");
+ /* Do not exec /proc/self/exe: library consumers/tests may not implement
+    --worker, causing recursive fork chains. Only a dedicated worker binary
+    with the same source build is eligible to execute native plugins. */
+ const auto worker=std::filesystem::read_symlink("/proc/self/exe").parent_path()/"phaseshift_worker";
+ if(::access(worker.c_str(),X_OK)!=0)throw Error("dedicated phaseshift_worker binary absent or not executable alongside caller");
+ const auto worker_path=worker.string();
  int in[2],out[2];if(pipe(in)!=0)throw Error("worker input pipe failed");if(pipe(out)!=0){close(in[0]);close(in[1]);throw Error("worker output pipe failed");}
  const pid_t pid=fork();if(pid<0){close(in[0]);close(in[1]);close(out[0]);close(out[1]);throw Error("fork failed");}
  if(pid==0){
@@ -116,8 +187,11 @@ std::vector<Observation> measure(const Case& c,const std::vector<std::string>& n
   (void)memory_mb; /* ASan reserves terabytes of virtual shadow address space. */
 #endif
   struct rlimit no_core{0,0};setrlimit(RLIMIT_CORE,&no_core);
-  struct rlimit cpu{static_cast<rlim_t>(std::max(1,(timeout_ms/1000)+1)),static_cast<rlim_t>(std::max(2,(timeout_ms/1000)+2))};setrlimit(RLIMIT_CPU,&cpu);
-  execl("/proc/self/exe","phaseshift","--worker",static_cast<char*>(nullptr));_exit(127);
+  const auto max_operations=static_cast<std::int64_t>(blocks)*static_cast<std::int64_t>(names.size()==2?4:1);
+  const auto cpu_budget=std::min<std::int64_t>(3600,1+(max_operations*timeout_ms+999)/1000);
+  struct rlimit cpu{static_cast<rlim_t>(cpu_budget),static_cast<rlim_t>(std::min<std::int64_t>(3600,cpu_budget+2))};
+  setrlimit(RLIMIT_CPU,&cpu);
+  execl(worker_path.c_str(),"phaseshift_worker","--worker",static_cast<char*>(nullptr));_exit(127);
  }
  close(in[0]);close(out[1]);
  /* Writing to a pipe must never block indefinitely after the worker exits. */
@@ -137,7 +211,10 @@ std::vector<Observation> measure(const Case& c,const std::vector<std::string>& n
   if(!list||json_object_get_type(list)!=json_type_array)throw Error("malformed worker response");
   for(std::size_t i=0;i<json_object_array_length(list);i++){
    Json v(json_object_get(json_object_array_get_idx(list,i)));Observation s;
-   s.algorithm=v.s("algorithm");s.status=v.s("status","infrastructure_error");s.digest=v.s("digest");s.detail=v.s("detail");s.ns=v.i("ns");s.work=v.i("work");s.batch=v.i("batch",1);s.block=v.i("block");result.push_back(s);
+   s.algorithm=v.s("algorithm");s.status=v.s("status","infrastructure_error");s.digest=v.s("digest");s.detail=v.s("detail");s.ns=v.i("ns");s.work=v.i("work");s.batch=v.i("batch",1);s.block=v.i("block");
+   s.cpu_ns=v.i("cpu_ns",-1);s.peak_rss_bytes=v.i("peak_rss_bytes",-1);
+   s.order_position=v.i("order_position",-1);s.order_seed=v.s("order_seed");
+   result.push_back(s);
   }
   if(result.empty())throw Error("empty worker response");
  }catch(const std::exception& e){

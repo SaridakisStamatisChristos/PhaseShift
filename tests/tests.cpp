@@ -47,6 +47,15 @@ int main(int argc,char** argv){if(argc>1&&std::string(argv[1])=="--worker")retur
    require(!bad.empty()&&bad[0].status=="wrong_answer","plugin correctness gate");
   }
   {
+   ps::Case c;c.family="integer_array";c.distribution="ascending";c.n=32;c=ps::make_case(c);
+   auto dir=std::filesystem::path(argv[0]).parent_path();
+   auto without_reset=ps::measure(c,{"plugin:"+(dir/"stateful_0.so").string()},2,1,1000,256);
+   require(!without_reset.empty()&&without_reset[0].status=="wrong_answer", "persistent native plugin state must expose a poisoned second invocation");
+   auto with_reset=ps::measure(c,{"plugin:"+(dir/"stateful_1.so").string()},2,1,1000,256);
+   require(with_reset.size()==2,"reset-enabled plugin must complete both blocks");
+   for(const auto& sample:with_reset)require(sample.status=="ok"&&sample.cpu_ns>=0&&sample.peak_rss_bytes>0&&sample.order_position==0,"reset plugin and CPU/RSS/order evidence");
+  }
+  {
    ps::Case c;c.family="integer_array";c.n=12;c=ps::make_case(c);
    const auto dir=std::filesystem::path(argv[0]).parent_path();
    auto bad=[&](int mode){auto lib=(dir/("fault_"+std::to_string(mode)+".so")).string();return ps::measure(c,{"plugin:"+lib},1,0,300,256);};
