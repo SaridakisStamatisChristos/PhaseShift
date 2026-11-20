@@ -1,0 +1,3 @@
+# Scientific contract
+
+A finding is empirical and must be typed. No observation alone proves causality or asymptotic complexity. Completion of a timing sample requires exact oracle agreement; invalid observations remain in the raw database and cannot be speed winners. A manufactured work-count threshold is only a detector calibration. Negative findings are results. The initial engine only promotes synthetic deterministic work-count findings to `CONFIRMED`; all real runtime candidates remain unconfirmed pending held-out paired-case 99% confidence procedures and multiplicity controls. Reports explicitly retain these limitations.

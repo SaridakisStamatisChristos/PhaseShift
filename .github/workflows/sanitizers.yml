@@ -1,0 +1,15 @@
+name: sanitizers
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  asan-ubsan:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y cmake ninja-build g++ libsqlite3-dev libjson-c-dev libssl-dev pkg-config
+      - run: cmake -S . -B build-sanitize -G Ninja -DCMAKE_BUILD_TYPE=Debug -DPHASESHIFT_SANITIZE=ON
+      - run: cmake --build build-sanitize -j2
+      - run: ASAN_OPTIONS=detect_leaks=1 ctest --test-dir build-sanitize --output-on-failure

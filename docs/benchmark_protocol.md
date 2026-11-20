@@ -1,0 +1,3 @@
+# Benchmarking protocol
+
+Build portable Release with `-O3 -DNDEBUG` via CMake; no implicit `-march=native`. CPU model, kernel and compiler version are stored on experiment initialization. Inputs are prepared outside the measured algorithm loop. A child performs correctness validation before timing, warms the path and repeats batches until a 1 ms floor or 2048 iterations; per-operation time is raw batch nanoseconds divided by iterations. A/B pair order is balanced `ABBA` / `BAAB` within each block. All raw rows and failures survive in SQLite and CSV. This is a measurement baseline, not perfect isolation or proof of performance advantage. For fair cross-machine comparison collect independent holdouts and note governor, affinity, background load and thermal differences.

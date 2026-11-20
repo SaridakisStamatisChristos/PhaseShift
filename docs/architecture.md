@@ -1,0 +1,7 @@
+# PHASESHIFT v0.1 architecture
+
+`apps/phaseshift.cpp` dispatches commands; `src/core.cpp` owns canonical input serialization, SHA-256, explicit SplitMix64 and morphology; `src/algorithms.cpp` owns independent oracles and algorithm adapters; `src/runner.cpp` owns Linux child process lifecycle, JSON-over-length-prefixed-pipe IPC and timing; `src/store.cpp` owns SQLite WAL/foreign keys and immutable samples; `src/experiment.cpp` owns configuration, search, segmented detection, independent synthetic holdout, witness, replay, and reporting.
+
+The parent does not load native plugins. A child process uses `dlopen` and rejects incompatible ABI descriptors. The protocol accepts at most 64 MiB framed JSON payloads, with stricter case bytes caps. Child virtual-memory and CPU limits apply on ordinary builds; sanitizer builds skip virtual-address limits because ASan reserves shadow virtual space. The parent kills and reaps child groups on completion or failure. This is not a hardened sandbox.
+
+Every input is stored as canonical little-endian signed 64-bit integers and receives `SHA256("ps-case-v1|" + family + "|generator-v1|" + canonical_params + "|" + decimal_seed + "|" + lowercase_hex_input)`. Case reload regenerates exact bytes and verifies both digest and CaseId. JSON and SQLite schema version 1 are declared; incompatible future version needs migration and replay compatibility.
