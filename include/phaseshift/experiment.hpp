@@ -10,6 +10,7 @@ struct Config {
  double min_ratio=1.20,confirmation_confidence=0.99,fdr_q=0.05,exploration_fraction=0.20;
  int minimum_batch_ms=2;
  std::string policy_version="v1";
+ int replicate_count=1;
  std::string isolation_mode="per_case";
  std::string multiple_testing="bh_fdr";
 };

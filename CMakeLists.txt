@@ -270,3 +270,7 @@ add_test(NAME v2_frozen_equal_case_budget_smoke COMMAND ${Python3_EXECUTABLE}
  --out ${CMAKE_CURRENT_BINARY_DIR}/v2_frozen_equal_case_budget
  --seeds 31 --cases 12)
 set_tests_properties(v2_frozen_equal_case_budget_smoke PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
+
+configure_file(tests/run_v2_replicates.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_replicates.cmake @ONLY)
+add_test(NAME v2_replicated_seeds_resume COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_replicates.cmake)
+set_tests_properties(v2_replicated_seeds_resume PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)

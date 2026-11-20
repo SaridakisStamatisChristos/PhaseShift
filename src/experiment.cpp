@@ -78,7 +78,11 @@ static bool numeric_axis(const std::string& s){
 }
 static std::int64_t axis_value(const Case& c,const std::string& axis);
 static Json config_json(const Config& c){
- Json j;j.put("schema_version",static_cast<std::int64_t>(1));j.put("experiment_id",c.experiment_id);j.put("problem_family",c.family);j.put("algorithm_a",c.a);j.put("algorithm_b",c.b);j.put("search_method",c.method);j.put("primary_axis",c.axis);j.put("seed",static_cast<std::int64_t>(c.seed));j.put("max_cases",static_cast<std::int64_t>(c.max_cases));j.put("max_case_bytes",static_cast<std::int64_t>(c.max_bytes));j.put("max_search_queue",static_cast<std::int64_t>(c.max_queue));j.put("max_report_bytes",static_cast<std::int64_t>(c.max_report_bytes));j.put("discovery_blocks",static_cast<std::int64_t>(c.blocks));j.put("confirm_blocks",static_cast<std::int64_t>(c.confirm_blocks));j.put("warmup",static_cast<std::int64_t>(c.warmup));j.put("sample_ms",static_cast<std::int64_t>(c.sample_ms));j.put("rss_mb",static_cast<std::int64_t>(c.rss_mb));j.put("total_wall_seconds",static_cast<std::int64_t>(c.total_wall_s));j.put("min_practical_ratio",c.min_ratio);j.put("confirmation_confidence",c.confirmation_confidence);j.put("fdr_q",c.fdr_q);j.put("multiple_testing",c.multiple_testing);j.put("exploration_fraction",c.exploration_fraction);j.put("minimum_batch_ms",static_cast<std::int64_t>(c.minimum_batch_ms));j.put("isolation_mode",c.isolation_mode);if(c.policy_version=="v2")j.put("policy_version",c.policy_version);j.put("base_params",case_params(c.base));
+ Json j;j.put("schema_version",static_cast<std::int64_t>(1));j.put("experiment_id",c.experiment_id);j.put("problem_family",c.family);j.put("algorithm_a",c.a);j.put("algorithm_b",c.b);j.put("search_method",c.method);j.put("primary_axis",c.axis);j.put("seed",static_cast<std::int64_t>(c.seed));j.put("max_cases",static_cast<std::int64_t>(c.max_cases));j.put("max_case_bytes",static_cast<std::int64_t>(c.max_bytes));j.put("max_search_queue",static_cast<std::int64_t>(c.max_queue));j.put("max_report_bytes",static_cast<std::int64_t>(c.max_report_bytes));j.put("discovery_blocks",static_cast<std::int64_t>(c.blocks));j.put("confirm_blocks",static_cast<std::int64_t>(c.confirm_blocks));j.put("warmup",static_cast<std::int64_t>(c.warmup));j.put("sample_ms",static_cast<std::int64_t>(c.sample_ms));j.put("rss_mb",static_cast<std::int64_t>(c.rss_mb));j.put("total_wall_seconds",static_cast<std::int64_t>(c.total_wall_s));j.put("min_practical_ratio",c.min_ratio);j.put("confirmation_confidence",c.confirmation_confidence);j.put("fdr_q",c.fdr_q);j.put("multiple_testing",c.multiple_testing);j.put("exploration_fraction",c.exploration_fraction);j.put("minimum_batch_ms",static_cast<std::int64_t>(c.minimum_batch_ms));j.put("isolation_mode",c.isolation_mode);if(c.policy_version=="v2"){
+   j.put("policy_version",c.policy_version);
+   if(c.replicate_count>1){Json search;search.put("replicates",static_cast<std::int64_t>(c.replicate_count));j.put("search",std::move(search));}
+  }
+  j.put("base_params",case_params(c.base));
  Json axes;for(const auto& [name,values]:c.axes){auto* arr=json_object_new_array();for(const auto& val:values)json_object_array_add(arr,json_object_new_string(val.c_str()));json_object_object_add(axes.p,name.c_str(),arr);}j.put("axes",std::move(axes));return j;
 }
 /* Config is an experimental contract: reject unsupported keys and coercions,
@@ -136,7 +140,7 @@ static void validate_configuration_shape(const Json& j){
  check(top.p,"config",integer_top,real_top,text_top,obj_top);
  if(auto* v=j.get("objective");v&&std::string(json_object_get_string(v))!="discover_structural_performance_boundaries")
   throw Error("unsupported objective");
- if(auto* v=j.get("search"))check(v,"search",{"max_cases"},{"exploration_fraction"},{"method","policy_version"},{});
+ if(auto* v=j.get("search"))check(v,"search",{"max_cases","replicates"},{"exploration_fraction"},{"method","policy_version"},{});
  if(auto* v=j.get("measurement"))check(v,"measurement",{"paired_discovery_blocks","paired_confirm_blocks","warmup_iterations","minimum_batch_ms"},{},{"primary_metric","isolation_mode"},{});
  if(auto* v=j.get("detection"))check(v,"detection",{},{"min_practical_ratio","confirmation_confidence","fdr_q"},{"multiple_testing"},{});
  if(auto* v=j.get("limits"))check(v,"limits",{"total_wall_seconds","max_cases","max_case_bytes","max_worker_rss_mb","max_sample_wall_ms","max_report_bytes","max_search_queue"},{},{},{});
@@ -185,7 +189,11 @@ Config config_from_json(const Json& j){
  c.a=j.s("algorithm_a","");c.b=j.s("algorithm_b","");
  if(auto* a=j.get("algorithms")){if(json_object_get_type(a)!=json_type_array||json_object_array_length(a)<1||json_object_array_length(a)>2)throw Error("algorithms must contain one or two elements");c.a=json_object_get_string(json_object_array_get_idx(a,0));if(json_object_array_length(a)>1)c.b=json_object_get_string(json_object_array_get_idx(a,1));}
  if(c.a.empty())c.a=c.family=="calibration"?"calibration":c.family=="integer_array"?"std_sort":c.family=="topk"?"topk_heap":"dijkstra_heap";
- c.method=j.s("search_method",j.s("method","grid"));if(auto* search=j.get("search")){Json k(json_object_get(search));require_field_type(k,"exploration_fraction",true);c.method=k.s("method",c.method);c.policy_version=k.s("policy_version",c.policy_version);c.max_cases=static_cast<std::uint64_t>(k.i("max_cases",static_cast<std::int64_t>(c.max_cases)));c.exploration_fraction=k.d("exploration_fraction",c.exploration_fraction);}
+ c.method=j.s("search_method",j.s("method","grid"));if(auto* search=j.get("search")){Json k(json_object_get(search));require_field_type(k,"exploration_fraction",true);c.method=k.s("method",c.method);c.policy_version=k.s("policy_version",c.policy_version);
+  const auto replicates=k.i("replicates",1);
+  if(replicates<1||replicates>32)throw Error("v2 replicate count must be 1..32");
+  c.replicate_count=static_cast<int>(replicates);
+  c.max_cases=static_cast<std::uint64_t>(k.i("max_cases",static_cast<std::int64_t>(c.max_cases)));c.exploration_fraction=k.d("exploration_fraction",c.exploration_fraction);}
  c.axis=j.s("primary_axis",c.family=="calibration"?"x":c.family=="graph"?"edges":"n");
  c.seed=static_cast<std::uint64_t>(j.i("seed",137));c.max_cases=static_cast<std::uint64_t>(j.i("max_cases",static_cast<std::int64_t>(c.max_cases)));c.max_bytes=static_cast<std::uint64_t>(j.i("max_case_bytes",64*1024*1024));c.max_queue=static_cast<std::uint64_t>(j.i("max_search_queue",10000));c.max_report_bytes=static_cast<std::uint64_t>(j.i("max_report_bytes",10000000));c.blocks=static_cast<int>(j.i("discovery_blocks",9));c.confirm_blocks=static_cast<int>(j.i("confirm_blocks",20));c.warmup=static_cast<int>(j.i("warmup",2));c.sample_ms=static_cast<int>(j.i("sample_ms",3000));c.rss_mb=static_cast<int>(j.i("rss_mb",1024));c.total_wall_s=static_cast<int>(j.i("total_wall_seconds",600));c.min_ratio=j.d("min_practical_ratio",1.2);c.exploration_fraction=j.d("exploration_fraction",c.exploration_fraction);c.minimum_batch_ms=static_cast<int>(j.i("minimum_batch_ms",c.minimum_batch_ms));c.isolation_mode=j.s("isolation_mode",c.isolation_mode);
  if(auto* m=j.get("measurement")){Json x(json_object_get(m));require_field_type(x,"isolation_mode",false);
@@ -216,11 +224,17 @@ Config config_from_json(const Json& j){
  }
  if(c.axes.empty())c.axes[c.axis]={"0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15"};
  if(c.policy_version=="v1"){
+  if(auto* nested=j.get("search")){
+   Json search(json_object_get(nested));
+   if(search.get("replicates"))throw Error("v1 does not accept search.replicates");
+  }
   if(c.method!="grid"&&c.method!="random"&&c.method!="stratified"&&c.method!="adaptive_partition")throw Error("unknown search method");
  }else if(c.policy_version=="v2"){
   if(c.method!="uniform_v2"&&c.method!="hierarchical_boundary_v2")throw Error("unsupported v2 search method");
   if(c.max_cases>c.max_queue)throw Error("v2 candidate budget exceeds memory bound");
-  if(c.method=="hierarchical_boundary_v2"&&(c.axes.size()!=1||!numeric_axis(c.axis)))
+  if(c.seed>static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())-static_cast<std::uint64_t>(c.replicate_count-1))
+   throw Error("v2 replicate seeds overflow signed persistence");
+  if(c.method=="hierarchical_boundary_v2"&&(c.axes.size()!=1||!numeric_axis(c.axis)||c.replicate_count!=1))
    throw Error("hierarchical_boundary_v2 currently requires one ordered numeric axis");
   if(c.method=="hierarchical_boundary_v2"){
    std::optional<std::int64_t> previous;
@@ -632,7 +646,11 @@ static std::size_t adaptive_next(Store& store,const Config& cfg,const std::vecto
 // Case IDs and RNG are checked against the committed decision transcript.
 static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& store,std::size_t pause_after){
  const LazySearchSpace space(std::vector<LazySearchSpace::Axis>(cfg.axes.begin(),cfg.axes.end()));
- SparsePermutation sampler(space.cardinality(),cfg.seed^0xb7d2f937c4abULL);
+ const auto replicas=static_cast<std::uint64_t>(cfg.replicate_count);
+ if(space.cardinality()>static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())/replicas)
+  throw Error("CARDINALITY_OVERFLOW: v2 coordinate/replicate universe");
+ const auto virtual_count=space.cardinality()*replicas;
+ SparsePermutation sampler(virtual_count,cfg.seed^0xb7d2f937c4abULL);
  std::optional<HierarchicalPolicyV2> hierarchy;
  if(cfg.method=="hierarchical_boundary_v2")
   hierarchy.emplace(static_cast<std::size_t>(space.cardinality()),cfg.seed^0xd9af2e13ULL,cfg.exploration_fraction);
@@ -655,8 +673,8 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
    return std::pair<std::uint64_t,Case>{static_cast<std::uint64_t>(*pos),std::move(c)};
   }
   for(std::size_t attempts=0;attempts<10000&&sampler.has_next();++attempts){
-   auto index=sampler.next();Case c=cfg.base;c.seed=cfg.seed;
-   for(const auto& [axis,value]:space.at(index))assign(c,axis,value);
+   auto index=sampler.next();Case c=cfg.base;c.seed=cfg.seed+(index%replicas);
+   for(const auto& [axis,value]:space.at(index/replicas))assign(c,axis,value);
    try{validate_case_schema(c,cfg.max_bytes);}catch(const Error&){continue;}
    return std::pair<std::uint64_t,Case>{index,std::move(c)};
   }
@@ -712,7 +730,7 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
   store.event("search_paused",std::to_string(completed));
   if(budget_hit)store.event("wall_budget_exhausted",std::to_string(cfg.total_wall_s));
  }
- std::cout<<"V2 explored "<<completed<<" from virtual "<<space.cardinality()<<" candidates; "<<store.summary().str()<<"\n";
+ std::cout<<"V2 explored "<<completed<<" from virtual "<<virtual_count<<" coordinate/replicate candidates; "<<store.summary().str()<<"\n";
  report(out);
  if(budget_hit)throw Error("total_wall_seconds budget exhausted; completed cases preserved; resume the partial run");
 }
