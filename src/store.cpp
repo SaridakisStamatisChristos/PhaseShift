@@ -1,5 +1,7 @@
 #include "phaseshift/store.hpp"
 #include <filesystem>
+#include <cstring>
+#include <sstream>
 namespace ps {
 static void check(int rc,sqlite3* db,const std::string& what){if(rc!=SQLITE_OK&&rc!=SQLITE_DONE&&rc!=SQLITE_ROW)throw Error(what+": "+sqlite3_errmsg(db));}
 struct Statement {
@@ -15,7 +17,7 @@ struct Statement {
 Store::Store(const std::string& path){
  if(!std::filesystem::path(path).parent_path().empty())std::filesystem::create_directories(std::filesystem::path(path).parent_path());
  check(sqlite3_open(path.c_str(),&db_),db_,"SQL open");exec("PRAGMA foreign_keys=ON;PRAGMA journal_mode=WAL;PRAGMA busy_timeout=5000;");
- auto old=sqlite3_get_autocommit(db_);(void)old;Statement st(db_,"PRAGMA user_version");auto rc=sqlite3_step(st.p);check(rc,db_,"schema version");auto version=sqlite3_column_int(st.p,0);if(version>1)throw Error("unsupported database schema version");
+ auto old=sqlite3_get_autocommit(db_);(void)old;Statement st(db_,"PRAGMA user_version");auto rc=sqlite3_step(st.p);check(rc,db_,"schema version");auto version=sqlite3_column_int(st.p,0);if(version>2)throw Error("unsupported database schema version");
  if(version==0){exec(R"SQL(
  BEGIN;
  CREATE TABLE IF NOT EXISTS experiments(id INTEGER PRIMARY KEY CHECK(id=1),config TEXT NOT NULL,config_hash TEXT NOT NULL,environment TEXT NOT NULL,created_at TEXT NOT NULL);
@@ -26,6 +28,15 @@ Store::Store(const std::string& path){
  CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY AUTOINCREMENT,at TEXT NOT NULL,event TEXT NOT NULL,detail TEXT NOT NULL);
  CREATE INDEX IF NOT EXISTS idx_samples_case ON samples(case_id,holdout);
  PRAGMA user_version=1;
+ COMMIT;
+ )SQL");}
+ if(version<2){exec(R"SQL(
+ BEGIN IMMEDIATE;
+ CREATE TABLE IF NOT EXISTS scheduler_decisions(
+  seq INTEGER PRIMARY KEY AUTOINCREMENT, pool_index INTEGER NOT NULL UNIQUE,
+  case_id TEXT NOT NULL REFERENCES cases(case_id), rng_state TEXT NOT NULL,
+  created_at TEXT NOT NULL);
+ PRAGMA user_version=2;
  COMMIT;
  )SQL");}
 }
@@ -45,6 +56,29 @@ void Store::hypothesis(const std::string& id,const std::string& status,const std
  Statement s(db_,"INSERT INTO hypotheses(id,status,axis,left_value,right_value,effect,detail) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,detail=excluded.detail");
  s.text(1,id);s.text(2,status);s.text(3,axis);s.integer(4,left);s.integer(5,right);s.real(6,effect);s.text(7,detail);s.done();
  Statement e(db_,"INSERT INTO events(at,event,detail) VALUES(?,?,?)");e.text(1,now_utc());e.text(2,"hypothesis:"+status);e.text(3,id+" "+detail);e.done();
+}
+std::vector<Store::SchedulerDecision> Store::scheduler_decisions(){
+ Statement stmt(db_,"SELECT pool_index,case_id,rng_state FROM scheduler_decisions ORDER BY seq");
+ std::vector<SchedulerDecision> out;
+ while(sqlite3_step(stmt.p)==SQLITE_ROW){
+  SchedulerDecision d;d.pool_index=sqlite3_column_int64(stmt.p,0);
+  d.case_id=reinterpret_cast<const char*>(sqlite3_column_text(stmt.p,1));
+  const auto* v=reinterpret_cast<const char*>(sqlite3_column_text(stmt.p,2));
+  std::size_t n=0;
+  try{d.next_rng_state=std::stoull(v,&n,16);}catch(const std::exception&){throw Error("invalid persisted scheduler PRNG state");}
+  if(n!=std::strlen(v))throw Error("invalid persisted scheduler PRNG state suffix");
+  out.push_back(d);
+ }
+ return out;
+}
+void Store::record_decision(std::size_t index,const std::string& case_id,std::uint64_t rng_state){
+ Statement s(db_,"INSERT INTO scheduler_decisions(pool_index,case_id,rng_state,created_at) VALUES(?,?,?,?)");
+ s.integer(1,static_cast<std::int64_t>(index));s.text(2,case_id);
+ std::ostringstream hex;hex<<std::hex<<rng_state;s.text(3,hex.str());s.text(4,now_utc());s.done();
+}
+void Store::event(const std::string& name,const std::string& detail){
+ Statement s(db_,"INSERT INTO events(at,event,detail) VALUES(?,?,?)");
+ s.text(1,now_utc());s.text(2,name);s.text(3,detail);s.done();
 }
 void Store::witness(const std::string& id,const std::string& case_id,const std::string& status,const std::string& trace){
  Statement s(db_,"INSERT INTO witnesses(hypothesis_id,case_id,status,trace) VALUES(?,?,?,?)");s.text(1,id);s.text(2,case_id);s.text(3,status);s.text(4,trace);s.done();

@@ -153,29 +153,59 @@ static std::size_t adaptive_next(Store& store,const Config& cfg,const std::vecto
  }
  return best;
 }
-void explore(const Config& cfg,const std::string& out){
- if(fs::exists(out+"/run.sqlite"))throw Error("output run already exists (will not overwrite evidence)");
- fs::create_directories(out);Store s(out+"/run.sqlite");s.experiment(config_json(cfg).str(),environment());
- auto choices=scheduled(cfg);std::size_t completed=0;std::vector<bool> chosen(choices.size(),false);
+static void execute_schedule(const Config& cfg,const std::string& out,Store& store,std::size_t pause_after){
+ auto choices=scheduled(cfg);std::vector<bool> chosen(choices.size(),false);
  const bool feedback=cfg.method=="adaptive_partition"&&numeric_axis(cfg.axis)&&
   std::all_of(cfg.axes.begin(),cfg.axes.end(),[&](const auto& a){return a.first==cfg.axis||a.second.size()==1;});
- std::uint64_t random_state=cfg.seed^0xf39b247bf04aULL;
- const auto start=std::chrono::steady_clock::now();
- while(completed<cfg.max_cases&&completed<choices.size()){
-  auto elapsed=std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now()-start).count();
+ auto completed=std::size_t{0};std::uint64_t rng=cfg.seed^0xf39b247bf04aULL;
+ /* The scheduler transcript, samples, and case are committed atomically.
+    Resume trusts neither a reported counter nor an unverified case digest. */
+ for(const auto& d:store.scheduler_decisions()){
+  if(d.pool_index<0||static_cast<std::size_t>(d.pool_index)>=choices.size()||chosen[static_cast<std::size_t>(d.pool_index)])throw Error("invalid scheduler transcript: repeated/bad index");
+  const auto idx=static_cast<std::size_t>(d.pool_index);
+  auto expected=make_case(choices[idx],cfg.max_bytes);
+  if(expected.id!=d.case_id)throw Error("scheduler transcript disagrees with immutable config/case");
+  chosen[idx]=true;completed++;rng=d.next_rng_state;
+ }
+ if(completed>cfg.max_cases)throw Error("persisted decisions exceed immutable case budget");
+ const auto start=std::chrono::steady_clock::now();std::size_t this_call=0;
+ while(completed<cfg.max_cases&&completed<choices.size()&&(pause_after==0||this_call<pause_after)){
+  const auto elapsed=std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now()-start).count();
   if(elapsed>=cfg.total_wall_s)break;
-  const auto index=feedback?adaptive_next(s,cfg,choices,chosen,random_state):completed;
-  chosen[index]=true;
+  const auto index=feedback?adaptive_next(store,cfg,choices,chosen,rng):completed;
+  if(chosen[index])throw Error("scheduler selected previously evaluated case");
   auto c=make_case(choices[index],cfg.max_bytes);
   const auto obs=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},cfg.blocks,cfg.warmup,cfg.sample_ms,cfg.rss_mb);
-  for(const auto& o:obs)s.add_observation(c,o,false);
-  completed++;
+  store.exec("BEGIN IMMEDIATE");
+  try{
+   for(const auto& o:obs)store.add_observation(c,o,false);
+   store.record_decision(index,c.id,rng);
+   store.exec("COMMIT");
+  }catch(...){store.exec("ROLLBACK");throw;}
+  chosen[index]=true;completed++;this_call++;
  }
- if(auto d=detect(s,cfg)){
-  auto [l,r,e]=*d;s.hypothesis("H1","HYPOTHESIZED",cfg.axis,l,r,e,"Exploratory segmented fit vs no-break null (BIC>6); holdout required");
- }else s.hypothesis("H1","NO_CONFIRMED_BOUNDARY",cfg.axis,0,0,0,"No convincing isolated structural discontinuity under declared thresholds");
- std::cout<<"Explored "<<completed<<" cases; "<<s.summary().str()<<"\n";
+ if(completed==cfg.max_cases||completed==choices.size()){
+  if(auto d=detect(store,cfg)){
+   auto [l,r,e]=*d;store.hypothesis("H1","HYPOTHESIZED",cfg.axis,l,r,e,"Exploratory segmented fit vs no-break null (BIC>6); holdout required");
+  }else store.hypothesis("H1","NO_CONFIRMED_BOUNDARY",cfg.axis,0,0,0,"No convincing isolated structural discontinuity under declared thresholds");
+  store.event("search_complete",std::to_string(completed));
+ }else store.event("search_paused",std::to_string(completed));
+ std::cout<<"Explored "<<completed<<" / "<<std::min<std::size_t>(cfg.max_cases,choices.size())<<" cases; "<<store.summary().str()<<"\n";
  report(out);
+}
+void explore(const Config& cfg,const std::string& out,std::size_t pause_after){
+ if(fs::exists(out+"/run.sqlite"))throw Error("output run already exists (will not overwrite evidence)");
+ fs::create_directories(out);Store s(out+"/run.sqlite");s.experiment(config_json(cfg).str(),environment());
+ execute_schedule(cfg,out,s,pause_after);
+}
+void resume(const std::string& run,std::size_t pause_after){
+ if(!fs::exists(run+"/run.sqlite"))throw Error("run database missing for resume");
+ Store s(run+"/run.sqlite");const auto cfg=config_from_json(Json::parse(s.config()));
+ sqlite3_stmt* st=nullptr;
+ if(sqlite3_prepare_v2(s.raw(),"SELECT COUNT(*) FROM hypotheses",-1,&st,nullptr)!=SQLITE_OK)throw Error("hypothesis lookup failed");
+ auto rc=sqlite3_step(st);const auto done=rc==SQLITE_ROW?sqlite3_column_int64(st,0):0;sqlite3_finalize(st);
+ if(done)throw Error("experiment has finalized hypothesis; resume would overwrite evidence");
+ execute_schedule(cfg,run,s,pause_after);
 }
 static std::tuple<std::string,std::string,std::int64_t,std::int64_t> read_hypothesis(Store& s,const std::string& id){
  sqlite3_stmt* st=nullptr;if(sqlite3_prepare_v2(s.raw(),"SELECT status,axis,left_value,right_value FROM hypotheses WHERE id=?",-1,&st,nullptr)!=SQLITE_OK)throw Error("hypothesis query failed");

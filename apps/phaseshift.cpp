@@ -9,7 +9,8 @@ Usage:
   phaseshift list families | algorithms
   phaseshift validate --config CONFIG
   phaseshift demo --out RUN_DIRECTORY
-  phaseshift explore --config CONFIG --out RUN_DIRECTORY
+  phaseshift explore --config CONFIG --out RUN_DIRECTORY [--pause-after N]
+  phaseshift resume --run RUN_DIRECTORY [--pause-after N]
   phaseshift ablate --config CONFIG --out DIRECTORY
   phaseshift confirm --run RUN_DIRECTORY [--hypothesis H1]
   phaseshift minimize --run RUN_DIRECTORY [--hypothesis H1]
@@ -33,13 +34,15 @@ int main(int argc,char** argv){
   }
   auto option=[&](const std::string& key,const std::string& fallback=""){for(int i=2;i+1<argc;i++)if(std::string(argv[i])==key)return std::string(argv[i+1]);return fallback;};
   const auto run=option("--run");
+  auto pause_after=[&]()->std::size_t{auto v=option("--pause-after");if(v.empty())return 0;std::size_t idx=0;auto n=std::stoull(v,&idx);if(idx!=v.size()||n==0||n>20000)throw ps::Error("invalid --pause-after");return static_cast<std::size_t>(n);};
   if(cmd=="validate"){auto c=ps::parse_config(option("--config"));std::cout<<"VALID: "<<c.experiment_id<<" family="<<c.family<<"\n";return 0;}
   if(cmd=="demo"){
    const auto out=option("--out","runs/demo");ps::Config c;c.experiment_id="known-synthetic-threshold";c.family="calibration";c.base.family=c.family;c.a="calibration";c.method="adaptive_partition";c.axis="x";c.axes["x"]={"0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15"};c.blocks=2;c.confirm_blocks=20;c.base.threshold=8;
    ps::explore(c,out);ps::confirm(out);ps::minimize(out);return 0;
   }
   if(cmd=="ablate"){auto config=option("--config"),out=option("--out");if(config.empty()||out.empty())throw ps::Error("ablate requires --config and --out");ps::ablate(ps::parse_config(config),out);return 0;}
-  if(cmd=="explore"){const auto config=option("--config"),out=option("--out");if(config.empty()||out.empty())throw ps::Error("explore requires --config and --out");ps::explore(ps::parse_config(config),out);return 0;}
+  if(cmd=="explore"){const auto config=option("--config"),out=option("--out");if(config.empty()||out.empty())throw ps::Error("explore requires --config and --out");ps::explore(ps::parse_config(config),out,pause_after());return 0;}
+  if(cmd=="resume"){if(run.empty())throw ps::Error("resume requires --run");ps::resume(run,pause_after());return 0;}
   if(run.empty() && cmd!="compare")throw ps::Error("command requires --run");
   if(cmd=="confirm"){ps::confirm(run,option("--hypothesis","H1"));return 0;}
   if(cmd=="minimize"){ps::minimize(run,option("--hypothesis","H1"));return 0;}

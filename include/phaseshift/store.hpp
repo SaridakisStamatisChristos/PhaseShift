@@ -12,6 +12,10 @@ public:
  void add_case(const Case& c);
  void add_observation(const Case& c,const Observation& s,bool holdout);
  void hypothesis(const std::string& id,const std::string& status,const std::string& axis,std::int64_t left,std::int64_t right,double effect,const std::string& detail);
+ struct SchedulerDecision {std::int64_t pool_index=0;std::string case_id;std::uint64_t next_rng_state=0;};
+ std::vector<SchedulerDecision> scheduler_decisions();
+ void record_decision(std::size_t index,const std::string& case_id,std::uint64_t next_rng_state);
+ void event(const std::string& name,const std::string& detail);
  void witness(const std::string& hypothesis_id,const std::string& case_id,const std::string& status,const std::string& trace);
  std::vector<Case> cases(bool include_holdout=true);
  std::vector<Observation> observations(const std::string& case_id,bool holdout=false);

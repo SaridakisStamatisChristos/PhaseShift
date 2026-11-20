@@ -10,7 +10,8 @@ struct Config {
  double min_ratio=1.20;
 };
 Config parse_config(const std::string& path);
-void explore(const Config& cfg,const std::string& out);
+void explore(const Config& cfg,const std::string& out,std::size_t pause_after=0);
+void resume(const std::string& run,std::size_t pause_after=0);
 void ablate(const Config& cfg,const std::string& out);
 void confirm(const std::string& run,const std::string& id="H1");
 void minimize(const std::string& run,const std::string& id="H1");
