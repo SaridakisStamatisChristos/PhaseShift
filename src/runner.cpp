@@ -6,6 +6,7 @@
 #include <csignal>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <map>
 #include <memory>
@@ -160,12 +161,32 @@ Json worker_measure(const Json& request,const Bytes& bytes){
    not to each arriving byte (which would admit slow-drip hangs). */
 static constexpr std::uint8_t magic[4]={'P','S','0','1'};
 static auto deadline_ms(int ms){return std::chrono::steady_clock::now()+std::chrono::milliseconds(ms);}
-static bool io_exact(int fd,std::uint8_t* b,std::size_t n,bool writing,std::chrono::steady_clock::time_point deadline){
- while(n){auto remain=std::chrono::duration_cast<std::chrono::milliseconds>(deadline-std::chrono::steady_clock::now()).count();
+/* RLIMIT_AS is a virtual-address-space guard, NOT an RSS limit. The parent
+   also samples Linux VmRSS throughout the child's response wait, including
+   sanitizer runs where RLIMIT_AS cannot be used. Sampling is best effort:
+   a short spike may escape detection between checks. */
+static std::uint64_t worker_resident_kib(pid_t pid){
+ std::ifstream status("/proc/"+std::to_string(pid)+"/status");
+ std::string line;
+ while(std::getline(status,line))if(line.rfind("VmRSS:",0)==0){
+  std::istringstream in(line.substr(6));std::uint64_t kib=0;
+  if(in>>kib)return kib;
+ }
+ return 0;
+}
+static bool io_exact(int fd,std::uint8_t* b,std::size_t n,bool writing,std::chrono::steady_clock::time_point deadline,
+ pid_t rss_pid=-1,std::uint64_t rss_limit_kib=0,bool* over_rss=nullptr){
+ while(n){
+  if(rss_pid>0&&rss_limit_kib>0&&worker_resident_kib(rss_pid)>rss_limit_kib){
+   if(over_rss)*over_rss=true;
+   return false;
+  }
+  auto remain=std::chrono::duration_cast<std::chrono::milliseconds>(deadline-std::chrono::steady_clock::now()).count();
   if(remain<=0)return false;
   struct pollfd p{fd,static_cast<short>(writing?POLLOUT:POLLIN),0};
-  auto ready=poll(&p,1,static_cast<int>(std::min<std::int64_t>(remain,60000)));
+  auto ready=poll(&p,1,static_cast<int>(std::min<std::int64_t>(remain,rss_pid>0?25:60000)));
   if(ready<0&&errno==EINTR)continue;
+  if(ready==0&&rss_pid>0)continue;
   if(ready<=0||p.revents&(POLLERR|POLLNVAL))return false;
   auto count=writing ? ::write(fd,b,n) : ::read(fd,b,n);
   if(count<0&&(errno==EINTR||errno==EAGAIN))continue;
@@ -181,16 +202,23 @@ static void write_frame(int fd,const std::uint8_t* b,std::size_t n,std::chrono::
  if(!io_exact(fd,h,8,true,deadline) || (n&&!io_exact(fd,const_cast<std::uint8_t*>(b),n,true,deadline)))throw Error("IPC write timeout/crash");
 }
 static void write_frame(int fd,const std::string& s,std::chrono::steady_clock::time_point deadline){write_frame(fd,reinterpret_cast<const std::uint8_t*>(s.data()),s.size(),deadline);}
-static Bytes read_frame(int fd,int timeout_ms,std::size_t limit){
- const auto until=deadline_ms(timeout_ms);std::uint8_t h[8];
- if(!io_exact(fd,h,8,false,until))throw Error("worker response timeout/crash");
+static Bytes read_frame(int fd,int timeout_ms,std::size_t limit,
+ std::chrono::steady_clock::time_point hard_deadline=std::chrono::steady_clock::time_point::max(),
+ pid_t rss_pid=-1,std::uint64_t rss_limit_kib=0){
+ const auto until=std::min(deadline_ms(timeout_ms),hard_deadline);std::uint8_t h[8];
+ bool over_rss=false;
+ if(!io_exact(fd,h,8,false,until,rss_pid,rss_limit_kib,&over_rss))
+  throw Error(over_rss?"worker RSS exceeded max_worker_rss_mb":"worker response timeout/crash");
  if(!std::equal(magic,magic+4,h))throw Error("malformed IPC version/magic");
  std::uint32_t n=0;for(int i=0;i<4;i++)n|=static_cast<std::uint32_t>(h[4+i])<<(i*8);
  if(n>limit)throw Error("oversized IPC frame");
- Bytes buf(n);if(n&&!io_exact(fd,buf.data(),n,false,until))throw Error("truncated worker frame");
+ Bytes buf(n);if(n&&!io_exact(fd,buf.data(),n,false,until,rss_pid,rss_limit_kib,&over_rss))
+  throw Error(over_rss?"worker RSS exceeded max_worker_rss_mb":"truncated worker frame");
  return buf;
 }
-std::vector<Observation> measure(const Case& c,const std::vector<std::string>& names,int blocks,int warmup,int timeout_ms,int memory_mb,int minimum_batch_ms,bool spawn_per_sample){
+std::vector<Observation> measure(const Case& c,const std::vector<std::string>& names,int blocks,int warmup,int timeout_ms,int memory_mb,int minimum_batch_ms,bool spawn_per_sample,
+ std::chrono::steady_clock::time_point hard_deadline){
+ if(std::chrono::steady_clock::now()>=hard_deadline)throw Error("total_wall_seconds budget exhausted before worker start");
  if(spawn_per_sample){
   if(names.empty()||names.size()>2||blocks<1||blocks>100)throw Error("invalid per-sample isolation bounds");
   std::vector<Observation> all;all.reserve(static_cast<std::size_t>(blocks)*(names.size()==2?4:1));
@@ -204,7 +232,7 @@ std::vector<Observation> measure(const Case& c,const std::vector<std::string>& n
    for(std::size_t position=0;position<order.size();position++){
     /* New child for *each* sample; no native plugin state survives a sample.
        Spawn and IPC overhead remain outside the timed operation. */
-    auto result=measure(c,{order[position]},1,warmup,timeout_ms,memory_mb,minimum_batch_ms,false);
+    auto result=measure(c,{order[position]},1,warmup,timeout_ms,memory_mb,minimum_batch_ms,false,hard_deadline);
     if(result.size()!=1)throw Error("per-sample worker did not return one observation");
     auto& value=result.front();value.block=block;value.order_position=static_cast<std::int64_t>(position);
     std::ostringstream hex;hex<<std::hex<<order_seed;value.order_seed=hex.str();
@@ -246,10 +274,10 @@ std::vector<Observation> measure(const Case& c,const std::vector<std::string>& n
   /* Allow one per-sample deadline per operation, plus bounded IPC transfer. */
   const auto operation_count=static_cast<std::int64_t>(blocks)*static_cast<std::int64_t>(names.size()==2?4:1);
   const auto deadline=static_cast<int>(std::min<std::int64_t>(3600000,operation_count*timeout_ms+1000));
-  const auto until=deadline_ms(deadline);
+  const auto until=std::min(deadline_ms(deadline),hard_deadline);
   write_frame(in[1],req.str(),until);
   write_frame(in[1],c.bytes.data(),c.bytes.size(),until);close(in[1]);in[1]=-1;
-  auto raw=read_frame(out[0],deadline,8ULL*1024*1024);
+  auto raw=read_frame(out[0],deadline,8ULL*1024*1024,hard_deadline,pid,static_cast<std::uint64_t>(memory_mb)*1024ULL);
   const auto response=Json::parse(std::string(raw.begin(),raw.end()));auto* list=response.get("observations");
   if(!list||json_object_get_type(list)!=json_type_array)throw Error("malformed worker response");
   for(std::size_t i=0;i<json_object_array_length(list);i++){
@@ -271,7 +299,7 @@ std::vector<Observation> measure(const Case& c,const std::vector<std::string>& n
  // WNOHANG check can race the kernel's final exit notification and mislabel
  // SIGSEGV as an infrastructure failure. Never block indefinitely on hangs.
  if(reaped==0){
-  const auto reap_until=std::chrono::steady_clock::now()+std::chrono::milliseconds(150);
+  const auto reap_until=std::min(std::chrono::steady_clock::now()+std::chrono::milliseconds(150),hard_deadline);
   while(reaped==0&&std::chrono::steady_clock::now()<reap_until){
    (void)poll(nullptr,0,5);
    reaped=waitpid(pid,&status,WNOHANG);
@@ -284,6 +312,9 @@ std::vector<Observation> measure(const Case& c,const std::vector<std::string>& n
   reaped=-1; /* Parent-enforced kill is not a worker crash. */
  }
  else if(reaped<0&&errno==EINTR){while((reaped=waitpid(pid,&status,0))<0&&errno==EINTR){}}
+ for(auto& obs:result)if(obs.status=="infrastructure_error"&&
+   obs.detail.find("worker RSS exceeded max_worker_rss_mb")!=std::string::npos)
+   obs.status="out_of_memory";
  if(reaped==pid&&WIFEXITED(status)&&WEXITSTATUS(status)!=0){
   for(auto& obs:result)if(obs.status=="infrastructure_error"){
    obs.status="crashed";obs.detail+="; worker nonzero exit "+std::to_string(WEXITSTATUS(status));
@@ -294,6 +325,7 @@ std::vector<Observation> measure(const Case& c,const std::vector<std::string>& n
    obs.status="signaled";obs.detail+="; worker signal "+std::to_string(WTERMSIG(status));
   }
  }
+ if(std::chrono::steady_clock::now()>=hard_deadline)throw Error("total_wall_seconds budget exhausted during worker execution");
  return result;
 }
 int worker_entry(){

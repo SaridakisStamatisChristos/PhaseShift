@@ -77,7 +77,95 @@ static Json config_json(const Config& c){
  Json j;j.put("schema_version",static_cast<std::int64_t>(1));j.put("experiment_id",c.experiment_id);j.put("problem_family",c.family);j.put("algorithm_a",c.a);j.put("algorithm_b",c.b);j.put("search_method",c.method);j.put("primary_axis",c.axis);j.put("seed",static_cast<std::int64_t>(c.seed));j.put("max_cases",static_cast<std::int64_t>(c.max_cases));j.put("max_case_bytes",static_cast<std::int64_t>(c.max_bytes));j.put("max_search_queue",static_cast<std::int64_t>(c.max_queue));j.put("max_report_bytes",static_cast<std::int64_t>(c.max_report_bytes));j.put("discovery_blocks",static_cast<std::int64_t>(c.blocks));j.put("confirm_blocks",static_cast<std::int64_t>(c.confirm_blocks));j.put("warmup",static_cast<std::int64_t>(c.warmup));j.put("sample_ms",static_cast<std::int64_t>(c.sample_ms));j.put("rss_mb",static_cast<std::int64_t>(c.rss_mb));j.put("total_wall_seconds",static_cast<std::int64_t>(c.total_wall_s));j.put("min_practical_ratio",c.min_ratio);j.put("confirmation_confidence",c.confirmation_confidence);j.put("fdr_q",c.fdr_q);j.put("multiple_testing",c.multiple_testing);j.put("exploration_fraction",c.exploration_fraction);j.put("minimum_batch_ms",static_cast<std::int64_t>(c.minimum_batch_ms));j.put("isolation_mode",c.isolation_mode);j.put("base_params",case_params(c.base));
  Json axes;for(const auto& [name,values]:c.axes){auto* arr=json_object_new_array();for(const auto& val:values)json_object_array_add(arr,json_object_new_string(val.c_str()));json_object_object_add(axes.p,name.c_str(),arr);}j.put("axes",std::move(axes));return j;
 }
+/* Config is an experimental contract: reject unsupported keys and coercions,
+   rather than silently measuring a workload different from the stated one. */
+static void validate_configuration_shape(const Json& j){
+ if(!j.p||json_object_get_type(j.p)!=json_type_object)throw Error("configuration root must be an object");
+ const auto check=[](json_object* object,const std::string& scope,
+                     const std::set<std::string>& integers,
+                     const std::set<std::string>& reals,
+                     const std::set<std::string>& strings,
+                     const std::set<std::string>& structures){
+  if(!object||json_object_get_type(object)!=json_type_object)throw Error(scope+" must be an object");
+  json_object_object_foreach(object,key,value){
+   const std::string name(key),field=scope+"."+name;
+   if(!value)throw Error(field+" cannot be null");
+   const auto kind=json_object_get_type(value);
+   if(integers.count(name)){
+    if(kind!=json_type_int)throw Error(field+" must be an integer");
+    const auto n=json_object_get_int64(value);
+    if(n<0 && (name=="seed"||name=="max_cases"||name=="max_case_bytes"||name=="max_worker_rss_mb"||name=="max_sample_wall_ms"||name=="max_report_bytes"||name=="max_search_queue"||name=="total_wall_seconds"||name=="schema_version"))throw Error(field+" cannot be negative");
+    /* The runtime's integer-valued measurement/budget fields are signed 32-bit. */
+    if(name!="seed"&&name!="max_case_bytes"&&name!="max_search_queue"&&name!="max_report_bytes"&&name!="max_cases"&&n>2147483647LL)throw Error(field+" is too large");
+   }else if(reals.count(name)){
+    if(kind!=json_type_int&&kind!=json_type_double)throw Error(field+" must be a finite number");
+    if(!std::isfinite(json_object_get_double(value)))throw Error(field+" must be finite");
+   }else if(strings.count(name)){
+    if(kind!=json_type_string)throw Error(field+" must be a string");
+   }else if(structures.count(name)){
+    if(kind!=json_type_object&&!(name=="base_params"&&kind==json_type_string))throw Error(field+" must be an object");
+   }else throw Error("unknown configuration parameter: "+field);
+  }
+ };
+ static const std::set<std::string> integer_top={"schema_version","seed","max_cases","max_case_bytes","max_search_queue","max_report_bytes","discovery_blocks","confirm_blocks","warmup","sample_ms","rss_mb","total_wall_seconds","minimum_batch_ms"};
+ static const std::set<std::string> real_top={"min_practical_ratio","confirmation_confidence","fdr_q","exploration_fraction"};
+ static const std::set<std::string> text_top={"experiment_id","problem_family","family","objective","algorithm_a","algorithm_b","search_method","method","primary_axis","isolation_mode","multiple_testing"};
+ static const std::set<std::string> obj_top={"search","measurement","detection","limits","fixed","base_params","axes"};
+ /* The algorithm list is validated separately because it is an array. */
+ json_object* algorithms=nullptr;
+ if(json_object_object_get_ex(j.p,"algorithms",&algorithms)){
+  if(!algorithms||json_object_get_type(algorithms)!=json_type_array)throw Error("algorithms must be an array");
+  const auto length=json_object_array_length(algorithms);
+  if(length<1||length>2)throw Error("algorithms must contain one or two elements");
+  for(std::size_t i=0;i<length;i++){
+   auto* entry=json_object_array_get_idx(algorithms,i);
+   if(!entry||json_object_get_type(entry)!=json_type_string||!json_object_get_string(entry)||!json_object_get_string(entry)[0])
+    throw Error("algorithms["+std::to_string(i)+"] must be a nonempty string");
+  }
+ }
+ /* The object-key validator is intentionally applied to a filtered object;
+    algorithms has the separate array contract above. */
+ Json top;
+ json_object_object_foreach(j.p,key,value){
+  if(std::string(key)!="algorithms")json_object_object_add(top.p,key,json_object_get(value));
+ }
+ check(top.p,"config",integer_top,real_top,text_top,obj_top);
+ if(auto* v=j.get("objective");v&&std::string(json_object_get_string(v))!="discover_structural_performance_boundaries")
+  throw Error("unsupported objective");
+ if(auto* v=j.get("search"))check(v,"search",{"max_cases"},{"exploration_fraction"},{"method"},{});
+ if(auto* v=j.get("measurement"))check(v,"measurement",{"paired_discovery_blocks","paired_confirm_blocks","warmup_iterations","minimum_batch_ms"},{},{"primary_metric","isolation_mode"},{});
+ if(auto* v=j.get("detection"))check(v,"detection",{},{"min_practical_ratio","confirmation_confidence","fdr_q"},{"multiple_testing"},{});
+ if(auto* v=j.get("limits"))check(v,"limits",{"total_wall_seconds","max_cases","max_case_bytes","max_worker_rss_mb","max_sample_wall_ms","max_report_bytes","max_search_queue"},{},{},{});
+ if(auto* v=j.get("fixed"))if(json_object_get_type(v)!=json_type_object)throw Error("fixed must be an object");
+ if(auto* v=j.get("base_params")){
+  if(json_object_get_type(v)==json_type_string){auto parsed=Json::parse(json_object_get_string(v));if(!parsed.p||json_object_get_type(parsed.p)!=json_type_object)throw Error("base_params serialized value must be object");}
+ }
+ if(auto* v=j.get("axes")){
+  if(json_object_get_type(v)!=json_type_object)throw Error("axes must be an object");
+  json_object_object_foreach(v,axis_name,axis_value){
+   if(!axis_value)throw Error(std::string("axes.")+axis_name+" cannot be null");
+   json_object* axis_values=axis_value;
+   if(json_object_get_type(axis_value)==json_type_object){
+    json_object_object_foreach(axis_value,member_key,axis_v){
+     if(std::string(member_key)!="values")throw Error(std::string("unknown axes.")+axis_name+" field: "+member_key);
+     (void)axis_v;
+    }
+    if(!json_object_object_get_ex(axis_value,"values",&axis_values))throw Error(std::string("axes.")+axis_name+" missing axis_values");
+   }
+   if(!axis_values||json_object_get_type(axis_values)!=json_type_array||json_object_array_length(axis_values)==0)
+    throw Error(std::string("axes.")+axis_name+" axis_values must be a nonempty array");
+   for(std::size_t index=0;index<json_object_array_length(axis_values);index++){
+    const auto* member=json_object_array_get_idx(axis_values,index);
+    if(!member||json_object_get_type(member)==json_type_object||json_object_get_type(member)==json_type_array)
+     throw Error(std::string("axes.")+axis_name+" contains invalid axis_value");
+    if(json_object_get_type(member)==json_type_double&&!std::isfinite(json_object_get_double(member)))
+     throw Error(std::string("axes.")+axis_name+" contains nonfinite axis_value");
+   }
+  }
+ }
+}
 Config config_from_json(const Json& j){
+ validate_configuration_shape(j);
  if(j.i("schema_version",1)!=1)throw Error("only config schema version 1 supported");
  auto require_field_type=[](const Json& object,const char* name,bool numeric){
   const auto* v=object.get(name);if(!v)return;
@@ -401,14 +489,21 @@ static void execute_schedule(const Config& cfg,const std::string& out,Store& sto
   chosen[idx]=true;completed++;rng=d.next_rng_state;
  }
  if(completed>cfg.max_cases)throw Error("persisted decisions exceed immutable case budget");
- const auto start=std::chrono::steady_clock::now();std::size_t this_call=0;
+ const auto hard_deadline=std::chrono::steady_clock::now()+std::chrono::seconds(cfg.total_wall_s);
+ bool budget_hit=false;std::size_t this_call=0;
  while(completed<cfg.max_cases&&completed<choices.size()&&(pause_after==0||this_call<pause_after)){
-  const auto elapsed=std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now()-start).count();
-  if(elapsed>=cfg.total_wall_s)break;
+  if(std::chrono::steady_clock::now()>=hard_deadline){budget_hit=true;break;}
   const auto index=feedback?adaptive_next(store,cfg,choices,chosen,rng):completed;
   if(chosen[index])throw Error("scheduler selected previously evaluated case");
   auto c=make_case(choices[index],cfg.max_bytes);
-  const auto obs=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},cfg.blocks,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample");
+  std::vector<Observation> obs;
+  try{
+   obs=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},cfg.blocks,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",hard_deadline);
+  }catch(const Error& error){
+   if(std::string(error.what()).find("total_wall_seconds budget exhausted")!=std::string::npos){budget_hit=true;break;}
+   throw;
+  }
+  if(std::chrono::steady_clock::now()>=hard_deadline){budget_hit=true;break;}
   store.exec("BEGIN IMMEDIATE");
   try{
    for(const auto& o:obs)store.add_observation(c,o,false);
@@ -424,9 +519,11 @@ static void execute_schedule(const Config& cfg,const std::string& out,Store& sto
    store.hypothesis("H1","HYPOTHESIZED",cfg.axis,d->left,d->right,d->effect,"Exploratory candidate, one frozen hypothesis with independent holdout; conditioned scope="+d->scope+"; failure_status="+d->failure_status,d->kind,d->frozen_params);
   }else store.hypothesis("H1","NO_CONFIRMED_BOUNDARY",cfg.axis,0,0,0,"No convincing isolated structural discontinuity under declared thresholds");
   store.event("search_complete",std::to_string(completed));
- }else store.event("search_paused",std::to_string(completed));
+ }else {store.event("search_paused",std::to_string(completed));
+  if(budget_hit)store.event("wall_budget_exhausted",std::to_string(cfg.total_wall_s));}
  std::cout<<"Explored "<<completed<<" / "<<std::min<std::size_t>(cfg.max_cases,choices.size())<<" cases; "<<store.summary().str()<<"\n";
  report(out);
+ if(budget_hit)throw Error("total_wall_seconds budget exhausted; completed cases preserved; resume the partial run");
 }
 void explore(const Config& cfg,const std::string& out,std::size_t pause_after){
  if(fs::exists(out+"/run.sqlite"))throw Error("output run already exists (will not overwrite evidence)");
@@ -510,7 +607,7 @@ void confirm(const std::string& run,const std::string& id){
     c.seed=seed;c=make_case(c,cfg.max_bytes);
     if(prior.count(c.id)){all_valid=false;break;}
     auto observations=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:
-       std::vector<std::string>{cfg.a,cfg.b},1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample");
+       std::vector<std::string>{cfg.a,cfg.b},1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline);
     int count=0;
     for(const auto& observation:observations){
      store.add_observation(c,observation,true);
@@ -662,7 +759,7 @@ void ablate(const Config& cfg,const std::string& out){
  json_object_object_add(scorecard.p,"method_results",evaluations);
  scorecard.put("confirmed_discovery_yield_sum",static_cast<std::int64_t>(confirmed_findings));
  if(cfg.family=="calibration"&&cfg.base.negative)scorecard.put("null_false_positive_count",static_cast<std::int64_t>(null_false_positives));
- scorecard.put("witness_reduction_limit","not measured during ablation; reported NA rather than fabricated success");
+ scorecard.put("witness_reduction_limit","witness reduction percentages are measured only for independently minimized cases; NA denotes unmeasured or ineligible cases");
  write_file(out+"/ablation_scorecard.json",scorecard.str());
  write_file(out+"/ablation.csv",csv.str());
  write_file(out+"/README.md","# Equal-budget search comparison\n\nRows summarize grid, random, stratified and adaptive runs with identical user-specified evaluation and wall budgets. `localization_error=NA` for real algorithms because no ground-truth boundary is assumed. Rows include actual discovery case counts to expose incomplete runs; equal requested budgets do not guarantee equal completed counts or CPU time. The worker_cpu_seconds column is the sum of sampled worker process CPU time when available, not scheduler CPU time or a hardware-normalized speedup. The scorecard reports positive discovery yield and deterministic-null false positives where a ground truth exists. Witness byte shrink is computed from persisted original/witness input bytes for independently minimized synthetic findings, and NA when no such reduction was run; no reduction is invented. All raw cases and timing measurements remain in each method subdirectory.\n");

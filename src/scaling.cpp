@@ -149,8 +149,9 @@ void scaling_study(const std::string& source,const std::string& out,int seed_cou
  std::ostringstream csv;csv<<"n,seed,algorithm,case_id,status,ns_per_operation\n";
  std::map<std::string,std::map<int,std::vector<double>>> measurements;
  const auto clock_start=std::chrono::steady_clock::now();
+ const auto hard_deadline=clock_start+std::chrono::seconds(cfg.total_wall_s);
  for(auto n:schedule)for(int i=0;i<seed_count;i++){
-  if(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now()-clock_start).count()>=cfg.total_wall_s)throw Error("scaling budget exceeded (partial raw evidence retained)");
+  if(std::chrono::steady_clock::now()>=hard_deadline)throw Error("scaling budget exceeded (partial raw evidence retained)");
   Case c=cfg.base;
   c.seed=cfg.seed+10000000ULL+static_cast<std::uint64_t>(n)*131ULL+static_cast<std::uint64_t>(i)*7919ULL;
   if(cfg.family=="graph"){
@@ -164,7 +165,7 @@ void scaling_study(const std::string& source,const std::string& out,int seed_cou
   }
   c=make_case(c,cfg.max_bytes);
   const auto names=cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b};
-  const auto obs=measure(c,names,3,1,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample");
+  const auto obs=measure(c,names,3,1,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",hard_deadline);
   std::map<std::string,std::vector<double>> case_values;
   for(const auto& o:obs){store.add_observation(c,o,false);
    if(o.status=="ok"&&o.ns>0&&o.batch>0)case_values[o.algorithm].push_back(static_cast<double>(o.ns)/static_cast<double>(o.batch));
@@ -215,7 +216,7 @@ void scaling_study(const std::string& source,const std::string& out,int seed_cou
    bool samples_valid=true;std::set<std::string> discovery_ids;
    for(const auto& previous:store.cases(false))discovery_ids.insert(previous.id);
    for(int n:holdout_sizes)for(int i=0;i<cfg.confirm_blocks;i++){
-    if(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now()-clock_start).count()>=cfg.total_wall_s){
+    if(std::chrono::steady_clock::now()>=hard_deadline){
      samples_valid=false;break;
     }
     Case c=cfg.base;
@@ -231,7 +232,7 @@ void scaling_study(const std::string& source,const std::string& out,int seed_cou
     }
     c=make_case(c,cfg.max_bytes);
     if(discovery_ids.count(c.id)){samples_valid=false;break;}
-    const auto rows=measure(c,names,1,1,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample");
+    const auto rows=measure(c,names,1,1,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",hard_deadline);
     std::vector<double> timings;
     for(const auto& row:rows){
      store.add_observation(c,row,true);

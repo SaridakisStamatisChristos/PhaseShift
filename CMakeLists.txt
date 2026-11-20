@@ -197,3 +197,8 @@ set_tests_properties(native_plugin_fingerprint PROPERTIES TIMEOUT 30)
 configure_file(tests/run_null_scorecard.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_null_scorecard.cmake @ONLY)
 add_test(NAME b02_null_ablation_scorecard COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_null_scorecard.cmake)
 set_tests_properties(b02_null_ablation_scorecard PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+
+# SOTA independent audit F-NEW-01/02/03: typed JSON and absolute wall budget.
+configure_file(tests/run_sota_audit_falsifiers.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_sota_audit_falsifiers.cmake @ONLY)
+add_test(NAME sota_audit_falsifiers COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_sota_audit_falsifiers.cmake)
+set_tests_properties(sota_audit_falsifiers PROPERTIES TIMEOUT 20 RUN_SERIAL TRUE)
