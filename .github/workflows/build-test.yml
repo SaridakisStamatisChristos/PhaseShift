@@ -13,7 +13,8 @@ jobs:
         cxx: [g++, clang++]
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y cmake ninja-build g++ clang libsqlite3-dev libjson-c-dev libssl-dev pkg-config
+      - run: sudo apt-get update && sudo apt-get install -y cmake ninja-build g++ clang libsqlite3-dev libjson-c-dev libssl-dev pkg-config jq
       - run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
       - run: cmake --build build -j2
       - run: ctest --test-dir build --output-on-failure
+      - run: bash scripts/acceptance_smoke.sh

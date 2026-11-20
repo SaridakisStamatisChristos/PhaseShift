@@ -1,0 +1,19 @@
+{
+  "version": 4,
+  "cmakeMinimumRequired": {"major": 3, "minor": 24, "patch": 0},
+  "configurePresets": [
+    {"name":"portable-release", "displayName":"Portable Linux Release", "generator":"Ninja", "binaryDir":"${sourceDir}/build-presets/release", "cacheVariables":{"CMAKE_BUILD_TYPE":"Release", "PHASESHIFT_SANITIZE":"OFF"}},
+    {"name":"debug-sanitizers", "displayName":"Debug AddressSanitizer and UBSan", "generator":"Ninja", "binaryDir":"${sourceDir}/build-presets/sanitize", "cacheVariables":{"CMAKE_BUILD_TYPE":"Debug", "PHASESHIFT_SANITIZE":"ON"}},
+    {"name":"clang-release", "displayName":"Clang portable Release", "inherits":"portable-release", "binaryDir":"${sourceDir}/build-presets/clang", "cacheVariables":{"CMAKE_CXX_COMPILER":"clang++"}}
+  ],
+  "buildPresets": [
+    {"name":"portable-release", "configurePreset":"portable-release", "jobs":2},
+    {"name":"debug-sanitizers", "configurePreset":"debug-sanitizers", "jobs":2},
+    {"name":"clang-release", "configurePreset":"clang-release", "jobs":2}
+  ],
+  "testPresets": [
+    {"name":"portable-release", "configurePreset":"portable-release", "output":{"outputOnFailure":true}},
+    {"name":"debug-sanitizers", "configurePreset":"debug-sanitizers", "output":{"outputOnFailure":true}},
+    {"name":"clang-release", "configurePreset":"clang-release", "output":{"outputOnFailure":true}}
+  ]
+}

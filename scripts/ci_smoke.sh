@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j2
+ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel 2
 ctest --test-dir build --output-on-failure
-./build/phaseshift doctor
-./build/phaseshift validate --config configs/sorting_quicksort.json
-./build/phaseshift validate --config configs/graph_density.json
+bash scripts/acceptance_smoke.sh
