@@ -1,6 +1,6 @@
 # PHASESHIFT — v1 acceptance checklist (2026-11-20)
 
-This ledger distinguishes a **locally verified executable v1 candidate** from a blanket cross-platform, research-grade or remotely CI-validated release. Contract: [`PHASESHIFT_SPEC.md`](PHASESHIFT_SPEC.md), particularly G0–G6 and the reproducibility/negative-control requirements.
+**Historical acceptance snapshot:** the initial table below describes the earlier 21-test development baseline. It is not the latest release verdict. Original `main` commit `326863e92c6e` passed GitHub Actions GCC/Clang/ASan+UBSan **25/25 each**, with all three CLI smoke runs; see [build-test #21](https://github.com/SaridakisStamatisChristos/PhaseShift/actions/runs/44744221461) and [sanitizers #21](https://github.com/SaridakisStamatisChristos/PhaseShift/actions/runs/44744221259). The subsequent R7 audit found blocking evidence defects; the fixes described in [`r7_audit_repair_2026-11-20.md`](r7_audit_repair_2026-11-20.md) are distinct and need their own exact-revision CI results. Contract: [`PHASESHIFT_SPEC.md`](PHASESHIFT_SPEC.md), particularly G0–G6 and the reproducibility/negative-control requirements.
 
 | Gate | Locally observed result | Remaining limitations / external evidence |
 |---|---|---|
@@ -26,3 +26,7 @@ This ledger distinguishes a **locally verified executable v1 candidate** from a 
 ## R7 follow-on implementation (2026-11-20; current source)
 
 See [`v1_requirements_evidence.md`](v1_requirements_evidence.md) for requirement-level evidence and caveats. The earlier local acceptance matrix above is a **historical snapshot**, not a claim about the latest unverified revision. New changes include configurable measurement/search policy, per-sample worker isolation, scaling detection and fresh-size holdout, matched intervention diagnostics, explicit irreversible evidence transitions, detailed build/runtime provenance, and CPU-time ablation accounting. New CI outcomes are required before calling this revised branch fully verified. The pre-change head `9c77906` passed GCC/Clang and sanitizer GitHub workflows including the sanitized CLI smoke; this evidence does **not** automatically cover subsequent edits.
+
+## Current post-audit gate
+
+Independent audit F-001–F-009 exposed confirmation/evidence-integrity, scaling cohort labeling, CLI/config validation and experiment-scorecard deficiencies in the earlier verified code. The repaired branch uses SQLite schema 7, adversarial confirmation integrity tests, timed B07 comparison, simulated B10/B11 controls, plugin binary fingerprints and strict option handling. The initial matrix above is retained as an immutable historical record. Source code, locally executed checks and CI on the repaired commit are assessed in [`r7_audit_repair_2026-11-20.md`](r7_audit_repair_2026-11-20.md). Do not infer passing CI on the new source from the earlier commit.

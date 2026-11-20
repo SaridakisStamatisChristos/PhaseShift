@@ -11,6 +11,7 @@ public:
  void experiment(const std::string& config,const std::string& env);
  void add_case(const Case& c);
  void add_observation(const Case& c,const Observation& s,bool holdout);
+ void seal_confirmation(const std::string& id,const std::string& algorithm,int required_seed_pairs,bool scaling=false);
  void hypothesis(const std::string& id,const std::string& status,const std::string& axis,std::int64_t left,std::int64_t right,double effect,const std::string& detail,const std::string& kind="UNSTABLE_OR_INCONCLUSIVE",const std::string& frozen_params="");
  struct SchedulerDecision {std::int64_t pool_index=0;std::string case_id;std::uint64_t next_rng_state=0;};
  std::vector<SchedulerDecision> scheduler_decisions();

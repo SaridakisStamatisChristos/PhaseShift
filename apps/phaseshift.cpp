@@ -4,6 +4,8 @@
 #include <csignal>
 #include <filesystem>
 #include <iostream>
+#include <map>
+#include <set>
 namespace ps {int worker_entry();}
 static void usage(){std::cout<<R"(PHASESHIFT v1.0.0-rc1 (CPU-only; empirical analysis)
 Usage:
@@ -20,7 +22,7 @@ Usage:
   phaseshift minimize --run RUN_DIRECTORY [--hypothesis H1]
   phaseshift minimize-case --run RUN_DIRECTORY --case CASE_ID --algorithm ALGORITHM
   phaseshift reproduce --run RUN_DIRECTORY --case CASE_ID --algorithm BUILTIN --out FILE.cpp
-  phaseshift replay --run RUN_DIRECTORY --case CASE_ID_OR_PREFIX
+  phaseshift replay --run RUN_DIRECTORY --case CASE_ID_OR_PREFIX [--db SQLITE_PATH]
   phaseshift report --run RUN_DIRECTORY [--format markdown,json,csv,html]
   phaseshift export --run RUN_DIRECTORY --out BUNDLE_DIRECTORY
   phaseshift verify-bundle --bundle BUNDLE_DIRECTORY
@@ -31,8 +33,40 @@ int main(int argc,char** argv){
  std::signal(SIGPIPE,SIG_IGN);
  try{
   if(argc>1&&std::string(argv[1])=="--worker")return ps::worker_entry();
-  if(argc<2||std::string(argv[1])=="--help"||std::string(argv[1])=="help"){usage();return 0;}
-  auto cmd=std::string(argv[1]);if(cmd=="--version"){std::cout<<"PHASESHIFT 1.0.0-rc1 (config schema 1, SQLite schema 6, plugin ABI 1)\n";return 0;}
+  if(argc<2){usage();return 0;}
+  if(std::string(argv[1])=="--help"||std::string(argv[1])=="help"){if(argc!=2)throw ps::Error("unexpected help arguments");usage();return 0;}
+  auto cmd=std::string(argv[1]);
+  if(cmd=="--version"||cmd=="doctor"||cmd=="--help"||cmd=="help"){
+   if(argc!=2)throw ps::Error("unexpected arguments to "+cmd);
+  }
+  if(cmd=="list"){
+   if(argc!=3)throw ps::Error("list requires exactly one category: families or algorithms");
+  }else if(cmd!="--version"&&cmd!="doctor"){
+   const std::map<std::string,std::set<std::string>> allowed={
+    {"validate",{"--config"}},{"demo",{"--out"}},
+    {"explore",{"--config","--out","--pause-after"}},{"resume",{"--run","--pause-after"}},
+    {"ablate",{"--config","--out"}},{"intervene",{"--run","--out","--hypothesis","--pairs"}},
+    {"scaling",{"--run","--out","--seeds"}},{"confirm",{"--run","--hypothesis"}},
+    {"minimize",{"--run","--hypothesis"}},{"minimize-case",{"--run","--case","--algorithm"}},
+    {"reproduce",{"--run","--case","--algorithm","--out"}},
+    {"replay",{"--run","--case","--algorithm","--expect","--db"}},
+    {"report",{"--run","--format"}},{"export",{"--run","--out"}},
+    {"verify-bundle",{"--bundle"}},{"import",{"--bundle","--out"}},
+    {"compare",{"--a","--b"}}
+   };
+   if(const auto it=allowed.find(cmd);it!=allowed.end()){
+    std::set<std::string> seen;
+    for(int i=2;i<argc;i+=2){
+     const std::string key=argv[i];
+     if(!it->second.count(key))throw ps::Error("unknown option "+key+" for "+cmd);
+     if(i+1>=argc||std::string(argv[i+1]).rfind("--",0)==0)throw ps::Error("missing value for "+key);
+     if(!seen.insert(key).second)throw ps::Error("duplicate option: "+key);
+    }
+    if(cmd=="replay"&&seen.count("--algorithm")!=seen.count("--expect"))
+     throw ps::Error("replay --algorithm and --expect must be provided together");
+   }
+  }
+  if(cmd=="--version"){std::cout<<"PHASESHIFT 1.0.0-rc1 (config schema 1, SQLite schema 7, plugin ABI 1)\n";return 0;}
   if(cmd=="doctor"){std::cout<<"CPU-only runtime available\n"<<ps::environment()<<"\n";return 0;}
   if(cmd=="list"){
    if(argc<3)throw ps::Error("expected list families or algorithms");auto part=std::string(argv[2]);
@@ -63,7 +97,7 @@ int main(int argc,char** argv){
   if(cmd=="minimize-case"){ps::minimize_failure_case(run,option("--case"),option("--algorithm"));return 0;}
   if(cmd=="reproduce"){ps::reproduce_case(run,option("--case"),option("--algorithm"),option("--out"));return 0;}
   if(cmd=="replay"){auto c=option("--case");if(c.empty())throw ps::Error("replay requires --case");
-   const auto expected=option("--expect");if(expected.empty())ps::replay(run,c);else ps::replay_expected_failure(run,c,option("--algorithm"),expected);return 0;}
+   const auto expected=option("--expect");if(expected.empty())ps::replay(run,c,option("--db"));else ps::replay_expected_failure(run,c,option("--algorithm"),expected,option("--db"));return 0;}
   if(cmd=="report"){ps::report(run);std::cout<<"Generated markdown/json/csv/html in "<<run<<"\n";return 0;}
   if(cmd=="export"){auto out=option("--out");if(out.empty())throw ps::Error("export requires --out");ps::export_run(run,out);return 0;}
   if(cmd=="verify-bundle"){auto bundle=option("--bundle");if(bundle.empty())throw ps::Error("verify-bundle requires --bundle");ps::verify_bundle(bundle);return 0;}

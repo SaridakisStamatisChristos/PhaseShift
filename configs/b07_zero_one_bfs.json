@@ -1,0 +1,12 @@
+{
+ "schema_version":1,
+ "experiment_id":"B07-zero-one-bfs-vs-dijkstra",
+ "problem_family":"graph",
+ "algorithms":["zero_one_bfs","dijkstra_heap"],
+ "seed":1707,"primary_axis":"edges",
+ "axes":{"edges":{"values":[32,64,128,256,512]}},
+ "fixed":{"vertices":64,"source":0,"weight_class":"zero_one","directed":true},
+ "search":{"method":"stratified","max_cases":5},
+ "measurement":{"paired_discovery_blocks":3,"paired_confirm_blocks":20,"warmup_iterations":1},
+ "limits":{"max_sample_wall_ms":1000,"total_wall_seconds":90}
+}

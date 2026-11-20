@@ -38,7 +38,7 @@ int main(int argc,char** argv){try{
   verify(rejected,"rejected evidence must not be promoted");
   s.hypothesis("H1","INVALIDATED","n",16,32,0.6,"invalidated after independent audit");
   s.artifact("samples.csv",ps::sha256("one"),"test-fixture");
-  verify(count(s.raw(),"PRAGMA user_version")==6,"schema version 6");
+  verify(count(s.raw(),"PRAGMA user_version")==7,"schema version 7");
   verify(count(s.raw(),"SELECT COUNT(*) FROM environments")==1,"environment registration");
   verify(count(s.raw(),"SELECT COUNT(*) FROM algorithms")==2,"algorithm registry");
   verify(count(s.raw(),"SELECT COUNT(*) FROM generators")==1,"generator registry");
@@ -68,7 +68,7 @@ int main(int argc,char** argv){try{
  sqlite3_close(raw);
  {
   ps::Store upgraded(legacy);
-  verify(count(upgraded.raw(),"PRAGMA user_version")==6,"schema 1->6 migration");
+  verify(count(upgraded.raw(),"PRAGMA user_version")==7,"schema 1->7 migration");
   verify(count(upgraded.raw(),"SELECT COUNT(*) FROM environments")==0,"new metadata initially empty");
   ps::Case c;c.family="calibration";c=ps::make_case(c);
   upgraded.add_case(c);verify(count(upgraded.raw(),"SELECT COUNT(*) FROM cases")==1,"legacy data insert after migration");
@@ -77,6 +77,6 @@ int main(int argc,char** argv){try{
   ps::Store readonly(db,true);
   verify(count(readonly.raw(),"SELECT COUNT(*) FROM samples")==3,"read-only immutable evidence open");
  }
- std::cout<<"PASS SQLite v6 provenance, nullable counters, schema-1 migration, immutable read\n";
+ std::cout<<"PASS SQLite v7 provenance, nullable counters, schema-1 migration, immutable read\n";
  return 0;
  }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}}

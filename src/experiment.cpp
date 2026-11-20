@@ -97,6 +97,13 @@ Config config_from_json(const Json& j){
  c.axis=j.s("primary_axis",c.family=="calibration"?"x":c.family=="graph"?"edges":"n");
  c.seed=static_cast<std::uint64_t>(j.i("seed",137));c.max_cases=static_cast<std::uint64_t>(j.i("max_cases",static_cast<std::int64_t>(c.max_cases)));c.max_bytes=static_cast<std::uint64_t>(j.i("max_case_bytes",64*1024*1024));c.max_queue=static_cast<std::uint64_t>(j.i("max_search_queue",10000));c.max_report_bytes=static_cast<std::uint64_t>(j.i("max_report_bytes",10000000));c.blocks=static_cast<int>(j.i("discovery_blocks",9));c.confirm_blocks=static_cast<int>(j.i("confirm_blocks",20));c.warmup=static_cast<int>(j.i("warmup",2));c.sample_ms=static_cast<int>(j.i("sample_ms",3000));c.rss_mb=static_cast<int>(j.i("rss_mb",1024));c.total_wall_s=static_cast<int>(j.i("total_wall_seconds",600));c.min_ratio=j.d("min_practical_ratio",1.2);c.exploration_fraction=j.d("exploration_fraction",c.exploration_fraction);c.minimum_batch_ms=static_cast<int>(j.i("minimum_batch_ms",c.minimum_batch_ms));c.isolation_mode=j.s("isolation_mode",c.isolation_mode);
  if(auto* m=j.get("measurement")){Json x(json_object_get(m));require_field_type(x,"isolation_mode",false);
+  if(json_object_get_type(m)!=json_type_object)throw Error("measurement must be an object");
+  static const std::set<std::string> accepted={"paired_discovery_blocks","paired_confirm_blocks","warmup_iterations","minimum_batch_ms","primary_metric","isolation_mode"};
+  json_object_object_foreach(m,key,value){(void)value;if(!accepted.count(key))throw Error(std::string("unsupported measurement key: ")+key);}
+  if(x.get("primary_metric")){
+   if(json_object_get_type(x.get("primary_metric"))!=json_type_string||x.s("primary_metric")!="wall_ns_per_operation")
+    throw Error("unsupported measurement.primary_metric; only wall_ns_per_operation is implemented");
+  }
   if(const auto* v=x.get("minimum_batch_ms");v&&json_object_get_type(v)!=json_type_int)
    throw Error("minimum_batch_ms must be integral");
   c.blocks=static_cast<int>(x.i("paired_discovery_blocks",c.blocks));c.confirm_blocks=static_cast<int>(x.i("paired_confirm_blocks",c.confirm_blocks));c.warmup=static_cast<int>(x.i("warmup_iterations",c.warmup));c.minimum_batch_ms=static_cast<int>(x.i("minimum_batch_ms",c.minimum_batch_ms));c.isolation_mode=x.s("isolation_mode",c.isolation_mode);}
@@ -119,6 +126,8 @@ Config config_from_json(const Json& j){
  if(c.method!="grid"&&c.method!="random"&&c.method!="stratified"&&c.method!="adaptive_partition")throw Error("unknown search method");
  if(c.max_cases==0||c.max_cases>20000||c.max_queue==0||c.max_queue>100000||c.max_report_bytes<4096||c.max_report_bytes>1000000000||c.max_bytes<64||c.max_bytes>64ULL*1024*1024||c.blocks<1||c.blocks>100||c.confirm_blocks<1||c.confirm_blocks>100||c.warmup<0||c.warmup>100||c.sample_ms<100||c.sample_ms>60000||c.total_wall_s<1||c.total_wall_s>86400||c.rss_mb<64||c.rss_mb>65536||!std::isfinite(c.min_ratio)||c.min_ratio<1.01||c.min_ratio>100000||!std::isfinite(c.confirmation_confidence)||c.confirmation_confidence<0.90||c.confirmation_confidence>=1.0||!std::isfinite(c.fdr_q)||c.fdr_q<0.001||c.fdr_q>0.25||c.multiple_testing!="bh_fdr"||!std::isfinite(c.exploration_fraction)||c.exploration_fraction<0.0||c.exploration_fraction>1.0||c.minimum_batch_ms<1||c.minimum_batch_ms>100|| (c.isolation_mode!="per_case"&&c.isolation_mode!="per_sample"))throw Error("configuration resource/measurement bounds invalid");
  if(!c.axes.count(c.axis))c.axis=c.axes.begin()->first;
+ if(c.family!="integer_array"&&(c.a.rfind("plugin:",0)==0||c.b.rfind("plugin:",0)==0))
+  throw Error("native plugin ABI v1 supports integer_array only");
  auto valid=algorithms_for(c.family);if(std::find(valid.begin(),valid.end(),c.a)==valid.end()&&c.a.rfind("plugin:",0)!=0)throw Error("unknown primary algorithm for family");
  if(!c.b.empty()&&std::find(valid.begin(),valid.end(),c.b)==valid.end()&&c.b.rfind("plugin:",0)!=0)throw Error("unknown secondary algorithm for family");
  std::uint64_t product=1;
@@ -518,6 +527,7 @@ void confirm(const std::string& run,const std::string& id){
   const auto evidence="Fresh seed-separated failure-status cases="+std::to_string(completed_pairs)+
       " pairs expected="+std::to_string(cfg.confirm_blocks)+"; left=ok right="+subtype+
       "; categorical status, censored timing not a speedup; no finite ratio inferred";
+  if(std::string(verdict)=="CONFIRMED")store.seal_confirmation(id,cfg.a,cfg.confirm_blocks);
   store.hypothesis(id,verdict,axis,left,right,0,evidence);
   report(run);std::cout<<verdict<<" "<<evidence<<"\n";return;
  }
@@ -588,6 +598,7 @@ void confirm(const std::string& run,const std::string& id){
    }
   }
  }
+ if(confirmed)store.seal_confirmation(id,cfg.a,cfg.confirm_blocks);
  store.hypothesis(id,confirmed?"CONFIRMED":"NOT_CONFIRMED",axis,left,right,std::abs(delta),detail.str()+(confirmed?"":"; prespecified evidence threshold not met"));
  report(run);std::cout<<store.summary().str()<<"\n";
 }
@@ -595,7 +606,10 @@ void ablate(const Config& cfg,const std::string& out){
  if(!numeric_axis(cfg.axis))throw Error("ablation requires an ordered numeric primary axis; categorical axes must be conditioned on");
  if(fs::exists(out))throw Error("ablation output already exists");
  fs::create_directories(out);
- std::ostringstream csv;csv<<"method,case_budget,discovery_cases,total_cases,raw_samples,seconds,status,left,right,localization_error,worker_cpu_seconds,completion_fraction\n";
+ std::ostringstream csv;csv<<"method,case_budget,discovery_cases,total_cases,raw_samples,seconds,status,left,right,localization_error,worker_cpu_seconds,completion_fraction,confirmed_discovery_yield,null_false_positive,witness_byte_reduction_percent\n";
+ Json scorecard;scorecard.put("fixture_family",cfg.family);scorecard.put("methods_evaluated",static_cast<std::int64_t>(4));
+ scorecard.put("budget_kind","equal requested discovery case budget; actual worker CPU and wall time separately recorded");
+ auto* evaluations=json_object_new_array();int confirmed_findings=0,null_false_positives=0;
  for(const char* name:{"grid","random","stratified","adaptive_partition"}){
   auto c=cfg;c.method=name;const auto path=out+"/"+name;
   const auto start=std::chrono::steady_clock::now();explore(c,path);
@@ -614,10 +628,44 @@ void ablate(const Config& cfg,const std::string& out){
   const auto cpu_seconds=static_cast<double>(sqlite3_column_int64(cpu,0))/1000000000.0;
   sqlite3_finalize(cpu);
   const auto complete=static_cast<double>(discovery_cases)/static_cast<double>(std::min<std::uint64_t>(c.max_cases,scheduled(c).size()));
-  csv<<name<<','<<c.max_cases<<','<<discovery_cases<<','<<summary.i("cases")<<','<<summary.i("samples")<<','<<sec<<','<<status<<','<<left<<','<<right<<','<<err<<','<<cpu_seconds<<','<<complete<<'\n';
+  const bool found=status=="CONFIRMED"||status=="MINIMIZED_CONFIRMED";
+  const bool null_control=cfg.family=="calibration"&&cfg.base.negative;
+  if(found)++confirmed_findings;
+  if(null_control&&found)++null_false_positives;
+  const auto yield=found?1:0;
+  const auto false_positive=null_control?(found?"1":"0"):"NA";
+  std::string witness_reduction="NA";
+  if(cfg.family=="calibration"&&found&&right==cfg.base.threshold&&left<right){
+   // Execute actual synthetic-witness minimization, then compare persisted
+   // original right-side bytes and the exact verified witness bytes.
+   minimize(path);
+   std::size_t original=0;
+   for(const auto& case_item:store.cases(false))if(axis_value(case_item,cfg.axis)==right){
+    if(original==0||case_item.bytes.size()<original)original=case_item.bytes.size();
+   }
+   sqlite3_stmt* witness_row=nullptr;
+   if(sqlite3_prepare_v2(store.raw(),"SELECT MIN(LENGTH(c.input)) FROM witnesses w JOIN cases c ON c.case_id=w.case_id WHERE w.status='MINIMIZED_CONFIRMED'",-1,&witness_row,nullptr)!=SQLITE_OK)
+    throw Error("ablation witness size query failed");
+   if(sqlite3_step(witness_row)==SQLITE_ROW&&sqlite3_column_type(witness_row,0)!=SQLITE_NULL&&original>0){
+    const auto smallest=static_cast<std::size_t>(sqlite3_column_int64(witness_row,0));
+    if(smallest<=original)witness_reduction=std::to_string(100.0*static_cast<double>(original-smallest)/static_cast<double>(original));
+   }
+   sqlite3_finalize(witness_row);
+  }
+  Json record;record.put("method",name);record.put("confirmed_discovery_yield",static_cast<std::int64_t>(yield));
+  record.put("null_false_positive",false_positive);record.put("witness_byte_reduction_percent",witness_reduction);
+  record.put("total_cases",summary.i("cases"));record.put("worker_cpu_seconds",cpu_seconds);
+  record.put("wall_seconds",sec);record.put("completion_fraction",complete);
+  json_object_array_add(evaluations,record.p);record.p=nullptr;
+  csv<<name<<','<<c.max_cases<<','<<discovery_cases<<','<<summary.i("cases")<<','<<summary.i("samples")<<','<<sec<<','<<status<<','<<left<<','<<right<<','<<err<<','<<cpu_seconds<<','<<complete<<','<<yield<<','<<false_positive<<','<<witness_reduction<<'\n';
  }
+ json_object_object_add(scorecard.p,"method_results",evaluations);
+ scorecard.put("confirmed_discovery_yield_sum",static_cast<std::int64_t>(confirmed_findings));
+ if(cfg.family=="calibration"&&cfg.base.negative)scorecard.put("null_false_positive_count",static_cast<std::int64_t>(null_false_positives));
+ scorecard.put("witness_reduction_limit","not measured during ablation; reported NA rather than fabricated success");
+ write_file(out+"/ablation_scorecard.json",scorecard.str());
  write_file(out+"/ablation.csv",csv.str());
- write_file(out+"/README.md","# Equal-budget search comparison\n\nRows summarize grid, random, stratified and adaptive runs with identical user-specified evaluation and wall budgets. `localization_error=NA` for real algorithms because no ground-truth boundary is assumed. Rows include actual discovery case counts to expose incomplete runs; equal requested budgets do not guarantee equal completed counts or CPU time. The worker_cpu_seconds column is the sum of sampled worker process CPU time when available, not scheduler CPU time or a hardware-normalized speedup. All raw cases and timing measurements remain in each method subdirectory.\n");
+ write_file(out+"/README.md","# Equal-budget search comparison\n\nRows summarize grid, random, stratified and adaptive runs with identical user-specified evaluation and wall budgets. `localization_error=NA` for real algorithms because no ground-truth boundary is assumed. Rows include actual discovery case counts to expose incomplete runs; equal requested budgets do not guarantee equal completed counts or CPU time. The worker_cpu_seconds column is the sum of sampled worker process CPU time when available, not scheduler CPU time or a hardware-normalized speedup. The scorecard reports positive discovery yield and deterministic-null false positives where a ground truth exists. Witness byte shrink is computed from persisted original/witness input bytes for independently minimized synthetic findings, and NA when no such reduction was run; no reduction is invented. All raw cases and timing measurements remain in each method subdirectory.\n");
  std::cout<<csv.str();
 }
 /* A performance witness is a *measured* predicate, unlike a wrong-answer
@@ -888,10 +936,10 @@ void minimize_failure_case(const std::string& run,const std::string& case_id,con
  std::cout<<"Correctness witness "<<verdict<<" case="<<result.smallest.id<<" original="<<origin.bytes.size()
           <<" bytes minimal="<<result.smallest.bytes.size()<<" bytes\n";
 }
-void replay_expected_failure(const std::string& run,const std::string& case_id,const std::string& algorithm,const std::string& expected_status){
+void replay_expected_failure(const std::string& run,const std::string& case_id,const std::string& algorithm,const std::string& expected_status,const std::string& db){
  static const std::set<std::string> accepted={"wrong_answer","timeout","out_of_memory","crashed","signaled"};
  if(!accepted.count(expected_status)||algorithm.empty())throw Error("expected-failure replay requires an explicit algorithm and supported status");
- Store store(run+"/run.sqlite");auto c=locate_case(store,case_id);
+ Store store(db.empty()?run+"/run.sqlite":db,true);auto c=locate_case(store,case_id);
  for(const auto& o:measure(c,{algorithm},1,0,3000,1024)){
   if(o.status!=expected_status)throw Error("witness failure did not reproduce: expected "+expected_status+" got "+o.status);
   std::cout<<"REPLAY EXPECTED_FAILURE status="<<o.status<<" case="<<c.id<<" input_sha256="<<sha256(c.bytes)<<"\n";
@@ -899,8 +947,8 @@ void replay_expected_failure(const std::string& run,const std::string& case_id,c
  }
  throw Error("empty witness replay");
 }
-void replay(const std::string& run,const std::string& case_id){
- Store s(run+"/run.sqlite");auto cfg=config_from_json(Json::parse(s.config()));
+void replay(const std::string& run,const std::string& case_id,const std::string& db){
+ Store s(db.empty()?run+"/run.sqlite":db,true);auto cfg=config_from_json(Json::parse(s.config()));
  for(const auto& c:s.cases())if(c.id==case_id||c.id.rfind(case_id,0)==0){
   const auto expected=oracle(c).values;const auto actual=execute(c,cfg.a).values;if(actual!=expected)throw Error("replay correctness failure");
   std::cout<<"REPLAY OK case="<<c.id<<" input_sha256="<<sha256(c.bytes)<<" algorithm="<<cfg.a<<"\n";return;
