@@ -43,3 +43,9 @@ ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=print_stacktrace=1:hal
 Research CI now uploads B07 raw timings, B10/B11 synthetic control outputs and the four-strategy negative-control ablation scorecard as named, commit-linked artifacts retained for 14 days when the jobs execute successfully. This upload step is not evidence that CI has executed yet.
 
 No merge, tag, publication or license change is implied by these repairs.
+
+## F-010 — GitHub CI process reaping race detected after publication
+
+The first GitHub-hosted GCC job on repair SHA `f006b6d90e9c0c414cbca7930cc6fbcfc497a6d6` passed 30/31 CTests; `core` failed its intentionally crashed plugin fixture with `segfault must be isolated and marked signaled`. The parent was calling `waitpid(...,WNOHANG)` once immediately after pipe EOF, then unconditionally killing an exiting worker when the exit status was not *yet* observable. The result could be labeled `infrastructure_error` or `timeout` instead of the real signal.
+
+Repair: bounded 150 ms natural child-exit grace with 5 ms polls before an explicit timeout kill, plus 12 independent fault/reap attempts in the core test. This preserves the deadline and ensures SIGSEGV remains a signaled failure rather than a benchmarkable sample. This incident invalidates any pre-repair claim of fully green remote CI; the revised SHA must pass complete GitHub-hosted GCC, Clang and sanitizer workflows before closure.
