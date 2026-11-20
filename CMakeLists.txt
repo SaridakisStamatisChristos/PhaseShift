@@ -8,7 +8,7 @@ find_package(OpenSSL REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(JSONC REQUIRED IMPORTED_TARGET json-c)
 option(PHASESHIFT_SANITIZE "Build with AddressSanitizer and UBSan" OFF)
-add_library(phaseshift_core STATIC src/core.cpp src/algorithms.cpp src/morphology.cpp src/statistics.cpp src/scaling.cpp src/minimize.cpp src/runner.cpp src/store.cpp src/experiment.cpp)
+add_library(phaseshift_core STATIC src/core.cpp src/algorithms.cpp src/morphology.cpp src/statistics.cpp src/scaling.cpp src/minimize.cpp src/reproducer.cpp src/runner.cpp src/store.cpp src/experiment.cpp)
 target_include_directories(phaseshift_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(phaseshift_core PUBLIC SQLite::SQLite3 OpenSSL::Crypto PkgConfig::JSONC ${CMAKE_DL_LIBS})
 target_compile_options(phaseshift_core PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror)
@@ -124,3 +124,9 @@ set_tests_properties(core demo negative_control synthetic_ablation
   frozen_multidimensional_boundary real_equal_budget_ablation
   categorical_axis_semantics performance_witness_fail_closed
   failure_boundary_confirmation PROPERTIES RUN_SERIAL TRUE)
+
+configure_file(tests/run_reproducer.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_reproducer.cmake @ONLY)
+add_test(NAME standalone_builtin_reproducers COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_reproducer.cmake)
+set_tests_properties(standalone_builtin_reproducers PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
+add_executable(phaseshift_reproducer_unit tests/reproducer_unit.cpp)
+target_link_libraries(phaseshift_reproducer_unit PRIVATE phaseshift_core)

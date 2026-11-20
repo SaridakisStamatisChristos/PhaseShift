@@ -2,6 +2,7 @@
 #include "phaseshift/statistics.hpp"
 #include "phaseshift/morphology.hpp"
 #include "phaseshift/minimize.hpp"
+#include "phaseshift/reproducer.hpp"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -712,6 +713,7 @@ static void minimize_performance(const std::string& run,const std::string& id,
  source.add_case(smallest);source.witness(id,smallest.id,status,record.str());
  source.hypothesis(id,status,axis,left,right,0, "Performance witness "+std::string(status)+"; independent minimization evidence in minimization.sqlite; raw observation and null outcomes retained");
  write_file(run+"/witness.json",record.str());write_file(run+"/witness.hex",hex_encode(smallest.bytes)+"\n");
+ if(cfg.a.rfind("plugin:",0)!=0)write_file(run+"/witness.cpp",standalone_reproducer(smallest,cfg.a));
  report(run);
  std::cout<<"Performance witness "<<status<<" case="<<smallest.id<<" evaluated="<<attempts<<"\n";
 }

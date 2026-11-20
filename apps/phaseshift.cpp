@@ -1,5 +1,6 @@
 #include "phaseshift/experiment.hpp"
 #include "phaseshift/scaling.hpp"
+#include "phaseshift/reproducer.hpp"
 #include <csignal>
 #include <filesystem>
 #include <iostream>
@@ -17,6 +18,7 @@ Usage:
   phaseshift confirm --run RUN_DIRECTORY [--hypothesis H1]
   phaseshift minimize --run RUN_DIRECTORY [--hypothesis H1]
   phaseshift minimize-case --run RUN_DIRECTORY --case CASE_ID --algorithm ALGORITHM
+  phaseshift reproduce --run RUN_DIRECTORY --case CASE_ID --algorithm BUILTIN --out FILE.cpp
   phaseshift replay --run RUN_DIRECTORY --case CASE_ID_OR_PREFIX
   phaseshift report --run RUN_DIRECTORY [--format markdown,json,csv,html]
   phaseshift export --run RUN_DIRECTORY --out BUNDLE_DIRECTORY
@@ -52,6 +54,7 @@ int main(int argc,char** argv){
   if(cmd=="confirm"){ps::confirm(run,option("--hypothesis","H1"));return 0;}
   if(cmd=="minimize"){ps::minimize(run,option("--hypothesis","H1"));return 0;}
   if(cmd=="minimize-case"){ps::minimize_failure_case(run,option("--case"),option("--algorithm"));return 0;}
+  if(cmd=="reproduce"){ps::reproduce_case(run,option("--case"),option("--algorithm"),option("--out"));return 0;}
   if(cmd=="replay"){auto c=option("--case");if(c.empty())throw ps::Error("replay requires --case");
    const auto expected=option("--expect");if(expected.empty())ps::replay(run,c);else ps::replay_expected_failure(run,c,option("--algorithm"),expected);return 0;}
   if(cmd=="report"){ps::report(run);std::cout<<"Generated markdown/json/csv/html in "<<run<<"\n";return 0;}
