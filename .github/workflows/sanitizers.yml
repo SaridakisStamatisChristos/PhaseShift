@@ -9,7 +9,13 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y cmake ninja-build g++ libsqlite3-dev libjson-c-dev libssl-dev pkg-config
+      - run: sudo apt-get update && sudo apt-get install -y cmake ninja-build g++ libsqlite3-dev libjson-c-dev libssl-dev pkg-config jq
       - run: cmake -S . -B build-sanitize -G Ninja -DCMAKE_BUILD_TYPE=Debug -DPHASESHIFT_SANITIZE=ON
       - run: cmake --build build-sanitize -j2
       - run: ASAN_OPTIONS=detect_leaks=1 ctest --test-dir build-sanitize --output-on-failure
+      - name: Run sanitized CLI acceptance smoke
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+          PHASESHIFT_BIN: ${{ github.workspace }}/build-sanitize/phaseshift
+        run: bash scripts/acceptance_smoke.sh
