@@ -4,7 +4,7 @@
 #include <filesystem>
 #include <iostream>
 namespace ps {int worker_entry();}
-static void usage(){std::cout<<R"(PHASESHIFT v0.1.0 (CPU-only; empirical analysis)
+static void usage(){std::cout<<R"(PHASESHIFT v1.0.0-rc1 (CPU-only; empirical analysis)
 Usage:
   phaseshift --help | --version | doctor
   phaseshift list families | algorithms
@@ -29,7 +29,7 @@ int main(int argc,char** argv){
  try{
   if(argc>1&&std::string(argv[1])=="--worker")return ps::worker_entry();
   if(argc<2||std::string(argv[1])=="--help"||std::string(argv[1])=="help"){usage();return 0;}
-  auto cmd=std::string(argv[1]);if(cmd=="--version"){std::cout<<"PHASESHIFT 0.1.0 (schema 1, plugin ABI 1)\n";return 0;}
+  auto cmd=std::string(argv[1]);if(cmd=="--version"){std::cout<<"PHASESHIFT 1.0.0-rc1 (config schema 1, SQLite schema 6, plugin ABI 1)\n";return 0;}
   if(cmd=="doctor"){std::cout<<"CPU-only runtime available\n"<<ps::environment()<<"\n";return 0;}
   if(cmd=="list"){
    if(argc<3)throw ps::Error("expected list families or algorithms");auto part=std::string(argv[2]);

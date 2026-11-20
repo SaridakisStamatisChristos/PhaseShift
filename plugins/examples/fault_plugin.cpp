@@ -17,6 +17,7 @@ static int validate(ps_input_v1) {
 #endif
 }
 static void release(unsigned char* data,size_t){std::free(data);}
+static unsigned int calls=0;
 static int run(ps_input_v1 in,ps_output_v1* out) {
 #if FAULT_MODE == 1
  std::raise(SIGSEGV);
@@ -31,11 +32,22 @@ static int run(ps_input_v1 in,ps_output_v1* out) {
  throw std::runtime_error("intentional plugin exception");
 #elif FAULT_MODE == 6
  throw std::bad_alloc();
+#elif FAULT_MODE == 9
+ std::this_thread::sleep_for(std::chrono::milliseconds(450));
+ out->data=static_cast<unsigned char*>(std::malloc(in.len?in.len:1));
+ if(!out->data)return PHASESHIFT_PLUGIN_OUT_OF_MEMORY;
+ out->len=in.len;out->release=&release;
+ if(in.len)std::memcpy(out->data,in.data,in.len);
+ return PHASESHIFT_PLUGIN_OK;
 #else
  out->data=static_cast<unsigned char*>(std::malloc(in.len?in.len:1));
  if(!out->data)return PHASESHIFT_PLUGIN_OUT_OF_MEMORY;
  out->len=in.len;out->release=&release;
  if(in.len)std::memcpy(out->data,in.data,in.len);
+#if FAULT_MODE == 8
+ ++calls;
+ if(calls==3&&in.len>=8)out->data[0]^=1u; /* bad intermediate sample, valid final */
+#endif
  return PHASESHIFT_PLUGIN_OK;
 #endif
  return PHASESHIFT_PLUGIN_ERROR;

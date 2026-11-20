@@ -14,6 +14,78 @@ std::uint64_t complexity(const Case& c){
 }
 auto ordering(const Case& c){return std::pair{c.bytes.size(),complexity(c)};}
 void add_candidate(std::vector<std::pair<Case,std::string>>& out,const Case& c,const std::string& why){out.emplace_back(c,why);}
+/* Literal v3 cases preserve the exact serialized bytes after structural
+ * ddmin. They have a separately versioned generator identity, so no legacy
+ * v1/v2 PRNG case can ever replay as a different reduced input. */
+Case literal_array(const Case& parent,const std::vector<std::int64_t>& values){
+ Case out=parent;out.generator_version=3;out.distribution="literal";
+ out.n=static_cast<std::int64_t>(values.size());out.k=std::min(out.k,out.n);
+ out.unique_count=0;out.duplicate_ppm=-1;
+ out.literal_hex=hex_encode(encode_values(values));return out;
+}
+Case literal_graph(const Case& parent,const std::vector<std::int64_t>& data){
+ Case out=parent;out.generator_version=3;out.directed=true;
+ out.connectivity="none";out.community_count=1;out.density_ppm=-1;
+ out.vertices=data[0];out.edges=data[1];out.source=data[2];
+ out.literal_hex=hex_encode(encode_values(data));return out;
+}
+void structural_proposals(const Case& initial,std::vector<std::pair<Case,std::string>>& out){
+ if(initial.bytes.size()>64ULL*1024 || initial.bytes.size()%8)return;
+ const auto data=decode_values(initial.bytes);
+ if(initial.family=="integer_array"||initial.family=="topk"){
+  const auto n=data.size();if(n<=1)return;
+  std::vector<std::size_t> chunks={n/2,n/4,1};
+  chunks.erase(std::remove(chunks.begin(),chunks.end(),0),chunks.end());
+  chunks.erase(std::unique(chunks.begin(),chunks.end()),chunks.end());
+  std::size_t emitted=0;
+  for(const auto chunk:chunks){
+   for(std::size_t offset=0;offset<n&&emitted<80;offset+=chunk){
+    const auto end=std::min(n,offset+chunk);
+    std::vector<std::int64_t> result;result.reserve(n-(end-offset));
+    result.insert(result.end(),data.begin(),data.begin()+static_cast<std::ptrdiff_t>(offset));
+    result.insert(result.end(),data.begin()+static_cast<std::ptrdiff_t>(end),data.end());
+    add_candidate(out,literal_array(initial,result),"ddmin_delete_array_span");emitted++;
+   }
+  }
+  return;
+ }
+ if(initial.family!="graph"||!initial.directed||data.size()<3||data[1]<0||
+    data.size()!=3+static_cast<std::size_t>(data[1])*3)return;
+ const auto count=static_cast<std::size_t>(data[1]);
+ std::vector<std::size_t> chunks={count/2,count/4,1};
+ chunks.erase(std::remove(chunks.begin(),chunks.end(),0),chunks.end());
+ chunks.erase(std::unique(chunks.begin(),chunks.end()),chunks.end());
+ std::size_t emitted=0;
+ for(const auto chunk:chunks)for(std::size_t offset=0;offset<count&&emitted<80;offset+=chunk){
+  const auto end=std::min(count,offset+chunk);
+  std::vector<std::int64_t> remaining{data[0],static_cast<std::int64_t>(count-(end-offset)),data[2]};
+  remaining.reserve(3+3*(count-(end-offset)));
+  for(std::size_t e=0;e<count;e++)if(e<offset||e>=end){
+   remaining.push_back(data[3+3*e]);remaining.push_back(data[4+3*e]);remaining.push_back(data[5+3*e]);
+  }
+  add_candidate(out,literal_graph(initial,remaining),"ddmin_delete_graph_arcs");emitted++;
+ }
+ /* Removing any non-source vertex renumbers every surviving arc. This
+    preserves the chosen source and serializes an independently replayable
+    directed graph; no dangling vertex IDs are permitted. */
+ if(data[0]>1){
+  for(std::int64_t drop=0;drop<data[0]&&emitted<90;drop++){
+   if(drop==data[2])continue;
+   std::vector<std::int64_t> remaining{data[0]-1,0,data[2]-(data[2]>drop?1:0)};
+   for(std::size_t e=0;e<count;e++){
+    auto from=data[3+3*e],to=data[4+3*e];
+    if(from==drop||to==drop)continue;
+    remaining.push_back(from-(from>drop?1:0));
+    remaining.push_back(to-(to>drop?1:0));
+    remaining.push_back(data[5+3*e]);
+    remaining[1]++;
+   }
+   add_candidate(out,literal_graph(initial,remaining),"ddmin_remove_and_renumber_graph_vertex");
+   emitted++;
+  }
+ }
+
+}
 std::vector<std::pair<Case,std::string>> proposals(const Case& initial){
  std::vector<std::pair<Case,std::string>> out;
  auto edit=[&](const std::string& why,auto fn){auto candidate=initial;fn(candidate);add_candidate(out,candidate,why);};
@@ -44,6 +116,7 @@ std::vector<std::pair<Case,std::string>> proposals(const Case& initial){
  }else if(initial.family=="calibration"){
   if(initial.x>0)edit("shrink_calibration_x",[](Case& c){c.x=0;});
  }
+ structural_proposals(initial,out);
  return out;
 }
 }

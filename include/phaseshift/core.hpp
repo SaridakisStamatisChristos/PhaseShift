@@ -42,7 +42,7 @@ std::string now_utc();
 void write_file(const std::string& path,const std::string& content);
 std::string read_file(const std::string& path);
 struct Case {
- std::string family,distribution="uniform",weight_class="general";
+ std::string family,distribution="uniform",weight_class="general",literal_hex;
  std::uint64_t seed=0;
  std::int64_t generator_version=2;
  std::int64_t value_range=1000000,unique_count=0,run_length=17;

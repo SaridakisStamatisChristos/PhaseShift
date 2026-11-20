@@ -67,18 +67,45 @@ Bytes encode_values(const std::vector<std::int64_t>& v){Bytes b;b.reserve(v.size
 std::vector<std::int64_t> decode_values(const Bytes& b){if(b.size()%8)throw Error("invalid little-endian int64 payload");std::vector<std::int64_t> v;v.reserve(b.size()/8);for(std::size_t i=0;i<b.size();i+=8){std::uint64_t x=0;for(int j=0;j<8;j++)x|=static_cast<std::uint64_t>(b[i+static_cast<std::size_t>(j)])<<(8*j);v.push_back(static_cast<std::int64_t>(x));}return v;}
 std::string case_params(const Case& c){
  Json j;j.put("distribution",c.distribution);j.put("weight_class",c.weight_class);j.put("x",c.x);j.put("n",c.n);j.put("k",c.k);j.put("vertices",c.vertices);j.put("edges",c.edges);j.put("source",c.source);j.put("threshold",c.threshold);j.put("negative",c.negative);
- if(c.generator_version==2){
+ if(c.generator_version>=2){
   j.put("generator_version",c.generator_version);
   j.put("value_range",c.value_range);j.put("unique_count",c.unique_count);j.put("run_length",c.run_length);
   j.put("duplicate_ppm",c.duplicate_ppm);j.put("disorder_ppm",c.disorder_ppm);j.put("sign_ppm",c.sign_ppm);
   j.put("density_ppm",c.density_ppm);j.put("degree_skew_ppm",c.degree_skew_ppm);
   j.put("community_count",c.community_count);j.put("max_weight",c.max_weight);
   j.put("directed",c.directed);j.put("connectivity",c.connectivity);
+  if(c.generator_version==3)j.put("literal_hex",c.literal_hex);
  }
  return j.str();
 }
 void validate_case_schema(const Case& c,std::uint64_t max_bytes){
- if(c.generator_version!=1&&c.generator_version!=2)throw Error("invalid generator version");
+ if(c.generator_version!=1&&c.generator_version!=2&&c.generator_version!=3)throw Error("invalid generator version");
+ /* An explicitly replayable, byte-literal v3 witness is permitted ONLY for
+    schema-aware minimization. This is not a morphology PRNG generator. The
+    64 KiB cap prevents unbounded hexadecimal witness metadata in SQLite. */
+ if(c.generator_version==3){
+  const auto limit=std::min<std::uint64_t>(max_bytes,64ULL*1024);
+  if(c.literal_hex.size()>2*limit||c.literal_hex.size()%2)throw Error("literal v3 witness input exceeds bound or has odd hex length");
+  const auto bytes=hex_decode(c.literal_hex);
+  if(bytes.size()%8)throw Error("literal v3 input is not an int64 stream");
+  if(c.family=="integer_array"||c.family=="topk"){
+   if(c.distribution!="literal"||c.n<0||c.n>50000||bytes.size()!=static_cast<std::uint64_t>(c.n)*8||
+      (c.family=="topk"&&(c.k<0||c.k>c.n)))throw Error("literal array shape or Top-K contract invalid");
+   return;
+  }
+  if(c.family=="graph"){
+   const auto data=decode_values(bytes);
+   if(!c.directed||data.size()<3||c.vertices<1||c.vertices>4096||c.source<0||c.source>=c.vertices||
+      c.edges<0||c.edges>200000||data[0]!=c.vertices||data[1]!=c.edges||data[2]!=c.source||
+      data.size()!=3+static_cast<std::size_t>(c.edges)*3)throw Error("literal graph header/shape invalid");
+   for(std::size_t i=3;i<data.size();i+=3)if(data[i]<0||data[i]>=c.vertices||
+      data[i+1]<0||data[i+1]>=c.vertices||data[i+2]<0||data[i+2]>1000000||
+      (c.weight_class=="zero_one"&&data[i+2]>1))throw Error("literal graph contains invalid arc/weight");
+   if(c.weight_class!="general"&&c.weight_class!="zero_one")throw Error("literal graph weight class invalid");
+   return;
+  }
+  throw Error("literal v3 witness only supports arrays, Top-K and directed graphs");
+ }
  if(c.family=="calibration"){
   if(c.x<0||c.x>1000000||c.threshold<1||c.threshold>1000000||max_bytes<24)throw Error("invalid calibration schema/budget");
   return;
@@ -248,6 +275,11 @@ static void synthesize_v2(Case& c,std::vector<std::int64_t>& v,std::uint64_t& st
 
 Case make_case(const Case& params,std::uint64_t max_bytes){
  Case c=params;validate_case_schema(c,max_bytes);std::vector<std::int64_t> v;std::uint64_t state=c.seed;
+ if(c.generator_version==3){
+  c.bytes=hex_decode(c.literal_hex);
+  c.id=sha256(std::string("ps-case-v1|")+c.family+"|generator-v3|"+case_params(c)+"|"+std::to_string(c.seed)+"|"+hex_encode(c.bytes));
+  return c;
+ }
  if(c.generator_version!=1&&c.generator_version!=2)throw Error("unsupported generator version");
  if(c.generator_version==2)synthesize_v2(c,v,state,max_bytes);
  else if(c.family=="calibration"){
@@ -305,6 +337,7 @@ Case decode_case(const std::string& family,const std::string& params,std::uint64
  c.density_ppm=j.i("density_ppm",-1);c.degree_skew_ppm=j.i("degree_skew_ppm",0);
  c.community_count=j.i("community_count",1);c.max_weight=j.i("max_weight",100);
  c.directed=j.b("directed",true);c.connectivity=j.s("connectivity","none");
+ c.literal_hex=j.s("literal_hex","");
  c=make_case(c);if(c.bytes!=bytes)throw Error("case regeneration digest/bytes mismatch");return c;
 }
 std::string now_utc(){std::time_t t=std::time(nullptr);std::tm utc{};gmtime_r(&t,&utc);char b[32];std::strftime(b,sizeof(b),"%Y-%m-%dT%H:%M:%SZ",&utc);return b;}

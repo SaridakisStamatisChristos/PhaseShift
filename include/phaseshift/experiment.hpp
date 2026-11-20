@@ -7,7 +7,8 @@ struct Config {
  std::map<std::string,std::vector<std::string>> axes;
  std::uint64_t seed=137,max_cases=128,max_bytes=64ULL*1024*1024,max_queue=10000,max_report_bytes=10000000;
  int blocks=9,confirm_blocks=20,warmup=2,sample_ms=3000,rss_mb=1024,total_wall_s=600;
- double min_ratio=1.20;
+ double min_ratio=1.20,confirmation_confidence=0.99,fdr_q=0.05;
+ std::string multiple_testing="bh_fdr";
 };
 Config parse_config(const std::string& path);
 Config config_from_json(const Json& json);

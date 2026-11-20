@@ -70,7 +70,7 @@ static Result run_plugin(const Case& c,const std::string& path){
  return {decode_values(bytes),0};
 }
 static Result run_any(const Case& c,const std::string& algorithm){if(algorithm.rfind("plugin:",0)==0)return run_plugin(c,algorithm.substr(7));return execute(c,algorithm);}
-static Json measure_one(const Case& c,const std::string& algorithm,int block,int warmup,int order_position,std::uint64_t order_seed){
+static Json measure_one(const Case& c,const std::string& algorithm,int block,int warmup,int order_position,std::uint64_t order_seed,int sample_ms){
  Json v;v.put("algorithm",algorithm);v.put("block",static_cast<std::int64_t>(block));v.put("status","ok");
  v.put("order_position",static_cast<std::int64_t>(order_position));
  {std::ostringstream h;h<<std::hex<<order_seed;v.put("order_seed",h.str());}
@@ -83,17 +83,36 @@ static Json measure_one(const Case& c,const std::string& algorithm,int block,int
    if(w.values!=expected){v.put("status","wrong_answer");v.put("detail","warmup output disagrees with oracle");return v;}
    observable_sink=observable_sink^w.work;
   }
+  /* Retain each independently executed output until after the clock stops.
+     Per-invocation oracle validation therefore cannot pollute the measured
+     algorithm latency, and a bad *intermediate* iteration cannot be hidden
+     by a correct final iteration. Output retention uses a strict 16 MiB cap;
+     unlike discarding each result, this can alter allocator/cache behavior,
+     so the protocol records the actual batch size. */
+  const auto output_bytes=expected.size()*sizeof(std::int64_t)+sizeof(Result);
+  const std::uint64_t max_iterations=std::max<std::uint64_t>(1,
+    std::min<std::uint64_t>(2048,16ULL*1024*1024/std::max<std::size_t>(output_bytes,1)));
   std::uint64_t iterations=1,ns=0;Result last;
   struct rusage before{},after{};int cpu_valid=0;
   for(;;){
+   std::vector<Result> completed;completed.reserve(static_cast<std::size_t>(iterations));
    const bool cpu_before=getrusage(RUSAGE_SELF,&before)==0;
    const auto start=std::chrono::steady_clock::now();
-   for(std::uint64_t i=0;i<iterations;i++){last=run_any(c,algorithm);observable_sink=observable_sink^last.work;}
+   for(std::uint64_t i=0;i<iterations;i++)completed.push_back(run_any(c,algorithm));
    const auto stop=std::chrono::steady_clock::now();
-   if(last.values!=expected){v.put("status","wrong_answer");v.put("detail","timed-batch final output disagrees with oracle; timings excluded");return v;}
-   cpu_valid=cpu_before&&getrusage(RUSAGE_SELF,&after)==0;ns=static_cast<std::uint64_t>(std::max<std::int64_t>(1,std::chrono::duration_cast<std::chrono::nanoseconds>(stop-start).count()));
-   if(ns>=1000000||iterations>=2048||ns>500000000)break;
-   iterations=std::min<std::uint64_t>(2048,iterations*2);
+   const bool cpu_after=cpu_before&&getrusage(RUSAGE_SELF,&after)==0;
+   for(const auto& observed:completed){
+    observable_sink=observable_sink^observed.work;
+    if(observed.values!=expected){v.put("status","wrong_answer");v.put("detail","one or more timed-batch outputs disagree with the oracle; timings excluded");return v;}
+   }
+   last=std::move(completed.back());
+   cpu_valid=cpu_after;
+   ns=static_cast<std::uint64_t>(std::max<std::int64_t>(1,std::chrono::duration_cast<std::chrono::nanoseconds>(stop-start).count()));
+   if(ns>static_cast<std::uint64_t>(sample_ms)*1000000ULL){
+   v.put("status","timeout");v.put("detail","measured operation exceeded max_sample_wall_ms; censored, not a valid timing");return v;
+  }
+  if(ns>=1000000||iterations>=max_iterations||ns>500000000)break;
+   iterations=std::min<std::uint64_t>(max_iterations,iterations*2);
   }
   if(cpu_valid){
    const auto before_us=static_cast<std::int64_t>(before.ru_utime.tv_sec)*1000000+before.ru_utime.tv_usec+
@@ -116,7 +135,8 @@ Json worker_measure(const Json& request,const Bytes& bytes){
  auto* a=request.get("algorithms");if(!a||json_object_get_type(a)!=json_type_array||json_object_array_length(a)==0||json_object_array_length(a)>2)throw Error("invalid algorithm list");
  std::vector<std::string> names;for(std::size_t i=0;i<json_object_array_length(a);i++){auto* e=json_object_array_get_idx(a,i);if(json_object_get_type(e)!=json_type_string)throw Error("algorithm name must be string");names.emplace_back(json_object_get_string(e));}
  const int blocks=static_cast<int>(request.i("blocks",9)),warmup=static_cast<int>(request.i("warmup",2));
- if(blocks<1||blocks>100||warmup<0||warmup>100)throw Error("invalid measurement bounds");
+ const int sample_ms=static_cast<int>(request.i("sample_ms",3000));
+ if(blocks<1||blocks>100||warmup<0||warmup>100||sample_ms<100||sample_ms>60000)throw Error("invalid measurement bounds");
  Json answer;auto* list=json_object_new_array();
  for(int i=0;i<blocks;i++){
   const std::uint64_t order_seed=c.seed^static_cast<std::uint64_t>(0xbdb8244b79c7ULL)^
@@ -128,7 +148,7 @@ Json worker_measure(const Json& request,const Bytes& bytes){
    else order={names[1],names[0],names[0],names[1]};
   }
   for(std::size_t position=0;position<order.size();position++){
-   auto v=measure_one(c,order[position],i,warmup,static_cast<int>(position),order_seed);
+   auto v=measure_one(c,order[position],i,warmup,static_cast<int>(position),order_seed,sample_ms);
    json_object_array_add(list,v.p);v.p=nullptr;
   }
  }
@@ -198,7 +218,7 @@ std::vector<Observation> measure(const Case& c,const std::vector<std::string>& n
  const int flags=fcntl(in[1],F_GETFL,0);if(flags>=0)fcntl(in[1],F_SETFL,flags|O_NONBLOCK);
  std::vector<Observation> result;
  try{
-  Json req;req.put("protocol",static_cast<std::int64_t>(1));req.put("family",c.family);req.put("params",case_params(c));req.put("seed",static_cast<std::int64_t>(c.seed));req.put("bytes_length",static_cast<std::int64_t>(c.bytes.size()));req.put("bytes_sha256",sha256(c.bytes));req.put("blocks",static_cast<std::int64_t>(blocks));req.put("warmup",static_cast<std::int64_t>(warmup));
+  Json req;req.put("protocol",static_cast<std::int64_t>(1));req.put("family",c.family);req.put("params",case_params(c));req.put("seed",static_cast<std::int64_t>(c.seed));req.put("bytes_length",static_cast<std::int64_t>(c.bytes.size()));req.put("bytes_sha256",sha256(c.bytes));req.put("blocks",static_cast<std::int64_t>(blocks));req.put("warmup",static_cast<std::int64_t>(warmup));req.put("sample_ms",static_cast<std::int64_t>(timeout_ms));
   auto* arr=json_object_new_array();for(const auto& name:names)json_object_array_add(arr,json_object_new_string(name.c_str()));json_object_object_add(req.p,"algorithms",arr);
   /* Allow one per-sample deadline per operation, plus bounded IPC transfer. */
   const auto operation_count=static_cast<std::int64_t>(blocks)*static_cast<std::int64_t>(names.size()==2?4:1);

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(PHASESHIFT VERSION 0.1.0 LANGUAGES C CXX)
+project(PHASESHIFT VERSION 1.0.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -50,7 +50,7 @@ configure_file(tests/run_resume.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_resume.
 add_test(NAME restart_resume COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_resume.cmake)
 set_tests_properties(restart_resume PROPERTIES TIMEOUT 60)
 
-foreach(mode IN ITEMS 1 2 3 4 5 6 7)
+foreach(mode IN ITEMS 1 2 3 4 5 6 7 8 9)
   add_library(phaseshift_fault_${mode} SHARED plugins/examples/fault_plugin.cpp)
   target_include_directories(phaseshift_fault_${mode} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
   target_compile_definitions(phaseshift_fault_${mode} PRIVATE FAULT_MODE=${mode})
@@ -92,3 +92,35 @@ add_executable(phaseshift_performance_witness_tests tests/performance_witness.cp
 target_link_libraries(phaseshift_performance_witness_tests PRIVATE phaseshift_core)
 add_test(NAME performance_witness_fail_closed COMMAND phaseshift_performance_witness_tests ${CMAKE_CURRENT_BINARY_DIR}/ctest_performance_witness)
 set_tests_properties(performance_witness_fail_closed PROPERTIES TIMEOUT 120)
+
+add_executable(phaseshift_ipc_negative_tests tests/ipc_negative.cpp)
+add_test(NAME malformed_worker_ipc COMMAND phaseshift_ipc_negative_tests $<TARGET_FILE:phaseshift_worker>)
+set_tests_properties(malformed_worker_ipc PROPERTIES TIMEOUT 25)
+add_executable(phaseshift_adversarial_algorithms_tests tests/adversarial_algorithms.cpp)
+target_link_libraries(phaseshift_adversarial_algorithms_tests PRIVATE phaseshift_core)
+add_test(NAME adversarial_algorithm_campaign COMMAND phaseshift_adversarial_algorithms_tests)
+set_tests_properties(adversarial_algorithm_campaign PROPERTIES TIMEOUT 120)
+add_library(phaseshift_threshold_resource SHARED plugins/examples/threshold_fault.c)
+target_include_directories(phaseshift_threshold_resource PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_definitions(phaseshift_threshold_resource PRIVATE THRESHOLD_MODE=1)
+set_target_properties(phaseshift_threshold_resource PROPERTIES PREFIX "" OUTPUT_NAME "threshold_resource")
+configure_file(tests/run_failure_boundaries.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_failure_boundaries.cmake @ONLY)
+add_test(NAME failure_boundary_confirmation COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_failure_boundaries.cmake)
+set_tests_properties(failure_boundary_confirmation PROPERTIES TIMEOUT 120)
+add_executable(phaseshift_literal_witness_tests tests/literal_witness.cpp)
+target_link_libraries(phaseshift_literal_witness_tests PRIVATE phaseshift_core)
+add_test(NAME literal_structural_witness COMMAND phaseshift_literal_witness_tests)
+set_tests_properties(literal_structural_witness PROPERTIES TIMEOUT 40)
+add_executable(phaseshift_statistical_calibration_tests tests/statistical_calibration.cpp)
+target_link_libraries(phaseshift_statistical_calibration_tests PRIVATE phaseshift_core)
+add_test(NAME statistical_calibration COMMAND phaseshift_statistical_calibration_tests)
+set_tests_properties(statistical_calibration PROPERTIES TIMEOUT 35)
+
+# All tests which actually time worker algorithms must have one measurement
+# lane per machine. Parallel CTest would otherwise introduce unrecorded
+# competition and make noise/error-status tests spuriously flaky.
+set_tests_properties(core demo negative_control synthetic_ablation
+  restart_resume evidence_bundle scaling_fingerprint failure_witness
+  frozen_multidimensional_boundary real_equal_budget_ablation
+  categorical_axis_semantics performance_witness_fail_closed
+  failure_boundary_confirmation PROPERTIES RUN_SERIAL TRUE)

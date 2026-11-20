@@ -73,7 +73,7 @@ static bool numeric_axis(const std::string& s){
  return supported.count(s)>0;
 }
 static Json config_json(const Config& c){
- Json j;j.put("schema_version",static_cast<std::int64_t>(1));j.put("experiment_id",c.experiment_id);j.put("problem_family",c.family);j.put("algorithm_a",c.a);j.put("algorithm_b",c.b);j.put("search_method",c.method);j.put("primary_axis",c.axis);j.put("seed",static_cast<std::int64_t>(c.seed));j.put("max_cases",static_cast<std::int64_t>(c.max_cases));j.put("max_case_bytes",static_cast<std::int64_t>(c.max_bytes));j.put("max_search_queue",static_cast<std::int64_t>(c.max_queue));j.put("max_report_bytes",static_cast<std::int64_t>(c.max_report_bytes));j.put("discovery_blocks",static_cast<std::int64_t>(c.blocks));j.put("confirm_blocks",static_cast<std::int64_t>(c.confirm_blocks));j.put("warmup",static_cast<std::int64_t>(c.warmup));j.put("sample_ms",static_cast<std::int64_t>(c.sample_ms));j.put("rss_mb",static_cast<std::int64_t>(c.rss_mb));j.put("total_wall_seconds",static_cast<std::int64_t>(c.total_wall_s));j.put("min_practical_ratio",c.min_ratio);j.put("base_params",case_params(c.base));
+ Json j;j.put("schema_version",static_cast<std::int64_t>(1));j.put("experiment_id",c.experiment_id);j.put("problem_family",c.family);j.put("algorithm_a",c.a);j.put("algorithm_b",c.b);j.put("search_method",c.method);j.put("primary_axis",c.axis);j.put("seed",static_cast<std::int64_t>(c.seed));j.put("max_cases",static_cast<std::int64_t>(c.max_cases));j.put("max_case_bytes",static_cast<std::int64_t>(c.max_bytes));j.put("max_search_queue",static_cast<std::int64_t>(c.max_queue));j.put("max_report_bytes",static_cast<std::int64_t>(c.max_report_bytes));j.put("discovery_blocks",static_cast<std::int64_t>(c.blocks));j.put("confirm_blocks",static_cast<std::int64_t>(c.confirm_blocks));j.put("warmup",static_cast<std::int64_t>(c.warmup));j.put("sample_ms",static_cast<std::int64_t>(c.sample_ms));j.put("rss_mb",static_cast<std::int64_t>(c.rss_mb));j.put("total_wall_seconds",static_cast<std::int64_t>(c.total_wall_s));j.put("min_practical_ratio",c.min_ratio);j.put("confirmation_confidence",c.confirmation_confidence);j.put("fdr_q",c.fdr_q);j.put("multiple_testing",c.multiple_testing);j.put("base_params",case_params(c.base));
  Json axes;for(const auto& [name,values]:c.axes){auto* arr=json_object_new_array();for(const auto& val:values)json_object_array_add(arr,json_object_new_string(val.c_str()));json_object_object_add(axes.p,name.c_str(),arr);}j.put("axes",std::move(axes));return j;
 }
 Config config_from_json(const Json& j){
@@ -86,7 +86,7 @@ Config config_from_json(const Json& j){
  c.axis=j.s("primary_axis",c.family=="calibration"?"x":c.family=="graph"?"edges":"n");
  c.seed=static_cast<std::uint64_t>(j.i("seed",137));c.max_cases=static_cast<std::uint64_t>(j.i("max_cases",static_cast<std::int64_t>(c.max_cases)));c.max_bytes=static_cast<std::uint64_t>(j.i("max_case_bytes",64*1024*1024));c.max_queue=static_cast<std::uint64_t>(j.i("max_search_queue",10000));c.max_report_bytes=static_cast<std::uint64_t>(j.i("max_report_bytes",10000000));c.blocks=static_cast<int>(j.i("discovery_blocks",9));c.confirm_blocks=static_cast<int>(j.i("confirm_blocks",20));c.warmup=static_cast<int>(j.i("warmup",2));c.sample_ms=static_cast<int>(j.i("sample_ms",3000));c.rss_mb=static_cast<int>(j.i("rss_mb",1024));c.total_wall_s=static_cast<int>(j.i("total_wall_seconds",600));c.min_ratio=j.d("min_practical_ratio",1.2);
  if(auto* m=j.get("measurement")){Json x(json_object_get(m));c.blocks=static_cast<int>(x.i("paired_discovery_blocks",c.blocks));c.confirm_blocks=static_cast<int>(x.i("paired_confirm_blocks",c.confirm_blocks));c.warmup=static_cast<int>(x.i("warmup_iterations",c.warmup));}
- if(auto* d=j.get("detection")){Json x(json_object_get(d));c.min_ratio=x.d("min_practical_ratio",c.min_ratio);}
+ if(auto* d=j.get("detection")){Json x(json_object_get(d));c.min_ratio=x.d("min_practical_ratio",c.min_ratio);c.confirmation_confidence=x.d("confirmation_confidence",c.confirmation_confidence);c.fdr_q=x.d("fdr_q",c.fdr_q);c.multiple_testing=x.s("multiple_testing",c.multiple_testing);}
  if(auto* l=j.get("limits")){Json x(json_object_get(l));c.total_wall_s=static_cast<int>(x.i("total_wall_seconds",c.total_wall_s));c.max_cases=static_cast<std::uint64_t>(x.i("max_cases",static_cast<std::int64_t>(c.max_cases)));c.max_bytes=static_cast<std::uint64_t>(x.i("max_case_bytes",static_cast<std::int64_t>(c.max_bytes)));c.rss_mb=static_cast<int>(x.i("max_worker_rss_mb",c.rss_mb));c.sample_ms=static_cast<int>(x.i("max_sample_wall_ms",c.sample_ms));c.max_queue=static_cast<std::uint64_t>(x.i("max_search_queue",static_cast<std::int64_t>(c.max_queue)));c.max_report_bytes=static_cast<std::uint64_t>(x.i("max_report_bytes",static_cast<std::int64_t>(c.max_report_bytes)));}
  c.base.family=c.family;c.base.seed=c.seed;
  if(auto* base=j.get("base_params")){Json p=json_object_get_type(base)==json_type_string?Json::parse(json_object_get_string(base)):Json(json_object_get(base));
@@ -103,7 +103,7 @@ Config config_from_json(const Json& j){
  }
  if(c.axes.empty())c.axes[c.axis]={"0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15"};
  if(c.method!="grid"&&c.method!="random"&&c.method!="stratified"&&c.method!="adaptive_partition")throw Error("unknown search method");
- if(c.max_cases==0||c.max_cases>20000||c.max_queue==0||c.max_queue>100000||c.max_report_bytes<4096||c.max_report_bytes>1000000000||c.max_bytes<64||c.max_bytes>64ULL*1024*1024||c.blocks<1||c.blocks>100||c.confirm_blocks<1||c.confirm_blocks>100||c.warmup<0||c.warmup>100||c.sample_ms<100||c.sample_ms>60000||c.total_wall_s<1||c.total_wall_s>86400||c.rss_mb<64||c.rss_mb>65536||!std::isfinite(c.min_ratio)||c.min_ratio<1.01||c.min_ratio>100000)throw Error("configuration resource/measurement bounds invalid");
+ if(c.max_cases==0||c.max_cases>20000||c.max_queue==0||c.max_queue>100000||c.max_report_bytes<4096||c.max_report_bytes>1000000000||c.max_bytes<64||c.max_bytes>64ULL*1024*1024||c.blocks<1||c.blocks>100||c.confirm_blocks<1||c.confirm_blocks>100||c.warmup<0||c.warmup>100||c.sample_ms<100||c.sample_ms>60000||c.total_wall_s<1||c.total_wall_s>86400||c.rss_mb<64||c.rss_mb>65536||!std::isfinite(c.min_ratio)||c.min_ratio<1.01||c.min_ratio>100000||!std::isfinite(c.confirmation_confidence)||c.confirmation_confidence<0.90||c.confirmation_confidence>=1.0||!std::isfinite(c.fdr_q)||c.fdr_q<0.001||c.fdr_q>0.25||c.multiple_testing!="bh_fdr")throw Error("configuration resource/measurement bounds invalid");
  if(!c.axes.count(c.axis))c.axis=c.axes.begin()->first;
  auto valid=algorithms_for(c.family);if(std::find(valid.begin(),valid.end(),c.a)==valid.end()&&c.a.rfind("plugin:",0)!=0)throw Error("unknown primary algorithm for family");
  if(!c.b.empty()&&std::find(valid.begin(),valid.end(),c.b)==valid.end()&&c.b.rfind("plugin:",0)!=0)throw Error("unknown secondary algorithm for family");
@@ -239,10 +239,47 @@ static std::string axis_label(const Case& c,const std::string& axis){
 struct Detection {
  std::int64_t left=0,right=0;
  double effect=0;
- std::string kind,frozen_params,scope;
+ std::string kind,frozen_params,scope,failure_status;
 };
 static std::optional<Detection> detect(Store& store,const Config& cfg){
  if(!numeric_axis(cfg.axis))return {};
+ /* Structured failure boundaries use censored/status observations, not a
+    fabricated large runtime. The candidate must be persistently valid on
+    the lower bin and consistently fail in the adjacent upper bin. */
+ if(cfg.family!="calibration"){
+  struct State {std::string status;Case case_params;};
+  std::map<std::string,std::map<std::int64_t,State>> categories;
+  for(const auto& c:store.cases(false)){
+   const auto rows=store.observations(c.id,false);
+   std::size_t count=0;std::string common;bool consistent=true;
+   for(const auto& o:rows)if(o.algorithm==cfg.a){
+    if(count++==0)common=o.status;
+    else if(o.status!=common)consistent=false;
+   }
+   if(!consistent||count<static_cast<std::size_t>(cfg.blocks)||common.empty())continue;
+   const auto key=scope_key(c,cfg);const auto x=axis_value(c,cfg.axis);
+   auto& states=categories[key];
+   auto it=states.find(x);
+   if(it!=states.end()&&it->second.status!=common)states.erase(it);
+   else states.emplace(x,State{common,c});
+  }
+  for(const auto& [scope,states]:categories){
+   for(auto it=std::next(states.begin(),states.empty()?0:1);it!=states.end();++it){
+    const auto previous=std::prev(it);
+    if(previous->second.status!="ok")continue;
+    const auto& failure=it->second.status;
+    const auto is_correctness=failure=="wrong_answer"||failure=="signaled"||failure=="crashed";
+    const auto is_resource=failure=="timeout"||failure=="out_of_memory";
+    if(!is_correctness&&!is_resource)continue;
+    Detection d;d.left=previous->first;d.right=it->first;d.effect=1000000;
+    d.kind=is_correctness?"CORRECTNESS_BOUNDARY":"MEMORY_OR_RESOURCE_BOUNDARY";
+    d.scope=scope;d.failure_status=failure;
+    d.frozen_params=case_params(previous->second.case_params);
+    return d;
+   }
+  }
+ }
+
  std::map<std::string,std::map<std::int64_t,std::vector<double>>> groups;
  std::map<std::string,Case> representatives;
  for(const auto& candidate:store.cases(false)){
@@ -262,7 +299,7 @@ static std::optional<Detection> detect(Store& store,const Config& cfg){
    for(std::size_t i=1;i<y.size();i++)if(y[i-1]*y[i]<0){
     const auto effect=std::min(std::abs(y[i-1]),std::abs(y[i]));
     if(effect>std::log(1.05)&&(!group_candidate||effect>group_candidate->effect))
-     group_candidate=Detection{x[i-1],x[i],effect,"PERFORMANCE_CROSSOVER","",scope};
+     group_candidate=Detection{x[i-1],x[i],effect,"PERFORMANCE_CROSSOVER","",scope,""};
    }
   }
   if(!group_candidate){
@@ -284,7 +321,7 @@ static std::optional<Detection> detect(Store& store,const Config& cfg){
    double other=0;for(std::size_t i=1;i<y.size();i++)if(i!=cut)other=std::max(other,std::abs(y[i]-y[i-1]));
    if(bic0-bic1>=6&&effect>=std::log(cfg.min_ratio)&&effect>=2.0*other)
     group_candidate=Detection{x[cut-1],x[cut],effect,
-     cfg.family=="calibration"?"SYNTHETIC_CALIBRATION":"PERFORMANCE_CLIFF","",scope};
+     cfg.family=="calibration"?"SYNTHETIC_CALIBRATION":"PERFORMANCE_CLIFF","",scope,""};
   }
   if(group_candidate){
    group_candidate->frozen_params=case_params(representatives.at(scope));
@@ -357,7 +394,7 @@ static void execute_schedule(const Config& cfg,const std::string& out,Store& sto
  }
  if(completed==cfg.max_cases||completed==choices.size()){
   if(auto d=detect(store,cfg)){
-   store.hypothesis("H1","HYPOTHESIZED",cfg.axis,d->left,d->right,d->effect,"Exploratory candidate, one frozen hypothesis with independent holdout; conditioned scope="+d->scope,d->kind,d->frozen_params);
+   store.hypothesis("H1","HYPOTHESIZED",cfg.axis,d->left,d->right,d->effect,"Exploratory candidate, one frozen hypothesis with independent holdout; conditioned scope="+d->scope+"; failure_status="+d->failure_status,d->kind,d->frozen_params);
   }else store.hypothesis("H1","NO_CONFIRMED_BOUNDARY",cfg.axis,0,0,0,"No convincing isolated structural discontinuity under declared thresholds");
   store.event("search_complete",std::to_string(completed));
  }else store.event("search_paused",std::to_string(completed));
@@ -412,6 +449,51 @@ void confirm(const std::string& run,const std::string& id){
  if(sqlite3_step(kind_stmt)!=SQLITE_ROW){sqlite3_finalize(kind_stmt);throw Error("hypothesis not found");}
  const auto kind=std::string(reinterpret_cast<const char*>(sqlite3_column_text(kind_stmt,0)));
  sqlite3_finalize(kind_stmt);
+ if(kind=="CORRECTNESS_BOUNDARY"||kind=="MEMORY_OR_RESOURCE_BOUNDARY"){
+  sqlite3_stmt* description=nullptr;
+  if(sqlite3_prepare_v2(store.raw(),"SELECT detail FROM hypotheses WHERE id=?",-1,&description,nullptr)!=SQLITE_OK)throw Error("failure subtype query failed");
+  sqlite3_bind_text(description,1,id.c_str(),-1,SQLITE_TRANSIENT);
+  if(sqlite3_step(description)!=SQLITE_ROW){sqlite3_finalize(description);throw Error("failure subtype missing");}
+  const auto detail=std::string(reinterpret_cast<const char*>(sqlite3_column_text(description,0)));
+  sqlite3_finalize(description);
+  const auto tag=std::string("failure_status=");const auto where=detail.find(tag);
+  if(where==std::string::npos)throw Error("hypothesis has no frozen failure status");
+  auto subtype=detail.substr(where+tag.size());if(const auto end=subtype.find(';');end!=std::string::npos)subtype.resize(end);
+  const bool permitted=kind=="CORRECTNESS_BOUNDARY"?
+    (subtype=="wrong_answer"||subtype=="signaled"||subtype=="crashed"):
+    (subtype=="timeout"||subtype=="out_of_memory");
+  if(!permitted)throw Error("hypothesis subtype conflicts with frozen category");
+  std::set<std::string> prior;for(const auto& c:store.cases(false))prior.insert(c.id);
+  const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(cfg.total_wall_s);
+  bool all_valid=true;int completed_pairs=0;
+  for(int i=0;i<cfg.confirm_blocks&&all_valid;i++){
+   const auto seed=cfg.seed+7000000ULL+static_cast<std::uint64_t>(i)*101ULL;
+   for(int side=0;side<2;side++){
+    if(std::chrono::steady_clock::now()>deadline){all_valid=false;break;}
+    Case c=frozen;assign(c,axis,formatted_axis_value(axis,side==0?left:right));
+    c.seed=seed;c=make_case(c,cfg.max_bytes);
+    if(prior.count(c.id)){all_valid=false;break;}
+    auto observations=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:
+       std::vector<std::string>{cfg.a,cfg.b},1,cfg.warmup,cfg.sample_ms,cfg.rss_mb);
+    int count=0;
+    for(const auto& observation:observations){
+     store.add_observation(c,observation,true);
+     if(observation.algorithm==cfg.a){
+      ++count;
+      if(observation.status!=(side==0?"ok":subtype))all_valid=false;
+     }else if(observation.algorithm==cfg.b&&observation.status!="ok")all_valid=false;
+    }
+    if(count<1)all_valid=false;
+   }
+   if(all_valid)++completed_pairs;
+  }
+  const auto verdict=all_valid&&completed_pairs==cfg.confirm_blocks?"CONFIRMED":"NOT_CONFIRMED";
+  const auto evidence="Fresh seed-separated failure-status cases="+std::to_string(completed_pairs)+
+      " pairs expected="+std::to_string(cfg.confirm_blocks)+"; left=ok right="+subtype+
+      "; categorical status, censored timing not a speedup; no finite ratio inferred";
+  store.hypothesis(id,verdict,axis,left,right,0,evidence);
+  report(run);std::cout<<verdict<<" "<<evidence<<"\n";return;
+ }
  std::array<std::vector<double>,2> side_estimates;
  std::vector<double> paired_differences;
  const auto begin=std::chrono::steady_clock::now();
@@ -442,21 +524,21 @@ void confirm(const std::string& run,const std::string& id){
   confirmed=std::abs(delta)>=threshold;
   detail<<"Independent seed-separated deterministic operation-count holdout; pairs="<<cfg.confirm_blocks<<". NOT a timing/algorithm discovery.";
  }else{
-  const auto interval=paired_case_bootstrap(paired_differences,cfg.seed^0x5b86d2a7c9e3ULL,0.99);
-  const auto ci_l=case_bootstrap(side_estimates[0],cfg.seed^0x7ac6314fe29ULL,0.99);
-  const auto ci_r=case_bootstrap(side_estimates[1],cfg.seed^0x87f3e195c1eULL,0.99);
+  const auto interval=paired_case_bootstrap(paired_differences,cfg.seed^0x5b86d2a7c9e3ULL,cfg.confirmation_confidence);
+  const auto ci_l=case_bootstrap(side_estimates[0],cfg.seed^0x7ac6314fe29ULL,cfg.confirmation_confidence);
+  const auto ci_r=case_bootstrap(side_estimates[1],cfg.seed^0x87f3e195c1eULL,cfg.confirmation_confidence);
   const auto p=paired_sign_flip_p(paired_differences,cfg.seed^0xb3970a42e86ULL);
   /* One preselected hypothesis per discovery, one isolated single-use
      confirmation: BH for a family of size one is identical to p<=q.
      A 99% CI further constrains the practical effect. */
-  const bool significant=bh_fdr({p},0.01)[0]; /* vector<bool> proxy must not outlive temporary */
+  const bool significant=bh_fdr({p},cfg.fdr_q)[0]; /* vector<bool> proxy must not outlive temporary */
   const auto practical=interval.lower>threshold||interval.upper< -threshold;
   const auto signed_sides=(ci_l.upper< -std::log(1.02)&&ci_r.lower>std::log(1.02))||
                            (ci_r.upper< -std::log(1.02)&&ci_l.lower>std::log(1.02));
   confirmed=significant&&practical&&(kind!="PERFORMANCE_CROSSOVER"||signed_sides);
-  detail<<"99% seed-matched case-pair bootstrap (n="<<cfg.confirm_blocks<<") delta log metric CI=["
+  detail<<cfg.confirmation_confidence*100.0<<"% seed-matched case-pair bootstrap (n="<<cfg.confirm_blocks<<") delta log metric CI=["
         <<interval.lower<<","<<interval.upper<<"] p_signflip="<<p
-        <<"; BH-FDR one frozen hypothesis q=0.01; left CI=["<<ci_l.lower<<","<<ci_l.upper
+        <<"; BH-FDR one frozen hypothesis q="<<cfg.fdr_q<<"; left CI=["<<ci_l.lower<<","<<ci_l.upper
         <<"] right CI=["<<ci_r.lower<<","<<ci_r.upper<<"]";
   detail<<"; exploratory selection independent of holdout, not causal proof";
  }
@@ -638,6 +720,70 @@ void minimize(const std::string& run,const std::string& id){
  Store s(run+"/run.sqlite");auto cfg=config_from_json(Json::parse(s.config()));auto [status,axis,left,right]=read_hypothesis(s,id);
  if(status!="CONFIRMED")throw Error("only confirmed hypotheses can be minimized");
  if(cfg.family!="calibration"||axis!="x"){
+  sqlite3_stmt* stmt=nullptr;
+  if(sqlite3_prepare_v2(s.raw(),"SELECT kind FROM hypotheses WHERE id=?",-1,&stmt,nullptr)!=SQLITE_OK)throw Error("hypothesis kind lookup failed");
+  sqlite3_bind_text(stmt,1,id.c_str(),-1,SQLITE_TRANSIENT);
+  if(sqlite3_step(stmt)!=SQLITE_ROW){sqlite3_finalize(stmt);throw Error("missing hypothesis kind");}
+  const std::string kind(reinterpret_cast<const char*>(sqlite3_column_text(stmt,0)));
+  sqlite3_finalize(stmt);
+  if(kind=="CORRECTNESS_BOUNDARY"||kind=="MEMORY_OR_RESOURCE_BOUNDARY"){
+   const auto scope=scope_key(frozen_case(s,cfg,id),cfg);
+   std::optional<Case> original;
+   std::string subtype;
+   for(const auto& candidate:s.cases(false)){
+    if(axis_value(candidate,axis)!=right||scope_key(candidate,cfg)!=scope)continue;
+    for(const auto& observation:s.observations(candidate.id,false)){
+     if(observation.algorithm!=cfg.a||observation.status=="ok")continue;
+     original=candidate;subtype=observation.status;break;
+    }
+    if(original)break;
+   }
+   if(!original)throw Error("confirmed failure has no persisted failing case");
+   if(subtype=="wrong_answer"&&kind=="CORRECTNESS_BOUNDARY"){
+    minimize_failure_case(run,original->id,cfg.a);
+    const auto record=Json::file(run+"/witness.json");
+    const auto verdict=record.s("status");
+    s.witness(id,record.s("case_id"),verdict,record.str());
+    s.hypothesis(id,verdict,axis,left,right,0,"Freshly replayed wrong-answer witness and shrink trace; earlier independent confirmation retained");
+    report(run);return;
+   }
+   /* Crash/timeout/OOM witnesses require exact failure-mode preservation.
+      Never turn censored failures into synthetic large timing values. */
+   if(fs::exists(run+"/witness.json"))throw Error("witness artifacts already exist");
+   const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(std::min(120,cfg.total_wall_s));
+   auto predicate=[&](const Case& input)->bool{
+    if(std::chrono::steady_clock::now()>deadline)throw Error("failure shrink time budget exhausted");
+    const auto obs=measure(input,{cfg.a},1,0,cfg.sample_ms,cfg.rss_mb);
+    return obs.size()==1&&obs[0].status==subtype;
+   };
+   ShrinkResult shrunk;shrunk.original=*original;shrunk.smallest=*original;
+   bool initially_valid=false,final_valid=false;
+   try{
+    initially_valid=predicate(*original);
+    if(initially_valid){
+     shrunk=shrink_case(*original,predicate,24,cfg.max_bytes);
+     final_valid=true;for(int i=0;i<3;i++)if(!predicate(shrunk.smallest)){final_valid=false;break;}
+    }
+   }catch(const std::exception& e){s.event("failure_witness_error",e.what());}
+   const auto verdict=final_valid&&shrunk.reduced?"MINIMIZED_CONFIRMED":
+                      final_valid?"MINIMIZATION_FAILED":"MINIMIZED_PROVISIONAL";
+   Json record;record.put("schema_version",static_cast<std::int64_t>(1));record.put("category",kind);
+   record.put("algorithm",cfg.a);record.put("status",verdict);record.put("expected_status",subtype);
+   record.put("original_case_id",original->id);record.put("case_id",shrunk.smallest.id);
+   record.put("input_sha256",sha256(shrunk.smallest.bytes));record.put("parameters",Json::parse(case_params(shrunk.smallest)));
+   record.put("original_input_bytes",static_cast<std::int64_t>(original->bytes.size()));
+   record.put("input_bytes",static_cast<std::int64_t>(shrunk.smallest.bytes.size()));
+   record.put("evaluations",static_cast<std::int64_t>(shrunk.evaluations));
+   record.put("baseline_rechecked",initially_valid);record.put("final_rechecked",final_valid);
+   auto* trace=json_object_new_array();for(const auto& step:shrunk.trace){Json item;item.put("case_id",step.case_id);
+    item.put("action",step.action);item.put("input_bytes",static_cast<std::int64_t>(step.input_bytes));
+    item.put("preserved",step.predicate_preserved);json_object_array_add(trace,item.p);item.p=nullptr;}
+   json_object_object_add(record.p,"shrink_trace",trace);
+   s.add_case(shrunk.smallest);s.witness(id,shrunk.smallest.id,verdict,record.str());
+   s.hypothesis(id,verdict,axis,left,right,0,"Exact "+subtype+" failure witness "+verdict+"; censored, not ranked as timing");
+   write_file(run+"/witness.json",record.str());write_file(run+"/witness.hex",hex_encode(shrunk.smallest.bytes)+"\n");
+   report(run);return;
+  }
   minimize_performance(run,id,s,cfg,axis,left,right);return;
  }
  Case c=frozen_case(s,cfg,id);c.x=right;c.seed=cfg.seed+2000000;c=make_case(c,cfg.max_bytes);
@@ -708,7 +854,8 @@ void minimize_failure_case(const std::string& run,const std::string& case_id,con
           <<" bytes minimal="<<result.smallest.bytes.size()<<" bytes\n";
 }
 void replay_expected_failure(const std::string& run,const std::string& case_id,const std::string& algorithm,const std::string& expected_status){
- if(expected_status!="wrong_answer"||algorithm.empty())throw Error("expected failure replay supports wrong_answer with explicit algorithm only");
+ static const std::set<std::string> accepted={"wrong_answer","timeout","out_of_memory","crashed","signaled"};
+ if(!accepted.count(expected_status)||algorithm.empty())throw Error("expected-failure replay requires an explicit algorithm and supported status");
  Store store(run+"/run.sqlite");auto c=locate_case(store,case_id);
  for(const auto& o:measure(c,{algorithm},1,0,3000,1024)){
   if(o.status!=expected_status)throw Error("witness failure did not reproduce: expected "+expected_status+" got "+o.status);

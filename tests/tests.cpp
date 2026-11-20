@@ -66,11 +66,17 @@ int main(int argc,char** argv){if(argc>1&&std::string(argv[1])=="--worker")retur
    require(crashed.size()==1&&crashed[0].status=="signaled","segfault must be isolated and marked signaled");
 #endif
    auto hung=bad(2);require(hung.size()==1&&hung[0].status=="timeout","hung worker must be terminated and timed out");
+   ps::Case slow_case;slow_case.family="integer_array";slow_case.n=12;slow_case.distribution="ascending";slow_case=ps::make_case(slow_case);
+   auto slow=ps::measure(slow_case,{"plugin:"+(dir/"fault_9.so").string()},1,0,300,256);
+   require(slow.size()==1&&slow[0].status=="timeout","completed operation past per-sample cap must be censored, not ranked");
    auto oversize=bad(3);require(oversize.size()==1&&oversize[0].status=="infrastructure_error","oversized plugin output must fail");
    auto exception=bad(4);require(exception.size()==1&&exception[0].status=="infrastructure_error","plugin exception must not escape worker");
    auto rejected=bad(5);require(rejected.size()==1&&rejected[0].status=="invalid_input","plugin input rejection must not be timed");
    auto oom=bad(6);require(oom.size()==1&&oom[0].status=="out_of_memory","out-of-memory must not be timed");
    auto mismatch=bad(7);require(mismatch.size()==1&&mismatch[0].status=="infrastructure_error","ABI mismatch must fail");
+   ps::Case ordered;ordered.family="integer_array";ordered.n=32;ordered.distribution="ascending";ordered=ps::make_case(ordered);
+   auto intermittent=ps::measure(ordered,{"plugin:"+(dir/"fault_8.so").string()},1,0,1000,256);
+   require(intermittent.size()==1&&intermittent[0].status=="wrong_answer","intermediate wrong-answer iteration must invalidate entire timed batch");
   }
   {
    auto ci=ps::paired_case_bootstrap(std::vector<double>(20,2.5),137);
