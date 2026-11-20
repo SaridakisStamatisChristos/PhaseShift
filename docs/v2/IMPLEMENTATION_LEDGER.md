@@ -27,3 +27,7 @@ Research claim: **none**. Any synthetic fixture is a correctness calibration, no
 ## CI falsification / repair F-v2-001
 
 Commit `1e3cf349` ran 39/39 CTests successfully in the LLVM coverage job, but the coverage gate **failed**: `src/boundary_v2.cpp` was missing from the instrumented linked object set. Earliest affected phase: INTEGRATE (coverage aggregation), not the detector algorithm. Repair: explicitly include the executable that links the new translation unit in `llvm-cov export`; rerun coverage on the repaired branch SHA. This is not an accepted pass until exact-revision CI reports success.
+
+## Workflow hardening
+
+The built-in equal-case-budget comparison is an **ephemeral CTest scratch benchmark**. The wrapper cleans only its own CMake build-directory fixture before rerun. Real benchmark evidence created by the direct `equal_budget.py --out ...` invocation is immutable and the tool refuses to overwrite it. `multi_change_v2` retains any v1 correctness/resource/crossover boundary in preference to a weaker timing-only segmentation.

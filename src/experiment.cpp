@@ -808,7 +808,10 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
     store.event("v2_multiple_change_discovery_only",evidence.str());
    }
    if(!candidates.empty()&&(!selected||
-      (selected->kind!="CORRECTNESS_BOUNDARY"&&selected->kind!="MEMORY_OR_RESOURCE_BOUNDARY")))
+      (selected->kind!="CORRECTNESS_BOUNDARY"&&
+       selected->kind!="MEMORY_OR_RESOURCE_BOUNDARY"&&
+       selected->kind!="PERFORMANCE_CROSSOVER"&&
+       candidates.front().effect>=selected->effect)))
     selected=candidates.front();
   }
   if(auto d=selected){
