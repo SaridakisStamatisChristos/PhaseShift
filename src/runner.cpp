@@ -99,7 +99,7 @@ std::vector<Observation> measure(const Case& c,const std::vector<std::string>& n
   const auto response=Json::parse(read_frame(out[0],timeout_ms));auto* list=response.get("observations");
   if(!list||json_object_get_type(list)!=json_type_array)throw Error("malformed worker response");
   for(std::size_t i=0;i<json_object_array_length(list);i++){
-   Json v(json_object_get(json_object_array_get_idx(list,static_cast<int>(i))));Observation s;
+   Json v(json_object_get(json_object_array_get_idx(list,i)));Observation s;
    s.algorithm=v.s("algorithm");s.status=v.s("status","infrastructure_error");s.digest=v.s("digest");s.detail=v.s("detail");s.ns=v.i("ns");s.work=v.i("work");s.batch=v.i("batch",1);s.block=v.i("block");result.push_back(s);
   }
   if(result.empty())throw Error("empty worker response");

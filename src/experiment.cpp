@@ -1,5 +1,6 @@
 #include "phaseshift/experiment.hpp"
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <filesystem>
@@ -61,26 +62,28 @@ Config parse_config(const std::string& path){return config_from_json(Json::file(
 static std::vector<Case> grid_cases(const Config& c){
  std::vector<Case> out;std::vector<std::pair<std::string,std::vector<std::string>>> axes(c.axes.begin(),c.axes.end());
  std::function<void(std::size_t,Case)> recurse=[&](std::size_t i,Case base){
-  if(out.size()>=c.max_cases)return;
+  if(out.size()>=10000)return;
   if(i==axes.size()){
    base.seed=c.seed+static_cast<std::uint64_t>(out.size());
-   out.push_back(make_case(base,c.max_bytes));return;
+   out.push_back(std::move(base));return;
   }
-  for(const auto& value:axes[i].second){auto candidate=base;assign(candidate,axes[i].first,value);recurse(i+1,candidate);if(out.size()>=c.max_cases)return;}
+  for(const auto& value:axes[i].second){auto candidate=base;assign(candidate,axes[i].first,value);recurse(i+1,candidate);if(out.size()>=10000)return;}
  };recurse(0,c.base);return out;
 }
 static std::vector<Case> scheduled(const Config& c){
  auto cases=grid_cases(c);
- if(c.method=="random"||c.method=="stratified"){
+ if(c.method=="random"){
   std::uint64_t seed=c.seed^0x925c42;
   for(std::size_t i=cases.size();i>1;i--){auto j=randbelow(seed,i);std::swap(cases[i-1],cases[static_cast<std::size_t>(j)]);}
- }else if(c.method=="adaptive_partition"&&numeric_axis(c.axis)){
-  /* Space-filling coarse-first, then binary subdivision, with fixed 20% exploration. */
-  std::sort(cases.begin(),cases.end(),[&](const Case& a,const Case& b){auto get=[&](const Case& x){if(c.axis=="x")return x.x;if(c.axis=="n")return x.n;if(c.axis=="k")return x.k;if(c.axis=="edges")return x.edges;return x.vertices;};return get(a)<get(b);});
-  std::vector<Case> ordered;std::vector<bool> used(cases.size(),false);
-  std::function<void(std::size_t,std::size_t)> split=[&](std::size_t l,std::size_t r){if(l>=r)return;auto m=l+(r-l)/2;if(!used[m]){ordered.push_back(cases[m]);used[m]=true;}split(l,m);split(m+1,r);};
-  if(!cases.empty()){ordered.push_back(cases.front());used.front()=true;if(cases.size()>1){ordered.push_back(cases.back());used.back()=true;}split(1,cases.size()>1?cases.size()-1:1);}
-  cases=std::move(ordered);
+ }else if(c.method=="stratified" && numeric_axis(c.axis)){
+  std::sort(cases.begin(),cases.end(),[&](const Case& a,const Case& b){auto v=[&](const Case& q){if(c.axis=="x")return q.x;if(c.axis=="n")return q.n;if(c.axis=="k")return q.k;if(c.axis=="edges")return q.edges;return q.vertices;};return v(a)<v(b);});
+  std::vector<Case> order;order.reserve(cases.size());
+  const std::size_t strata=std::min<std::size_t>(8,cases.size());
+  for(std::size_t offset=0;offset<cases.size();offset++)for(std::size_t i=0;i<strata;i++){
+   const auto start=i*cases.size()/strata,end=(i+1)*cases.size()/strata;
+   if(start+offset<end)order.push_back(cases[start+offset]);
+  }
+  cases=std::move(order);
  }
  return cases;
 }
@@ -122,16 +125,49 @@ static std::optional<std::tuple<std::int64_t,std::int64_t,double>> detect(Store&
  if(effect<2.0*other)return {};
  return std::tuple{x[cut-1],x[cut],effect};
 }
+static std::size_t adaptive_next(Store& store,const Config& cfg,const std::vector<Case>& pool,const std::vector<bool>& chosen,std::uint64_t& random_state){
+ std::vector<std::size_t> available;available.reserve(pool.size());
+ for(std::size_t i=0;i<pool.size();i++)if(!chosen[i])available.push_back(i);
+ if(available.empty())throw Error("adaptive scheduler exhausted");
+ const auto count=pool.size()-available.size();
+ if(count==0)return available.front();
+ if(count==1)return available.back();
+ /* One in five proposals remains an independent uniform exploration sample. */
+ if(count%5==4)return available[static_cast<std::size_t>(randbelow(random_state,available.size()))];
+ std::map<std::int64_t,double> observed;
+ for(std::size_t i=0;i<pool.size();i++)if(chosen[i]){
+  auto c=make_case(pool[i],cfg.max_bytes);
+  if(auto m=metric(store,c,cfg,false))observed[axis_value(c,cfg.axis)]=*m;
+ }
+ std::size_t best=available.front();double priority=-1;
+ for(auto index:available){
+  const auto x=axis_value(pool[index],cfg.axis);auto upper=observed.lower_bound(x);
+  if(upper==observed.end()||upper==observed.begin())continue;
+  auto lower=std::prev(upper);
+  const auto gap=static_cast<double>(upper->first-lower->first);
+  if(gap<=0)continue;
+  const auto contrast=std::abs(upper->second-lower->second);
+  const auto center=(static_cast<double>(upper->first)+static_cast<double>(lower->first))/2.0;
+  const auto score=(0.01+contrast)*gap/(1.0+std::abs(static_cast<double>(x)-center));
+  if(score>priority){best=index;priority=score;}
+ }
+ return best;
+}
 void explore(const Config& cfg,const std::string& out){
  if(fs::exists(out+"/run.sqlite"))throw Error("output run already exists (will not overwrite evidence)");
  fs::create_directories(out);Store s(out+"/run.sqlite");s.experiment(config_json(cfg).str(),environment());
- auto choices=scheduled(cfg);std::size_t completed=0;
+ auto choices=scheduled(cfg);std::size_t completed=0;std::vector<bool> chosen(choices.size(),false);
+ const bool feedback=cfg.method=="adaptive_partition"&&numeric_axis(cfg.axis)&&
+  std::all_of(cfg.axes.begin(),cfg.axes.end(),[&](const auto& a){return a.first==cfg.axis||a.second.size()==1;});
+ std::uint64_t random_state=cfg.seed^0xf39b247bf04aULL;
  const auto start=std::chrono::steady_clock::now();
- for(const auto& c:choices){
+ while(completed<cfg.max_cases&&completed<choices.size()){
   auto elapsed=std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now()-start).count();
   if(elapsed>=cfg.total_wall_s)break;
-  const std::vector<std::string> names=cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b};
-  auto obs=measure(c,names,cfg.blocks,cfg.warmup,cfg.sample_ms,cfg.rss_mb);
+  const auto index=feedback?adaptive_next(s,cfg,choices,chosen,random_state):completed;
+  chosen[index]=true;
+  auto c=make_case(choices[index],cfg.max_bytes);
+  const auto obs=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},cfg.blocks,cfg.warmup,cfg.sample_ms,cfg.rss_mb);
   for(const auto& o:obs)s.add_observation(c,o,false);
   completed++;
  }
@@ -150,29 +186,74 @@ void confirm(const std::string& run,const std::string& id){
  Store s(run+"/run.sqlite");auto cfg=config_from_json(Json::parse(s.config()));auto [status,axis,left,right]=read_hypothesis(s,id);
  if(status=="NO_CONFIRMED_BOUNDARY") {std::cout<<"No candidate to confirm\n";return;}
  if(status!="HYPOTHESIZED")throw Error("confirmation already attempted or candidate not eligible: "+status);
- std::vector<std::pair<std::int64_t,double>> sides;
- for(auto x:{left,right}){
-  std::vector<double> estimates;
+ std::array<std::vector<double>,2> side_estimates;
+ const auto begin=std::chrono::steady_clock::now();
+ for(std::size_t side=0;side<2;side++){
+  const auto x=side==0?left:right;
   for(int i=0;i<cfg.confirm_blocks;i++){
-   Case c=cfg.base;assign(c,axis,std::to_string(x));c.seed=cfg.seed+1000000+static_cast<std::uint64_t>(i)*31+static_cast<std::uint64_t>(x%31);
+   if(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now()-begin).count()>=cfg.total_wall_s){
+    s.hypothesis(id,"NOT_CONFIRMED",axis,left,right,0,"Holdout stopped by total wall-time budget");report(run);return;
+   }
+   Case c=cfg.base;assign(c,axis,std::to_string(x));
+   c.seed=cfg.seed+1000000+static_cast<std::uint64_t>(i)*31+static_cast<std::uint64_t>(x%31);
    c=make_case(c,cfg.max_bytes);
-   const std::vector<std::string> names=cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b};
-   const auto obs=measure(c,names,1,cfg.warmup,cfg.sample_ms,cfg.rss_mb);
+   const auto obs=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},1,cfg.warmup,cfg.sample_ms,cfg.rss_mb);
    for(const auto& o:obs)s.add_observation(c,o,true);
-   if(auto m=metric(s,c,cfg,true))estimates.push_back(*m);
+   if(auto m=metric(s,c,cfg,true))side_estimates[side].push_back(*m);
   }
-  if(estimates.size()<static_cast<std::size_t>(cfg.confirm_blocks)){s.hypothesis(id,"NOT_CONFIRMED",axis,left,right,0,"Holdout correctness/measurement failures or insufficient samples");report(run);return;}
-  sides.emplace_back(x,median(estimates));
+  if(side_estimates[side].size()<static_cast<std::size_t>(cfg.confirm_blocks)){
+   s.hypothesis(id,"NOT_CONFIRMED",axis,left,right,0,"Holdout correctness/measurement failures or insufficient cases");report(run);return;
+  }
  }
- const auto difference=std::abs(sides[1].second-sides[0].second);
- /* Conservative deterministic split: non-overlapping empirical range of case-level estimates.
-    This is NOT a general 99% CI; any noncalibration result remains provisional. */
- if(cfg.family!="calibration"){
-  s.hypothesis(id,"NOT_CONFIRMED",axis,left,right,difference,"Real timing cannot be marked confirmed without calibrated paired-case 99% CI and multiplicity control");
- }else if(difference>=std::log(cfg.min_ratio)){
-  s.hypothesis(id,"CONFIRMED",axis,left,right,difference,"Independent seed-separated work-count holdout, exactly deterministic; synthetic calibration only");
- }else s.hypothesis(id,"NOT_CONFIRMED",axis,left,right,difference,"Holdout effect below threshold");
+ const double delta=median(side_estimates[1])-median(side_estimates[0]);
+ const double difference=std::abs(delta);
+ if(cfg.family=="calibration"){
+  if(difference>=std::log(cfg.min_ratio))
+   s.hypothesis(id,"CONFIRMED",axis,left,right,difference,"Independent seed-separated deterministic work-count holdout; not wall-clock performance");
+  else s.hypothesis(id,"NOT_CONFIRMED",axis,left,right,difference,"Synthetic holdout below practical threshold");
+ }else{
+  /* The resampling unit is the independent holdout CASE (not timed batches).
+     Exactly one exploratory hypothesis is frozen before this single-use
+     holdout. Repeated peeking/reconfirmation is prohibited by status gate. */
+  std::vector<double> differences;differences.reserve(20000);
+  std::uint64_t state=cfg.seed^0x5b86d2a7c9e3ULL;
+  for(int boot=0;boot<20000;boot++){
+   std::vector<double> l,r;l.reserve(side_estimates[0].size());r.reserve(side_estimates[1].size());
+   for(std::size_t i=0;i<side_estimates[0].size();i++)l.push_back(side_estimates[0][static_cast<std::size_t>(randbelow(state,side_estimates[0].size()))]);
+   for(std::size_t i=0;i<side_estimates[1].size();i++)r.push_back(side_estimates[1][static_cast<std::size_t>(randbelow(state,side_estimates[1].size()))]);
+   differences.push_back(median(r)-median(l));
+  }
+  std::sort(differences.begin(),differences.end());
+  const auto lower=differences[99],upper=differences[19900]; /* 0.5%, 99.5% */
+  std::ostringstream detail;detail<<std::setprecision(8)<<"99% case-level percentile bootstrap CI for right-minus-left log metric=["<<lower<<","<<upper<<"]"
+   <<"; holdout cases="<<cfg.confirm_blocks<<" per side; one frozen candidate, independent seeds."
+   <<" Remaining caveats: host noise and non-causal observational contrast.";
+  const auto threshold=std::log(cfg.min_ratio);
+  if(lower>threshold||upper< -threshold)
+   s.hypothesis(id,"CONFIRMED",axis,left,right,difference,detail.str());
+  else s.hypothesis(id,"NOT_CONFIRMED",axis,left,right,difference,detail.str()+" Practical effect not independently established.");
+ }
  report(run);std::cout<<s.summary().str()<<"\n";
+}
+void ablate(const Config& cfg,const std::string& out){
+ if(cfg.family!="calibration"||cfg.axis!="x")throw Error("v0.2 ablation supports deterministic one-axis calibration only");
+ if(fs::exists(out))throw Error("ablation output already exists");
+ fs::create_directories(out);
+ std::ostringstream csv;csv<<"method,case_budget,discovery_cases,total_cases,raw_samples,seconds,status,left,right,localization_error\n";
+ for(const char* name:{"grid","random","stratified","adaptive_partition"}){
+  auto c=cfg;c.method=name;const auto path=out+"/"+name;
+  const auto start=std::chrono::steady_clock::now();explore(c,path);
+  Store store(path+"/run.sqlite");auto [status,axis,left,right]=read_hypothesis(store,"H1");(void)axis;
+  if(status=="HYPOTHESIZED") {confirm(path);std::tie(status,axis,left,right)=read_hypothesis(store,"H1");}
+  const auto sec=std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();auto summary=store.summary();
+  sqlite3_stmt* st=nullptr;
+  if(sqlite3_prepare_v2(store.raw(),"SELECT COUNT(DISTINCT case_id) FROM samples WHERE holdout=0",-1,&st,nullptr)!=SQLITE_OK)throw Error("ablation discovery count query");
+  if(sqlite3_step(st)!=SQLITE_ROW){sqlite3_finalize(st);throw Error("ablation discovery count missing");}
+  const auto discovery_cases=sqlite3_column_int64(st,0);sqlite3_finalize(st);
+  const auto err=status=="CONFIRMED"?std::abs(right-c.base.threshold):-1;
+  csv<<name<<','<<c.max_cases<<','<<discovery_cases<<','<<summary.i("cases")<<','<<summary.i("samples")<<','<<sec<<','<<status<<','<<left<<','<<right<<','<<err<<'\n';
+ }
+ write_file(out+"/ablation.csv",csv.str());std::cout<<csv.str();
 }
 void minimize(const std::string& run,const std::string& id){
  Store s(run+"/run.sqlite");auto cfg=config_from_json(Json::parse(s.config()));auto [status,axis,left,right]=read_hypothesis(s,id);

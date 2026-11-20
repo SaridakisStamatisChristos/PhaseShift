@@ -1,0 +1,5 @@
+method,case_budget,discovery_cases,total_cases,raw_samples,seconds,status,left,right,localization_error
+grid,24,24,24,24,0.180727,NO_CONFIRMED_BOUNDARY,0,0,-1
+random,24,24,64,64,0.483765,CONFIRMED,18,25,1
+stratified,24,24,64,64,0.50857,CONFIRMED,18,24,0
+adaptive_partition,24,24,64,64,0.437939,CONFIRMED,23,24,0

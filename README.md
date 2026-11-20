@@ -29,6 +29,7 @@ phaseshift list algorithms
 phaseshift validate --config configs/topk_fraction.json
 phaseshift demo --out runs/demo
 phaseshift explore --config configs/graph_density.json --out runs/graph
+phaseshift ablate --config configs/adaptive_sparse.json --out runs/ablation
 phaseshift confirm --run runs/graph --hypothesis H1
 phaseshift minimize --run runs/demo --hypothesis H1
 phaseshift replay --run runs/demo --case <64-character-case-id-or-prefix>
@@ -52,13 +53,13 @@ Use `jq -r '.raw_samples[0].case_id' runs/demo/report.json` to extract a replaya
 
 ## What claims the engine can make
 
-The deterministic fixture changes declared work counts between `x=7` and `x=8` for threshold 8. It tests that a discrete segmented model can find that injected boundary and that independent-seed holdout reproduces it. The negative fixture intentionally has constant work and must abstain. Real sorting, Top-K, and graph runs report timings and correctness, but the current implementation **does not issue statistically confirmed real timing boundaries** until paired-case 99% uncertainty estimation and multiplicity control are implemented. This is deliberate fail-closed behavior.
+The deterministic fixture changes declared work counts between `x=7` and `x=8` for threshold 8. It tests that a discrete segmented model can find that injected boundary and that independent-seed holdout reproduces it. The negative fixture intentionally has constant work and must abstain. Real sorting, Top-K, and graph runs report timings and correctness. A single exploratory 1D timing hypothesis may now be independently evaluated on 20 fresh cases per side with a 99% case-level percentile bootstrap. One preselected hypothesis per run is eligible; unsupported multi-axis conditions and weak confidence intervals must abstain. This is a baseline, not a guarantee of controlled family-wise error across repeated experiments.
 
 No forced performance claims. An effect that varies with machine state is not a proof of asymptotic complexity or a causal mechanism. Reports distinguish `HYPOTHESIZED`, `NOT_CONFIRMED`, `CONFIRMED` (synthetic work-count only), `MINIMIZED_CONFIRMED`, and `NO_CONFIRMED_BOUNDARY`.
 
 ## Current limitations (v0.1)
 
-This is a **verified functional vertical slice, not full spec v1.0**. Adaptive order is currently deterministic space-filling, *not* a feedback-optimized scheduler. There is no interrupted-search resume; discovery uses a 1D segmented-mean BIC fit and abstains from multi-axis confounded inference. CPU timing lacks paired bootstrap/FDR confirmation, and no empirical scaling fingerprint or automated fair search ablation is included. Graph generators implement directed edges, no self-loops/parallel edges; community/degree-skew morphology is pending. Input hashes are stable but generator versions are not separately migratable. The worker is spawned per case (not persistent across cases); timeout and address-space controls are best effort on Linux. Witness minimization supports confirmed synthetic parameter thresholds, not structural `ddmin` across arrays/graphs. Export emits a portable bundle but not a verified import command. Reporting is static with no dashboard. See `docs/release_checklist.md` for acceptance gap tracking.
+This is a **verified functional vertical slice, not full spec v1.0**. Adaptive numeric-axis search uses measured neighbor contrasts, midpoint refinement and at least 20% randomized exploration. There is no interrupted-search resume; discovery uses a 1D segmented-mean BIC fit and abstains from multi-axis confounded inference. The 99% case-level bootstrap is exploratory-quality, not calibrated over arbitrary repeated searches. No empirical scaling fingerprint is included. Equal-case-budget synthetic grid/random/stratified/adaptive ablation is available, but fair real-workload ablation remains pending. Graph generators implement directed edges, no self-loops/parallel edges; community/degree-skew morphology is pending. Input hashes are stable but generator versions are not separately migratable. The worker is spawned per case (not persistent across cases); timeout and address-space controls are best effort on Linux. Witness minimization supports confirmed synthetic parameter thresholds, not structural `ddmin` across arrays/graphs. Export emits a portable bundle but not a verified import command. Reporting is static with no dashboard. See `docs/release_checklist.md` for acceptance gap tracking.
 
 ## License
 

@@ -10,6 +10,7 @@ Usage:
   phaseshift validate --config CONFIG
   phaseshift demo --out RUN_DIRECTORY
   phaseshift explore --config CONFIG --out RUN_DIRECTORY
+  phaseshift ablate --config CONFIG --out DIRECTORY
   phaseshift confirm --run RUN_DIRECTORY [--hypothesis H1]
   phaseshift minimize --run RUN_DIRECTORY [--hypothesis H1]
   phaseshift replay --run RUN_DIRECTORY --case CASE_ID_OR_PREFIX
@@ -37,6 +38,7 @@ int main(int argc,char** argv){
    const auto out=option("--out","runs/demo");ps::Config c;c.experiment_id="known-synthetic-threshold";c.family="calibration";c.base.family=c.family;c.a="calibration";c.method="adaptive_partition";c.axis="x";c.axes["x"]={"0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15"};c.blocks=2;c.confirm_blocks=20;c.base.threshold=8;
    ps::explore(c,out);ps::confirm(out);ps::minimize(out);return 0;
   }
+  if(cmd=="ablate"){auto config=option("--config"),out=option("--out");if(config.empty()||out.empty())throw ps::Error("ablate requires --config and --out");ps::ablate(ps::parse_config(config),out);return 0;}
   if(cmd=="explore"){const auto config=option("--config"),out=option("--out");if(config.empty()||out.empty())throw ps::Error("explore requires --config and --out");ps::explore(ps::parse_config(config),out);return 0;}
   if(run.empty() && cmd!="compare")throw ps::Error("command requires --run");
   if(cmd=="confirm"){ps::confirm(run,option("--hypothesis","H1"));return 0;}

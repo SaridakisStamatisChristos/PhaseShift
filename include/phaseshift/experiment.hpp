@@ -11,6 +11,7 @@ struct Config {
 };
 Config parse_config(const std::string& path);
 void explore(const Config& cfg,const std::string& out);
+void ablate(const Config& cfg,const std::string& out);
 void confirm(const std::string& run,const std::string& id="H1");
 void minimize(const std::string& run,const std::string& id="H1");
 void replay(const std::string& run,const std::string& case_id);
