@@ -2,6 +2,9 @@
 #include "phaseshift/morphology.hpp"
 #include <filesystem>
 #include <algorithm>
+#include <map>
+#include <set>
+#include <cmath>
 #include <tuple>
 #include <vector>
 #include <cstring>
@@ -133,6 +136,28 @@ void Store::add_observation(const Case& c,const Observation& v,bool holdout){
  s.done();
 }
 void Store::hypothesis(const std::string& id,const std::string& status,const std::string& axis,std::int64_t left,std::int64_t right,double effect,const std::string& detail,const std::string& kind,const std::string& frozen_params){
+ static const std::map<std::string,std::set<std::string>> transitions={
+  {"OBSERVED",{"HYPOTHESIZED","NO_CONFIRMED_BOUNDARY","INVALIDATED"}},
+  {"HYPOTHESIZED",{"TESTED","CONFIRMED","NOT_CONFIRMED","INVALIDATED"}},
+  {"TESTED",{"CONFIRMED","NOT_CONFIRMED","INVALIDATED"}},
+  {"CONFIRMED",{"MINIMIZED_CONFIRMED","MINIMIZED_PROVISIONAL","MINIMIZATION_FAILED","INVALIDATED"}},
+  {"MINIMIZED_CONFIRMED",{"INVALIDATED"}},
+  {"MINIMIZED_PROVISIONAL",{"INVALIDATED"}},
+  {"MINIMIZATION_FAILED",{"INVALIDATED"}},
+  {"NOT_CONFIRMED",{"INVALIDATED"}},
+  {"NO_CONFIRMED_BOUNDARY",{"INVALIDATED"}},
+  {"INVALIDATED",{}}
+ };
+ if(status.empty()||!std::isfinite(effect)||!transitions.count(status))throw Error("unknown hypothesis evidence state");
+ Statement prior(db_,"SELECT status,axis,left_value,right_value FROM hypotheses WHERE id=?");prior.text(1,id);
+ const auto found=sqlite3_step(prior.p);
+ if(found==SQLITE_ROW){
+  const std::string old=reinterpret_cast<const char*>(sqlite3_column_text(prior.p,0));
+  if(old!=status&&(!transitions.count(old)||!transitions.at(old).count(status)))throw Error("illegal hypothesis transition: "+old+" -> "+status);
+  if(axis!=reinterpret_cast<const char*>(sqlite3_column_text(prior.p,1))||left!=sqlite3_column_int64(prior.p,2)||right!=sqlite3_column_int64(prior.p,3))throw Error("frozen hypothesis geometry cannot change");
+ }else if(found==SQLITE_DONE){
+  if(status!="OBSERVED"&&status!="HYPOTHESIZED"&&status!="NO_CONFIRMED_BOUNDARY")throw Error("initial evidence state must be observation, hypothesis or negative");
+ }else throw Error("hypothesis state query failed");
  Statement s(db_,"INSERT INTO hypotheses(id,status,axis,left_value,right_value,effect,detail,kind,frozen_params) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,detail=excluded.detail");
  s.text(1,id);s.text(2,status);s.text(3,axis);s.integer(4,left);s.integer(5,right);s.real(6,effect);s.text(7,detail);s.text(8,kind);s.text(9,frozen_params);s.done();
  if(status=="CONFIRMED"||status=="NOT_CONFIRMED") {

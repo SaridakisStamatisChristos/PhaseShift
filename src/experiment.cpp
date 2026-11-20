@@ -74,19 +74,32 @@ static bool numeric_axis(const std::string& s){
  return supported.count(s)>0;
 }
 static Json config_json(const Config& c){
- Json j;j.put("schema_version",static_cast<std::int64_t>(1));j.put("experiment_id",c.experiment_id);j.put("problem_family",c.family);j.put("algorithm_a",c.a);j.put("algorithm_b",c.b);j.put("search_method",c.method);j.put("primary_axis",c.axis);j.put("seed",static_cast<std::int64_t>(c.seed));j.put("max_cases",static_cast<std::int64_t>(c.max_cases));j.put("max_case_bytes",static_cast<std::int64_t>(c.max_bytes));j.put("max_search_queue",static_cast<std::int64_t>(c.max_queue));j.put("max_report_bytes",static_cast<std::int64_t>(c.max_report_bytes));j.put("discovery_blocks",static_cast<std::int64_t>(c.blocks));j.put("confirm_blocks",static_cast<std::int64_t>(c.confirm_blocks));j.put("warmup",static_cast<std::int64_t>(c.warmup));j.put("sample_ms",static_cast<std::int64_t>(c.sample_ms));j.put("rss_mb",static_cast<std::int64_t>(c.rss_mb));j.put("total_wall_seconds",static_cast<std::int64_t>(c.total_wall_s));j.put("min_practical_ratio",c.min_ratio);j.put("confirmation_confidence",c.confirmation_confidence);j.put("fdr_q",c.fdr_q);j.put("multiple_testing",c.multiple_testing);j.put("base_params",case_params(c.base));
+ Json j;j.put("schema_version",static_cast<std::int64_t>(1));j.put("experiment_id",c.experiment_id);j.put("problem_family",c.family);j.put("algorithm_a",c.a);j.put("algorithm_b",c.b);j.put("search_method",c.method);j.put("primary_axis",c.axis);j.put("seed",static_cast<std::int64_t>(c.seed));j.put("max_cases",static_cast<std::int64_t>(c.max_cases));j.put("max_case_bytes",static_cast<std::int64_t>(c.max_bytes));j.put("max_search_queue",static_cast<std::int64_t>(c.max_queue));j.put("max_report_bytes",static_cast<std::int64_t>(c.max_report_bytes));j.put("discovery_blocks",static_cast<std::int64_t>(c.blocks));j.put("confirm_blocks",static_cast<std::int64_t>(c.confirm_blocks));j.put("warmup",static_cast<std::int64_t>(c.warmup));j.put("sample_ms",static_cast<std::int64_t>(c.sample_ms));j.put("rss_mb",static_cast<std::int64_t>(c.rss_mb));j.put("total_wall_seconds",static_cast<std::int64_t>(c.total_wall_s));j.put("min_practical_ratio",c.min_ratio);j.put("confirmation_confidence",c.confirmation_confidence);j.put("fdr_q",c.fdr_q);j.put("multiple_testing",c.multiple_testing);j.put("exploration_fraction",c.exploration_fraction);j.put("minimum_batch_ms",static_cast<std::int64_t>(c.minimum_batch_ms));j.put("isolation_mode",c.isolation_mode);j.put("base_params",case_params(c.base));
  Json axes;for(const auto& [name,values]:c.axes){auto* arr=json_object_new_array();for(const auto& val:values)json_object_array_add(arr,json_object_new_string(val.c_str()));json_object_object_add(axes.p,name.c_str(),arr);}j.put("axes",std::move(axes));return j;
 }
 Config config_from_json(const Json& j){
  if(j.i("schema_version",1)!=1)throw Error("only config schema version 1 supported");
+ auto require_field_type=[](const Json& object,const char* name,bool numeric){
+  const auto* v=object.get(name);if(!v)return;
+  const auto type=json_object_get_type(v);
+  if(numeric?(type!=json_type_int&&type!=json_type_double):type!=json_type_string)
+   throw Error(std::string("wrong type for configuration parameter: ")+name);
+ };
+ require_field_type(j,"exploration_fraction",true);
+ require_field_type(j,"isolation_mode",false);
+ if(const auto* v=j.get("minimum_batch_ms");v&&json_object_get_type(v)!=json_type_int)
+  throw Error("minimum_batch_ms must be integral");
  Config c;c.experiment_id=j.s("experiment_id","experiment");c.family=j.s("problem_family",j.s("family","calibration"));
  c.a=j.s("algorithm_a","");c.b=j.s("algorithm_b","");
  if(auto* a=j.get("algorithms")){if(json_object_get_type(a)!=json_type_array||json_object_array_length(a)<1||json_object_array_length(a)>2)throw Error("algorithms must contain one or two elements");c.a=json_object_get_string(json_object_array_get_idx(a,0));if(json_object_array_length(a)>1)c.b=json_object_get_string(json_object_array_get_idx(a,1));}
  if(c.a.empty())c.a=c.family=="calibration"?"calibration":c.family=="integer_array"?"std_sort":c.family=="topk"?"topk_heap":"dijkstra_heap";
- c.method=j.s("search_method",j.s("method","grid"));if(auto* search=j.get("search")){Json k(json_object_get(search));c.method=k.s("method",c.method);c.max_cases=static_cast<std::uint64_t>(k.i("max_cases",static_cast<std::int64_t>(c.max_cases)));}
+ c.method=j.s("search_method",j.s("method","grid"));if(auto* search=j.get("search")){Json k(json_object_get(search));require_field_type(k,"exploration_fraction",true);c.method=k.s("method",c.method);c.max_cases=static_cast<std::uint64_t>(k.i("max_cases",static_cast<std::int64_t>(c.max_cases)));c.exploration_fraction=k.d("exploration_fraction",c.exploration_fraction);}
  c.axis=j.s("primary_axis",c.family=="calibration"?"x":c.family=="graph"?"edges":"n");
- c.seed=static_cast<std::uint64_t>(j.i("seed",137));c.max_cases=static_cast<std::uint64_t>(j.i("max_cases",static_cast<std::int64_t>(c.max_cases)));c.max_bytes=static_cast<std::uint64_t>(j.i("max_case_bytes",64*1024*1024));c.max_queue=static_cast<std::uint64_t>(j.i("max_search_queue",10000));c.max_report_bytes=static_cast<std::uint64_t>(j.i("max_report_bytes",10000000));c.blocks=static_cast<int>(j.i("discovery_blocks",9));c.confirm_blocks=static_cast<int>(j.i("confirm_blocks",20));c.warmup=static_cast<int>(j.i("warmup",2));c.sample_ms=static_cast<int>(j.i("sample_ms",3000));c.rss_mb=static_cast<int>(j.i("rss_mb",1024));c.total_wall_s=static_cast<int>(j.i("total_wall_seconds",600));c.min_ratio=j.d("min_practical_ratio",1.2);
- if(auto* m=j.get("measurement")){Json x(json_object_get(m));c.blocks=static_cast<int>(x.i("paired_discovery_blocks",c.blocks));c.confirm_blocks=static_cast<int>(x.i("paired_confirm_blocks",c.confirm_blocks));c.warmup=static_cast<int>(x.i("warmup_iterations",c.warmup));}
+ c.seed=static_cast<std::uint64_t>(j.i("seed",137));c.max_cases=static_cast<std::uint64_t>(j.i("max_cases",static_cast<std::int64_t>(c.max_cases)));c.max_bytes=static_cast<std::uint64_t>(j.i("max_case_bytes",64*1024*1024));c.max_queue=static_cast<std::uint64_t>(j.i("max_search_queue",10000));c.max_report_bytes=static_cast<std::uint64_t>(j.i("max_report_bytes",10000000));c.blocks=static_cast<int>(j.i("discovery_blocks",9));c.confirm_blocks=static_cast<int>(j.i("confirm_blocks",20));c.warmup=static_cast<int>(j.i("warmup",2));c.sample_ms=static_cast<int>(j.i("sample_ms",3000));c.rss_mb=static_cast<int>(j.i("rss_mb",1024));c.total_wall_s=static_cast<int>(j.i("total_wall_seconds",600));c.min_ratio=j.d("min_practical_ratio",1.2);c.exploration_fraction=j.d("exploration_fraction",c.exploration_fraction);c.minimum_batch_ms=static_cast<int>(j.i("minimum_batch_ms",c.minimum_batch_ms));c.isolation_mode=j.s("isolation_mode",c.isolation_mode);
+ if(auto* m=j.get("measurement")){Json x(json_object_get(m));require_field_type(x,"isolation_mode",false);
+  if(const auto* v=x.get("minimum_batch_ms");v&&json_object_get_type(v)!=json_type_int)
+   throw Error("minimum_batch_ms must be integral");
+  c.blocks=static_cast<int>(x.i("paired_discovery_blocks",c.blocks));c.confirm_blocks=static_cast<int>(x.i("paired_confirm_blocks",c.confirm_blocks));c.warmup=static_cast<int>(x.i("warmup_iterations",c.warmup));c.minimum_batch_ms=static_cast<int>(x.i("minimum_batch_ms",c.minimum_batch_ms));c.isolation_mode=x.s("isolation_mode",c.isolation_mode);}
  if(auto* d=j.get("detection")){Json x(json_object_get(d));c.min_ratio=x.d("min_practical_ratio",c.min_ratio);c.confirmation_confidence=x.d("confirmation_confidence",c.confirmation_confidence);c.fdr_q=x.d("fdr_q",c.fdr_q);c.multiple_testing=x.s("multiple_testing",c.multiple_testing);}
  if(auto* l=j.get("limits")){Json x(json_object_get(l));c.total_wall_s=static_cast<int>(x.i("total_wall_seconds",c.total_wall_s));c.max_cases=static_cast<std::uint64_t>(x.i("max_cases",static_cast<std::int64_t>(c.max_cases)));c.max_bytes=static_cast<std::uint64_t>(x.i("max_case_bytes",static_cast<std::int64_t>(c.max_bytes)));c.rss_mb=static_cast<int>(x.i("max_worker_rss_mb",c.rss_mb));c.sample_ms=static_cast<int>(x.i("max_sample_wall_ms",c.sample_ms));c.max_queue=static_cast<std::uint64_t>(x.i("max_search_queue",static_cast<std::int64_t>(c.max_queue)));c.max_report_bytes=static_cast<std::uint64_t>(x.i("max_report_bytes",static_cast<std::int64_t>(c.max_report_bytes)));}
  c.base.family=c.family;c.base.seed=c.seed;
@@ -104,7 +117,7 @@ Config config_from_json(const Json& j){
  }
  if(c.axes.empty())c.axes[c.axis]={"0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15"};
  if(c.method!="grid"&&c.method!="random"&&c.method!="stratified"&&c.method!="adaptive_partition")throw Error("unknown search method");
- if(c.max_cases==0||c.max_cases>20000||c.max_queue==0||c.max_queue>100000||c.max_report_bytes<4096||c.max_report_bytes>1000000000||c.max_bytes<64||c.max_bytes>64ULL*1024*1024||c.blocks<1||c.blocks>100||c.confirm_blocks<1||c.confirm_blocks>100||c.warmup<0||c.warmup>100||c.sample_ms<100||c.sample_ms>60000||c.total_wall_s<1||c.total_wall_s>86400||c.rss_mb<64||c.rss_mb>65536||!std::isfinite(c.min_ratio)||c.min_ratio<1.01||c.min_ratio>100000||!std::isfinite(c.confirmation_confidence)||c.confirmation_confidence<0.90||c.confirmation_confidence>=1.0||!std::isfinite(c.fdr_q)||c.fdr_q<0.001||c.fdr_q>0.25||c.multiple_testing!="bh_fdr")throw Error("configuration resource/measurement bounds invalid");
+ if(c.max_cases==0||c.max_cases>20000||c.max_queue==0||c.max_queue>100000||c.max_report_bytes<4096||c.max_report_bytes>1000000000||c.max_bytes<64||c.max_bytes>64ULL*1024*1024||c.blocks<1||c.blocks>100||c.confirm_blocks<1||c.confirm_blocks>100||c.warmup<0||c.warmup>100||c.sample_ms<100||c.sample_ms>60000||c.total_wall_s<1||c.total_wall_s>86400||c.rss_mb<64||c.rss_mb>65536||!std::isfinite(c.min_ratio)||c.min_ratio<1.01||c.min_ratio>100000||!std::isfinite(c.confirmation_confidence)||c.confirmation_confidence<0.90||c.confirmation_confidence>=1.0||!std::isfinite(c.fdr_q)||c.fdr_q<0.001||c.fdr_q>0.25||c.multiple_testing!="bh_fdr"||!std::isfinite(c.exploration_fraction)||c.exploration_fraction<0.0||c.exploration_fraction>1.0||c.minimum_batch_ms<1||c.minimum_batch_ms>100|| (c.isolation_mode!="per_case"&&c.isolation_mode!="per_sample"))throw Error("configuration resource/measurement bounds invalid");
  if(!c.axes.count(c.axis))c.axis=c.axes.begin()->first;
  auto valid=algorithms_for(c.family);if(std::find(valid.begin(),valid.end(),c.a)==valid.end()&&c.a.rfind("plugin:",0)!=0)throw Error("unknown primary algorithm for family");
  if(!c.b.empty()&&std::find(valid.begin(),valid.end(),c.b)==valid.end()&&c.b.rfind("plugin:",0)!=0)throw Error("unknown secondary algorithm for family");
@@ -338,9 +351,11 @@ static std::size_t adaptive_next(Store& store,const Config& cfg,const std::vecto
  const auto count=pool.size()-available.size();
  if(count==0)return available.front();
  if(count==1)return available.back();
- /* Predeclare 20% independent uniform exploration, even if a locally
-    attractive candidate exists. Do not pool unrelated structural contexts. */
- if(count%5==4)return available[static_cast<std::size_t>(randbelow(random_state,available.size()))];
+ /* Deterministic fraction schedule: floor(t*p) quota increments imply
+    exactly floor(N*p) exploration proposals after N selections.
+    This preserves restart decisions independently of timing noise. */
+ const auto quota=[](std::size_t n,double fraction){return static_cast<std::size_t>(std::floor(static_cast<double>(n)*fraction+1e-9));};
+ if(quota(count+1,cfg.exploration_fraction)>quota(count,cfg.exploration_fraction))return available[static_cast<std::size_t>(randbelow(random_state,available.size()))];
  std::map<std::string,std::map<std::int64_t,double>> observed;
  for(std::size_t i=0;i<pool.size();i++)if(chosen[i]){
   auto c=make_case(pool[i],cfg.max_bytes);
@@ -384,7 +399,7 @@ static void execute_schedule(const Config& cfg,const std::string& out,Store& sto
   const auto index=feedback?adaptive_next(store,cfg,choices,chosen,rng):completed;
   if(chosen[index])throw Error("scheduler selected previously evaluated case");
   auto c=make_case(choices[index],cfg.max_bytes);
-  const auto obs=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},cfg.blocks,cfg.warmup,cfg.sample_ms,cfg.rss_mb);
+  const auto obs=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},cfg.blocks,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample");
   store.exec("BEGIN IMMEDIATE");
   try{
    for(const auto& o:obs)store.add_observation(c,o,false);
@@ -395,6 +410,8 @@ static void execute_schedule(const Config& cfg,const std::string& out,Store& sto
  }
  if(completed==cfg.max_cases||completed==choices.size()){
   if(auto d=detect(store,cfg)){
+   store.hypothesis("H1","OBSERVED",cfg.axis,d->left,d->right,d->effect,
+      "Candidate observed before hypothesis freezing",d->kind,d->frozen_params);
    store.hypothesis("H1","HYPOTHESIZED",cfg.axis,d->left,d->right,d->effect,"Exploratory candidate, one frozen hypothesis with independent holdout; conditioned scope="+d->scope+"; failure_status="+d->failure_status,d->kind,d->frozen_params);
   }else store.hypothesis("H1","NO_CONFIRMED_BOUNDARY",cfg.axis,0,0,0,"No convincing isolated structural discontinuity under declared thresholds");
   store.event("search_complete",std::to_string(completed));
@@ -444,6 +461,15 @@ void confirm(const std::string& run,const std::string& id){
  const auto frozen=frozen_case(store,cfg,id);
  if(status=="NO_CONFIRMED_BOUNDARY"){std::cout<<"No candidate to confirm\n";return;}
  if(status!="HYPOTHESIZED")throw Error("confirmation already attempted or candidate not eligible: "+status);
+ /* Preserve the original candidate's frozen failure subtype/scope when
+    entering TESTED: failure confirmations parse that exact evidence. */
+ sqlite3_stmt* detail_stmt=nullptr;
+ if(sqlite3_prepare_v2(store.raw(),"SELECT detail FROM hypotheses WHERE id=?",-1,&detail_stmt,nullptr)!=SQLITE_OK)throw Error("candidate detail query failed");
+ sqlite3_bind_text(detail_stmt,1,id.c_str(),-1,SQLITE_TRANSIENT);
+ if(sqlite3_step(detail_stmt)!=SQLITE_ROW){sqlite3_finalize(detail_stmt);throw Error("candidate detail missing");}
+ const auto original_detail=std::string(reinterpret_cast<const char*>(sqlite3_column_text(detail_stmt,0)));
+ sqlite3_finalize(detail_stmt);
+ store.hypothesis(id,"TESTED",axis,left,right,0,original_detail+"; Holdout started with frozen geometry");
  sqlite3_stmt* kind_stmt=nullptr;
  if(sqlite3_prepare_v2(store.raw(),"SELECT kind FROM hypotheses WHERE id=?",-1,&kind_stmt,nullptr)!=SQLITE_OK)throw Error("hypothesis kind query failed");
  sqlite3_bind_text(kind_stmt,1,id.c_str(),-1,SQLITE_TRANSIENT);
@@ -475,7 +501,7 @@ void confirm(const std::string& run,const std::string& id){
     c.seed=seed;c=make_case(c,cfg.max_bytes);
     if(prior.count(c.id)){all_valid=false;break;}
     auto observations=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:
-       std::vector<std::string>{cfg.a,cfg.b},1,cfg.warmup,cfg.sample_ms,cfg.rss_mb);
+       std::vector<std::string>{cfg.a,cfg.b},1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample");
     int count=0;
     for(const auto& observation:observations){
      store.add_observation(c,observation,true);
@@ -508,7 +534,7 @@ void confirm(const std::string& run,const std::string& id){
    if(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now()-begin).count()>=cfg.total_wall_s){reject("Holdout stopped by declared wall budget");return;}
    Case c=frozen;assign(c,axis,formatted_axis_value(axis,side==0?left:right));c.seed=seed;c=make_case(c,cfg.max_bytes);
    if(discovery_ids.count(c.id)){reject("Held-out input overlaps discovery: confirmation invalid");return;}
-   auto obs=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},1,cfg.warmup,cfg.sample_ms,cfg.rss_mb);
+   auto obs=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample");
    for(const auto& o:obs)store.add_observation(c,o,true);
    auto result=metric(store,c,cfg,true);
    if(!result){reject("Insufficient holdout measurement or correctness/worker failure");return;}
@@ -557,7 +583,7 @@ void confirm(const std::string& run,const std::string& id){
    const auto lo=*std::min_element(numeric.begin(),numeric.end()),hi=*std::max_element(numeric.begin(),numeric.end());
    const auto control=std::abs(lo-left)>std::abs(hi-right)?lo:hi;
    if(control!=left&&control!=right){Case c=frozen;assign(c,axis,formatted_axis_value(axis,control));c.seed=cfg.seed+2000000ULL;c=make_case(c,cfg.max_bytes);
-    for(const auto& o:measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},1,cfg.warmup,cfg.sample_ms,cfg.rss_mb))store.add_observation(c,o,true);
+    for(const auto& o:measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample"))store.add_observation(c,o,true);
     detail<<"; negative-control axis="<<control<<" case="<<c.id;
    }
   }
@@ -569,7 +595,7 @@ void ablate(const Config& cfg,const std::string& out){
  if(!numeric_axis(cfg.axis))throw Error("ablation requires an ordered numeric primary axis; categorical axes must be conditioned on");
  if(fs::exists(out))throw Error("ablation output already exists");
  fs::create_directories(out);
- std::ostringstream csv;csv<<"method,case_budget,discovery_cases,total_cases,raw_samples,seconds,status,left,right,localization_error\n";
+ std::ostringstream csv;csv<<"method,case_budget,discovery_cases,total_cases,raw_samples,seconds,status,left,right,localization_error,worker_cpu_seconds,completion_fraction\n";
  for(const char* name:{"grid","random","stratified","adaptive_partition"}){
   auto c=cfg;c.method=name;const auto path=out+"/"+name;
   const auto start=std::chrono::steady_clock::now();explore(c,path);
@@ -581,10 +607,17 @@ void ablate(const Config& cfg,const std::string& out){
   if(sqlite3_step(st)!=SQLITE_ROW){sqlite3_finalize(st);throw Error("ablation discovery count missing");}
   const auto discovery_cases=sqlite3_column_int64(st,0);sqlite3_finalize(st);
   const auto err=cfg.family=="calibration"&&status=="CONFIRMED"?std::to_string(std::abs(right-c.base.threshold)):"NA";
-  csv<<name<<','<<c.max_cases<<','<<discovery_cases<<','<<summary.i("cases")<<','<<summary.i("samples")<<','<<sec<<','<<status<<','<<left<<','<<right<<','<<err<<'\n';
+  sqlite3_stmt* cpu=nullptr;
+  if(sqlite3_prepare_v2(store.raw(),"SELECT COALESCE(SUM(cpu_ns),0) FROM samples WHERE cpu_ns IS NOT NULL",-1,&cpu,nullptr)!=SQLITE_OK)
+   throw Error("ablation CPU accounting query failed");
+  if(sqlite3_step(cpu)!=SQLITE_ROW){sqlite3_finalize(cpu);throw Error("ablation CPU accounting unavailable");}
+  const auto cpu_seconds=static_cast<double>(sqlite3_column_int64(cpu,0))/1000000000.0;
+  sqlite3_finalize(cpu);
+  const auto complete=static_cast<double>(discovery_cases)/static_cast<double>(std::min<std::uint64_t>(c.max_cases,scheduled(c).size()));
+  csv<<name<<','<<c.max_cases<<','<<discovery_cases<<','<<summary.i("cases")<<','<<summary.i("samples")<<','<<sec<<','<<status<<','<<left<<','<<right<<','<<err<<','<<cpu_seconds<<','<<complete<<'\n';
  }
  write_file(out+"/ablation.csv",csv.str());
- write_file(out+"/README.md","# Equal-budget search comparison\n\nRows summarize grid, random, stratified and adaptive runs with identical user-specified evaluation and wall budgets. `localization_error=NA` for real algorithms because no ground-truth boundary is assumed. Rows include actual discovery case counts to expose incomplete runs; equal requested budgets do not guarantee equal completed counts. All raw cases and timing measurements remain in each method subdirectory.\n");
+ write_file(out+"/README.md","# Equal-budget search comparison\n\nRows summarize grid, random, stratified and adaptive runs with identical user-specified evaluation and wall budgets. `localization_error=NA` for real algorithms because no ground-truth boundary is assumed. Rows include actual discovery case counts to expose incomplete runs; equal requested budgets do not guarantee equal completed counts or CPU time. The worker_cpu_seconds column is the sum of sampled worker process CPU time when available, not scheduler CPU time or a hardware-normalized speedup. All raw cases and timing measurements remain in each method subdirectory.\n");
  std::cout<<csv.str();
 }
 /* A performance witness is a *measured* predicate, unlike a wrong-answer
@@ -645,7 +678,7 @@ static void minimize_performance(const std::string& run,const std::string& id,
     c.seed=base_seed+static_cast<std::uint64_t>(block)*97ULL;
     try{c=make_case(c,cfg.max_bytes);}catch(const Error&){return false;}
     auto observations=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},
-                              1,cfg.warmup,cfg.sample_ms,cfg.rss_mb);
+                              1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample");
     for(const auto& o:observations)evidence.add_observation(c,o,true);
     const auto m=metric(evidence,c,cfg,true);
     if(!m){evidence.event("minimization_invalid",stage+" worker or oracle invalid case="+c.id);return false;}
@@ -755,7 +788,7 @@ void minimize(const std::string& run,const std::string& id){
    const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(std::min(120,cfg.total_wall_s));
    auto predicate=[&](const Case& input)->bool{
     if(std::chrono::steady_clock::now()>deadline)throw Error("failure shrink time budget exhausted");
-    const auto obs=measure(input,{cfg.a},1,0,cfg.sample_ms,cfg.rss_mb);
+    const auto obs=measure(input,{cfg.a},1,0,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample");
     return obs.size()==1&&obs[0].status==subtype;
    };
    ShrinkResult shrunk;shrunk.original=*original;shrunk.smallest=*original;
@@ -823,7 +856,7 @@ void minimize_failure_case(const std::string& run,const std::string& case_id,con
  auto predicate=[&](const Case& candidate){
   if(std::chrono::steady_clock::now()>deadline)throw Error("witness minimization wall budget exhausted");
   /* Worker validation includes oracle comparison before collecting timing. */
-  const auto result=measure(candidate,{algorithm},1,0,cfg.sample_ms,cfg.rss_mb);
+  const auto result=measure(candidate,{algorithm},1,0,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample");
   return result.size()==1&&result[0].status=="wrong_answer";
  };
  /* A crash is NOT automatically a wrong answer: only repeatable semantic
@@ -997,9 +1030,97 @@ void import_bundle(const std::string& bundle,const std::string& out){
  }catch(...){fs::remove_all(out);throw;}
  std::cout<<"Imported verified evidence into "<<out<<"\n";
 }
+void intervene(const std::string& source,const std::string& out,const std::string& id,int seed_pairs){
+ if(seed_pairs<3||seed_pairs>100)throw Error("matched intervention requires 3..100 independent seed pairs");
+ if(fs::exists(out))throw Error("intervention output already exists");
+ Store prior(source+"/run.sqlite");const auto cfg=config_from_json(Json::parse(prior.config()));
+ const auto [status,axis,left,right]=read_hypothesis(prior,id);
+ if(status=="NO_CONFIRMED_BOUNDARY"||status=="NOT_CONFIRMED"||status=="INVALIDATED")
+  throw Error("matched intervention requires a frozen non-rejected boundary hypothesis");
+ if(!numeric_axis(axis))throw Error("categorical intervention is not an ordered numeric boundary");
+ const auto frozen=frozen_case(prior,cfg,id);
+ fs::create_directories(out);Store samples(out+"/run.sqlite");
+ auto new_config=cfg;new_config.experiment_id="intervention-"+cfg.experiment_id;
+ samples.experiment(config_json(new_config).str(),environment());
+ const auto algorithms=cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b};
+ Json evidence;evidence.put("purpose","matched structural intervention; controls are observational diagnostics");
+ evidence.put("source_experiment",cfg.experiment_id);evidence.put("source_hypothesis",id);
+ evidence.put("source_status",status);evidence.put("axis",axis);evidence.put("left",left);evidence.put("right",right);
+ evidence.put("intended_nuisance_parameters_equal",true);evidence.put("causal_claim",false);
+ evidence.put("independent_seed_pairs_requested",static_cast<std::int64_t>(seed_pairs));
+ auto* pairs=json_object_new_array();std::vector<double> paired_log_contrasts;
+ std::set<std::string> source_ids;for(const auto& c:prior.cases())source_ids.insert(c.id);
+ const auto start=std::chrono::steady_clock::now();
+ std::size_t complete=0;
+ for(int i=0;i<seed_pairs;i++){
+  if(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now()-start).count()>=cfg.total_wall_s)break;
+  const auto seed=cfg.seed+40000000ULL+static_cast<std::uint64_t>(i)*99991ULL;
+  std::array<Case,2> generated;
+  std::array<std::optional<double>,2> metrics;
+  bool valid=true;
+  for(int side=0;side<2;side++){
+   Case case_def=frozen;case_def.seed=seed;assign(case_def,axis,formatted_axis_value(axis,side?right:left));
+   generated[static_cast<std::size_t>(side)]=make_case(case_def,cfg.max_bytes);
+   if(source_ids.count(generated[static_cast<std::size_t>(side)].id))throw Error("intervention case overlaps discovery or confirmation");
+   const auto observations=measure(generated[static_cast<std::size_t>(side)],algorithms,
+     1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample");
+   for(const auto& observation:observations)samples.add_observation(generated[static_cast<std::size_t>(side)],observation,true);
+   metrics[static_cast<std::size_t>(side)]=metric(samples,generated[static_cast<std::size_t>(side)],cfg,true);
+   if(!metrics[static_cast<std::size_t>(side)])valid=false;
+  }
+  Json pair;pair.put("seed",static_cast<std::int64_t>(seed));pair.put("left_case_id",generated[0].id);pair.put("right_case_id",generated[1].id);
+  pair.put("measurements_valid",valid);
+  const auto l=Json::parse(morphology_features(generated[0]).str());
+  const auto h=Json::parse(morphology_features(generated[1]).str());
+  auto* changed=json_object_new_array();
+  json_object_object_foreach(l.p,key,value){
+   auto* rhs=h.get(key);
+   if(!rhs||std::string(json_object_to_json_string_ext(value,JSON_C_TO_STRING_PLAIN))!=
+     json_object_to_json_string_ext(rhs,JSON_C_TO_STRING_PLAIN)){
+    json_object_array_add(changed,json_object_new_string(key));
+   }
+  }
+  json_object_object_add(pair.p,"observed_feature_differences",changed);
+  if(valid){
+   const auto contrast=*metrics[1]-*metrics[0];
+   pair.put("log_right_minus_left",contrast);paired_log_contrasts.push_back(contrast);
+   complete++;
+  }
+  json_object_array_add(pairs,pair.p);pair.p=nullptr;
+ }
+ evidence.put("valid_seed_pairs",static_cast<std::int64_t>(complete));
+ json_object_object_add(evidence.p,"paired_controls",pairs);
+ if(paired_log_contrasts.size()>=3){
+  evidence.put("median_log_contrast",sample_median(paired_log_contrasts));
+  if(paired_log_contrasts.size()>=20){
+   const auto ci=paired_case_bootstrap(paired_log_contrasts,cfg.seed^0x511f00dULL,cfg.confirmation_confidence);
+   const auto p=paired_sign_flip_p(paired_log_contrasts,cfg.seed^0x127badeULL);
+   evidence.put("case_paired_ci_lower",ci.lower);evidence.put("case_paired_ci_upper",ci.upper);
+   evidence.put("signflip_p",p);
+  }
+ }
+ evidence.put("verdict",complete==static_cast<std::size_t>(seed_pairs)?"MATCHED_MEASUREMENTS_COMPLETE":"INCOMPLETE_OR_INVALID");
+ evidence.put("limitation","Changing one requested morphology axis may change multiple observed input features; this is not causal identification. Matched seeds and unmodified nuisance parameters are necessary but not sufficient for causality.");
+ write_file(out+"/interventions.json",evidence.str());
+ samples.event("matched_intervention",std::to_string(complete)+" of "+std::to_string(seed_pairs)+" independent seed pairs");
+ report(out);
+ std::cout<<"Matched intervention: "<<complete<<"/"<<seed_pairs<<" seed pairs; causal claim withheld; "<<out<<"\n";
+}
 void compare(const std::string& a,const std::string& b){Store left(a+"/run.sqlite"),right(b+"/run.sqlite");auto x=config_from_json(Json::parse(left.config())),y=config_from_json(Json::parse(right.config()));
  if(x.family!=y.family||x.a!=y.a||x.b!=y.b)throw Error("incompatible algorithm output contracts");
  std::cout<<"A: "<<left.summary().str()<<"\nB: "<<right.summary().str()<<"\n";
- std::cout<<"WARNING: hardware equivalence has not been established; do not compare absolute times as speedup.\n";
+ const auto env_a=Json::parse(left.environment()),env_b=Json::parse(right.environment());
+ const std::vector<std::string> compatibility={"architecture","cpu_model","compiler_id","compiler_version","stdlib","stdlib_version","build_type","build_flags","source_revision","cpu_affinity","cpu_governor","process_priority","sanitized_build"};
+ int missing=0,mismatched=0;
+ for(const auto& field:compatibility){
+  auto* l=env_a.get(field.c_str());auto* r=env_b.get(field.c_str());
+  if(!l||!r){std::cout<<"UNAVAILABLE: "<<field<<"\n";missing++;continue;}
+  if(json_object_to_json_string_ext(l,JSON_C_TO_STRING_PLAIN)!=std::string(json_object_to_json_string_ext(r,JSON_C_TO_STRING_PLAIN))){
+   std::cout<<"MISMATCH: "<<field<<"\n";mismatched++;
+  }
+ }
+ std::cout<<"ENVIRONMENT_COMPATIBILITY: "<<(mismatched?"MISMATCH":missing?"INCOMPLETE":"METADATA_MATCH")
+          <<" mismatched_fields="<<mismatched<<" missing_fields="<<missing<<"\n";
+ std::cout<<"WARNING: matching metadata cannot establish governor stability, thermal equivalence, workload identity or causal speedup.\n";
 }
 }

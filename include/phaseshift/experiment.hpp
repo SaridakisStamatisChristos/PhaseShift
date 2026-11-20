@@ -7,7 +7,9 @@ struct Config {
  std::map<std::string,std::vector<std::string>> axes;
  std::uint64_t seed=137,max_cases=128,max_bytes=64ULL*1024*1024,max_queue=10000,max_report_bytes=10000000;
  int blocks=9,confirm_blocks=20,warmup=2,sample_ms=3000,rss_mb=1024,total_wall_s=600;
- double min_ratio=1.20,confirmation_confidence=0.99,fdr_q=0.05;
+ double min_ratio=1.20,confirmation_confidence=0.99,fdr_q=0.05,exploration_fraction=0.20;
+ int minimum_batch_ms=2;
+ std::string isolation_mode="per_case";
  std::string multiple_testing="bh_fdr";
 };
 Config parse_config(const std::string& path);
@@ -15,6 +17,7 @@ Config config_from_json(const Json& json);
 void explore(const Config& cfg,const std::string& out,std::size_t pause_after=0);
 void resume(const std::string& run,std::size_t pause_after=0);
 void ablate(const Config& cfg,const std::string& out);
+void intervene(const std::string& source,const std::string& out,const std::string& hypothesis_id="H1",int seed_pairs=9);
 void confirm(const std::string& run,const std::string& id="H1");
 void minimize(const std::string& run,const std::string& id="H1");
 void replay(const std::string& run,const std::string& case_id);

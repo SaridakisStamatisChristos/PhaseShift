@@ -1,5 +1,7 @@
 #include "phaseshift/core.hpp"
 #include <openssl/evp.h>
+#include <openssl/crypto.h>
+#include <sqlite3.h>
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -12,6 +14,10 @@
 #include <map>
 #include <sstream>
 #include <sys/utsname.h>
+#include <sys/resource.h>
+#include <sched.h>
+#include <cerrno>
+#include <cstdlib>
 #include <thread>
 #include <unordered_set>
 namespace ps {
@@ -366,8 +372,53 @@ Case decode_case(const std::string& family,const std::string& params,std::uint64
 }
 std::string now_utc(){std::time_t t=std::time(nullptr);std::tm utc{};gmtime_r(&t,&utc);char b[32];std::strftime(b,sizeof(b),"%Y-%m-%dT%H:%M:%SZ",&utc);return b;}
 std::string environment(){
- struct utsname u{};uname(&u);Json j;j.put("timestamp_utc",now_utc());j.put("kernel",std::string(u.release));j.put("architecture",std::string(u.machine));j.put("compiler",std::string(__VERSION__));j.put("clock","std::chrono::steady_clock");j.put("cores",static_cast<std::int64_t>(std::thread::hardware_concurrency()));
+ struct utsname u{};uname(&u);Json j;j.put("timestamp_utc",now_utc());
+#ifdef PHASESHIFT_BUILD_TYPE
+ j.put("build_type",PHASESHIFT_BUILD_TYPE);
+#endif
+#ifdef PHASESHIFT_COMPILER_ID
+ j.put("compiler_id",PHASESHIFT_COMPILER_ID);
+#endif
+#ifdef PHASESHIFT_COMPILER_VERSION
+ j.put("compiler_version",PHASESHIFT_COMPILER_VERSION);
+#endif
+#ifdef PHASESHIFT_BUILD_FLAGS
+ j.put("build_flags",PHASESHIFT_BUILD_FLAGS);
+#endif
+#ifdef PHASESHIFT_SOURCE_COMMIT
+ j.put("source_revision",PHASESHIFT_SOURCE_COMMIT);
+#endif
+#ifdef PHASESHIFT_SOURCE_DIRTY
+ j.put("source_dirty_at_configure",PHASESHIFT_SOURCE_DIRTY);
+#endif
+#ifdef __GLIBCXX__
+ j.put("stdlib","libstdc++");j.put("stdlib_version",static_cast<std::int64_t>(__GLIBCXX__));
+#elif defined(_LIBCPP_VERSION)
+ j.put("stdlib","libc++");j.put("stdlib_version",static_cast<std::int64_t>(_LIBCPP_VERSION));
+#else
+ j.put("stdlib","unspecified");
+#endif
+#ifdef PHASESHIFT_ASAN_BUILD
+ j.put("sanitized_build",true);
+#else
+ j.put("sanitized_build",false);
+#endif
+ j.put("process_priority",static_cast<std::int64_t>(getpriority(PRIO_PROCESS,0)));
+ cpu_set_t affinity;CPU_ZERO(&affinity);
+ if(sched_getaffinity(0,sizeof(affinity),&affinity)==0){
+  std::string cpus;
+  for(int n=0;n<CPU_SETSIZE;n++)if(CPU_ISSET(n,&affinity)){
+   if(!cpus.empty())cpus+=",";
+   cpus+=std::to_string(n);
+  }
+  j.put("cpu_affinity",cpus);
+ }
+ try{auto value=read_file("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor");
+  const auto end=value.find_first_of("\r\n");j.put("cpu_governor",value.substr(0,end));
+ }catch(const Error&){}j.put("kernel",std::string(u.release));j.put("architecture",std::string(u.machine));j.put("compiler",std::string(__VERSION__));j.put("clock","std::chrono::steady_clock");j.put("cores",static_cast<std::int64_t>(std::thread::hardware_concurrency()));
  try{auto cpu=read_file("/proc/cpuinfo");auto p=cpu.find("model name");if(p!=std::string::npos){auto s=cpu.find(':',p),e=cpu.find('\n',p);if(s!=std::string::npos)j.put("cpu_model",cpu.substr(s+2,e-s-2));}}catch(const Error&){}
+ j.put("sqlite_version",sqlite3_libversion());
+ j.put("openssl_version",OpenSSL_version(OPENSSL_VERSION));
  return j.str();
 }
 }

@@ -37,6 +37,9 @@ case_id="$(jq -r '.raw_samples[0].case_id' "$RUN/demo/report.json")"
 "$BIN" replay --run "$RUN/imported" --case "$case_id"
 "$BIN" compare --a "$RUN/graph" --b "$RUN/graph" >"$RUN/compare.txt"
 "$BIN" scaling --run "$RUN/sorting" --out "$RUN/scaling" --seeds 3
+jq -e '.scaling_regime_evidence.status | type == "string"' "$RUN/scaling/scaling.json" >/dev/null
+"$BIN" intervene --run "$RUN/demo" --out "$RUN/intervention" --pairs 3
+jq -e '.valid_seed_pairs == 3 and .causal_claim == false and .verdict == "MATCHED_MEASUREMENTS_COMPLETE"' "$RUN/intervention/interventions.json" >/dev/null
 "$BIN" ablate --config "$ROOT/configs/adaptive_sparse.json" --out "$RUN/ablation"
 jq -n --arg path "$RUN" '{acceptance_status:"PASS", run_directory:$path}' >"$RUN/acceptance.json"
 echo "PASS: complete command-line acceptance and replay/export/import checks: $RUN"

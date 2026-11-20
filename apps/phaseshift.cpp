@@ -14,6 +14,7 @@ Usage:
   phaseshift explore --config CONFIG --out RUN_DIRECTORY [--pause-after N]
   phaseshift resume --run RUN_DIRECTORY [--pause-after N]
   phaseshift ablate --config CONFIG --out DIRECTORY
+  phaseshift intervene --run RUN_DIRECTORY --out NEW_DIRECTORY [--hypothesis H1] [--pairs 9]
   phaseshift scaling --run RUN_DIRECTORY --out NEW_DIRECTORY [--seeds 3]
   phaseshift confirm --run RUN_DIRECTORY [--hypothesis H1]
   phaseshift minimize --run RUN_DIRECTORY [--hypothesis H1]
@@ -51,6 +52,12 @@ int main(int argc,char** argv){
   if(cmd=="explore"){const auto config=option("--config"),out=option("--out");if(config.empty()||out.empty())throw ps::Error("explore requires --config and --out");ps::explore(ps::parse_config(config),out,pause_after());return 0;}
   if(cmd=="resume"){if(run.empty())throw ps::Error("resume requires --run");ps::resume(run,pause_after());return 0;}
   if(run.empty() && cmd!="compare" && cmd!="verify-bundle" && cmd!="import")throw ps::Error("command requires --run");
+  if(cmd=="intervene"){
+   const auto out=option("--out");if(out.empty())throw ps::Error("intervene requires --out");
+   const auto raw=option("--pairs","9");std::size_t chars=0;const auto count=std::stoi(raw,&chars);
+   if(chars!=raw.size())throw ps::Error("invalid --pairs");
+   ps::intervene(run,out,option("--hypothesis","H1"),count);return 0;
+  }
   if(cmd=="confirm"){ps::confirm(run,option("--hypothesis","H1"));return 0;}
   if(cmd=="minimize"){ps::minimize(run,option("--hypothesis","H1"));return 0;}
   if(cmd=="minimize-case"){ps::minimize_failure_case(run,option("--case"),option("--algorithm"));return 0;}

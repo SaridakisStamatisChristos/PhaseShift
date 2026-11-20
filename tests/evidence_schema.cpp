@@ -32,7 +32,11 @@ int main(int argc,char** argv){try{
   s.add_observation(c,failure,false);
   s.refresh_aggregates();
   s.hypothesis("H1","HYPOTHESIZED","n",16,32,0.6,"frozen model","PERFORMANCE_CLIFF",ps::case_params(c));
+  s.hypothesis("H1","TESTED","n",16,32,0.6,"independent test initiated");
   s.hypothesis("H1","NOT_CONFIRMED","n",16,32,0.6,"99% CI overlaps null");
+  bool rejected=false;try{s.hypothesis("H1","CONFIRMED","n",16,32,0.6,"forbidden promotion");}catch(const ps::Error&){rejected=true;}
+  verify(rejected,"rejected evidence must not be promoted");
+  s.hypothesis("H1","INVALIDATED","n",16,32,0.6,"invalidated after independent audit");
   s.artifact("samples.csv",ps::sha256("one"),"test-fixture");
   verify(count(s.raw(),"PRAGMA user_version")==6,"schema version 6");
   verify(count(s.raw(),"SELECT COUNT(*) FROM environments")==1,"environment registration");
