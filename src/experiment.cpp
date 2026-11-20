@@ -4,6 +4,7 @@
 #include "phaseshift/minimize.hpp"
 #include "phaseshift/reproducer.hpp"
 #include "phaseshift/lazy_search.hpp"
+#include "phaseshift/scheduler_v2.hpp"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -216,8 +217,19 @@ Config config_from_json(const Json& j){
  if(c.policy_version=="v1"){
   if(c.method!="grid"&&c.method!="random"&&c.method!="stratified"&&c.method!="adaptive_partition")throw Error("unknown search method");
  }else if(c.policy_version=="v2"){
-  if(c.method!="uniform_v2")throw Error("v2 policy requires uniform_v2");
+  if(c.method!="uniform_v2"&&c.method!="hierarchical_boundary_v2")throw Error("unsupported v2 search method");
   if(c.max_cases>c.max_queue)throw Error("v2 candidate budget exceeds memory bound");
+  if(c.method=="hierarchical_boundary_v2"&&(c.axes.size()!=1||!numeric_axis(c.axis)))
+   throw Error("hierarchical_boundary_v2 currently requires one ordered numeric axis");
+  if(c.method=="hierarchical_boundary_v2"){
+   std::optional<std::int64_t> previous;
+   for(const auto& label:c.axes.at(c.axis)){
+    Case sample=c.base;assign(sample,c.axis,label);
+    const auto current=axis_value(sample,c.axis);
+    if(previous&&current<=*previous)throw Error("hierarchical_boundary_v2 requires strictly increasing axis values");
+    previous=current;
+   }
+  }
  }else throw Error("unsupported search.policy_version");
  if(c.max_cases==0||c.max_cases>20000||c.max_queue==0||c.max_queue>100000||c.max_report_bytes<4096||c.max_report_bytes>1000000000||c.max_bytes<64||c.max_bytes>64ULL*1024*1024||c.blocks<1||c.blocks>100||c.confirm_blocks<1||c.confirm_blocks>100||c.warmup<0||c.warmup>100||c.sample_ms<100||c.sample_ms>60000||c.total_wall_s<1||c.total_wall_s>86400||c.rss_mb<64||c.rss_mb>65536||!std::isfinite(c.min_ratio)||c.min_ratio<1.01||c.min_ratio>100000||!std::isfinite(c.confirmation_confidence)||c.confirmation_confidence<0.90||c.confirmation_confidence>=1.0||!std::isfinite(c.fdr_q)||c.fdr_q<0.001||c.fdr_q>0.25||c.multiple_testing!="bh_fdr"||!std::isfinite(c.exploration_fraction)||c.exploration_fraction<0.0||c.exploration_fraction>1.0||c.minimum_batch_ms<1||c.minimum_batch_ms>100|| (c.isolation_mode!="per_case"&&c.isolation_mode!="per_sample"))throw Error("configuration resource/measurement bounds invalid");
  if(!c.axes.count(c.axis)){
@@ -620,7 +632,27 @@ static std::size_t adaptive_next(Store& store,const Config& cfg,const std::vecto
 static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& store,std::size_t pause_after){
  const LazySearchSpace space(std::vector<LazySearchSpace::Axis>(cfg.axes.begin(),cfg.axes.end()));
  SparsePermutation sampler(space.cardinality(),cfg.seed^0xb7d2f937c4abULL);
+ std::optional<HierarchicalPolicyV2> hierarchy;
+ if(cfg.method=="hierarchical_boundary_v2")
+  hierarchy.emplace(static_cast<std::size_t>(space.cardinality()),cfg.seed^0xd9af2e13ULL,cfg.exploration_fraction);
+ const auto rng_state=[&](){return hierarchy?hierarchy->rng_state():sampler.state();};
+ const auto cpu_ms=[&](const Case& c){
+  double ms=0;
+  for(const auto& o:store.observations(c.id,false))
+   if(o.cpu_ns>0)ms+=static_cast<double>(o.cpu_ns)/1000000.;
+  return std::max(1.,ms);
+ };
+ auto add_evidence=[&](std::uint64_t i,const Case& c){
+  if(hierarchy)hierarchy->observe(static_cast<std::size_t>(i),metric(store,c,cfg,false),cpu_ms(c));
+ };
  auto next_valid=[&]()->std::optional<std::pair<std::uint64_t,Case>>{
+  if(hierarchy){
+   const auto pos=hierarchy->next();if(!pos)return std::nullopt;
+   Case c=cfg.base;c.seed=cfg.seed;
+   for(const auto& [axis,value]:space.at(*pos))assign(c,axis,value);
+   validate_case_schema(c,cfg.max_bytes);
+   return std::pair<std::uint64_t,Case>{static_cast<std::uint64_t>(*pos),std::move(c)};
+  }
   for(std::size_t attempts=0;attempts<10000&&sampler.has_next();++attempts){
    auto index=sampler.next();Case c=cfg.base;c.seed=cfg.seed;
    for(const auto& [axis,value]:space.at(index))assign(c,axis,value);
@@ -634,8 +666,9 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
  for(const auto& d:store.scheduler_decisions()){
   auto next=next_valid();
   if(!next||d.pool_index<0||static_cast<std::uint64_t>(d.pool_index)!=next->first||
-     d.next_rng_state!=sampler.state()||make_case(next->second,cfg.max_bytes).id!=d.case_id)
+     d.next_rng_state!=rng_state()||make_case(next->second,cfg.max_bytes).id!=d.case_id)
    throw Error("v2 immutable scheduler replay mismatch");
+  add_evidence(next->first,make_case(next->second,cfg.max_bytes));
   ++completed;
  }
  if(completed>cfg.max_cases)throw Error("v2 persisted decisions exceed case budget");
@@ -658,9 +691,11 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
   store.exec("BEGIN IMMEDIATE");
   try{
    for(const auto& o:obs)store.add_observation(c,o,false);
-   store.record_decision(static_cast<std::size_t>(next->first),c.id,sampler.state());
+   store.record_decision(static_cast<std::size_t>(next->first),c.id,rng_state());
+   if(hierarchy)store.event("v2_acquisition",std::to_string(next->first)+";origin="+hierarchy->origin());
    store.exec("COMMIT");
   }catch(...){store.exec("ROLLBACK");throw;}
+  add_evidence(next->first,c);
   ++completed;++this_call;
  }
  if(completed==cfg.max_cases||exhausted){
