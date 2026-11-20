@@ -31,3 +31,30 @@ Commit `1e3cf349` ran 39/39 CTests successfully in the LLVM coverage job, but th
 ## Workflow hardening
 
 The built-in equal-case-budget comparison is an **ephemeral CTest scratch benchmark**. The wrapper cleans only its own CMake build-directory fixture before rerun. Real benchmark evidence created by the direct `equal_budget.py --out ...` invocation is immutable and the tool refuses to overwrite it. `multi_change_v2` retains any v1 correctness/resource/crossover boundary in preference to a weaker timing-only segmentation.
+
+## Immutable R7 milestone commit trail (feature branch, draft-only)
+
+Main/source baseline: `93b47590c7e44eaf062d97995e9c5cd33274a7a2`; target PR: https://github.com/SaridakisStamatisChristos/PhaseShift/pull/4 (draft; NOT MERGED).
+
+| SHA prefix | Coherent change | State |
+|---|---|---|
+| `561300e` | Freeze scenario inventory, huge lazy search sampler and unit tests | Reviewed/source-pushed |
+| `0dec800` | Opt-in v2 uniform runner and strict replay | Coverage and sanitizer CI green at intermediate SHA |
+| `1e3cf3` | Bounded exact multi-change DP and differential oracle | 39/39 CTests in coverage job; LLVM object missing (not passing gate) |
+| `764b18` | Cost/contrast hierarchical policy and CLI | Initial CI revealed missing forward declaration |
+| `653a20` | Fix accessor declaration | Intermediate verification, not a release |
+| `2318928` | Fix LLVM export object linkage for DP | GitHub 41/41 CTests, 96.08% production line, 71.02% branch coverage |
+| `d007996` | First Holm primitive implementation | Initial reference expectation incorrect, superseded |
+| `a1ceb0` | Correct Holm independent reference test | GitHub 41/41 CTests, 96.10% production line, 71.13% branch coverage |
+| `c1d55a` | Frozen real-worker v1/v2 single-cliff comparison harness | Exact SHA CI pending; actual benchmark scorecard still unverified |
+| `6d31dd` | Optional independent per-coordinate seed replicates and resume evidence checks | Exact SHA CI pending |
+| `bf1944` | 2x2 matched-seed performance/status interaction with CLI discovery event | Exact SHA CI pending |
+| `f4cd00` | Opt-in multiple-change detector runtime selection and event evidence | Exact SHA CI pending |
+| `df3294` | Publication of protocol/validation/SOTA-status docs and repeatable test scratch | Exact SHA CI pending |
+
+### Evidence-granularity safeguards
+- The `2318928` coverage workflow (<https://github.com/SaridakisStamatisChristos/PhaseShift/actions/runs/44830727867>) is **only** evidence on that revision, not on subsequent commits.
+- The `a1ceb0` coverage workflow (<https://github.com/SaridakisStamatisChristos/PhaseShift/actions/runs/44831065345>) is **only** evidence on that revision, not on subsequent commits.
+- Full GCC/Clang build matrix, sanitizer, coverage and CTest status on **the latest branch revision** remains PENDING at this ledger edition. The full draft PR is not eligible to merge until those hard gates pass.
+- There is **no** executed external benchmark or statistically defensible full SOTA uplift claim.
+- Outstanding milestone-critical features remain M6 measurement protocol, M7 persistent campaign family/holdout control, M8 v2 witness minimization, M9 additive crash-safe migration, M10 external/equal actual-budget evaluation, and adversarial/end-to-end M11 gates.
