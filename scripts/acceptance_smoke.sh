@@ -31,6 +31,11 @@ for family in sorting topk graph negative; do
 "$BIN" report --run "$RUN/demo" --format markdown,json,csv,html >/dev/null
 case_id="$(jq -r '.raw_samples[0].case_id' "$RUN/demo/report.json")"
 "$BIN" replay --run "$RUN/demo" --case "$case_id"
+"$BIN" replay --run "$RUN/demo" --case "$case_id" --db "$RUN/demo/run.sqlite"
+if "$BIN" replay --run "$RUN/demo" --case "$case_id" --db "$RUN/not-present.sqlite" >/dev/null 2>&1; then
+ echo "FAIL: --db path ignored by replay" >&2; exit 1
+fi
+jq -e '.summary.hypotheses[0].confirmation_evidence_attested == true' "$RUN/demo/report.json" >/dev/null
 "$BIN" export --run "$RUN/demo" --out "$RUN/bundle"
 "$BIN" verify-bundle --bundle "$RUN/bundle"
 "$BIN" import --bundle "$RUN/bundle" --out "$RUN/imported"

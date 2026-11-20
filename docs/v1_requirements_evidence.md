@@ -15,11 +15,11 @@ The authoritative contract is [`PHASESHIFT_SPEC.md`](PHASESHIFT_SPEC.md). The st
 | R09 | Independent, frozen holdout + conservative multiple-comparison control | One frozen candidate per run, persisted `TESTED`, 20 seed-paired case controls, 99% default, BH on selected singleton; null calibration and state tests | VERIFIED for **single-hypothesis scope**, not global FDR across repeated studies |
 | R10 | Matched structural interventions and evidence against causal overclaim | `phaseshift intervene`, same generator seed and frozen nuisance parameters, observed feature differences + case-level evidence; `matched_intervention` test | VERIFIED for matched diagnostics; **causal proof NOT CLAIMED** |
 | R11 | Structural and parameter witness shrinking, revalidation | `src/minimize.cpp`, failure/performance/witness tests, fresh rechecks; `reproduce` built-in source | VERIFIED for tested array/Top-K/graph/fixture paths |
-| R12 | Replay, versioned persistence, import/export, append-only evidence | SQLite v1→v6 migrations, SHA-256, tamper checks, `events`, `OBSERVED -> HYPOTHESIZED -> TESTED -> CONFIRMED/NOT_CONFIRMED -> MINIMIZED_*`, optional `INVALIDATED` | VERIFIED locally; irreversible invalidation is enforced |
+| R12 | Replay, versioned persistence, import/export, append-only evidence | SQLite v1→v7 migrations, SHA-256, tamper checks, `events`, `OBSERVED -> HYPOTHESIZED -> TESTED -> CONFIRMED/NOT_CONFIRMED -> MINIMIZED_*`, optional `INVALIDATED` | VERIFIED locally; irreversible invalidation is enforced |
 | R13 | Static CLI/JSON/CSV/Markdown/HTML reports | CLI acceptance, CTest and `scripts/acceptance_smoke.sh` | VERIFIED locally |
 | R14 | Reproducible environment metadata and safe run comparison | Compiler/profile/source/stdlib/affinity/governor/priority + `compare` mismatch classifier; `environment_provenance` | VERIFIED locally; a metadata match alone is **not** hardware equivalence |
 | R15 | Equal requested-budgets search ablation with actual cost accounting | Four method real/synthetic runs, raw cases, case budget completion fraction, elapsed seconds and available worker CPU seconds | VERIFIED locally; equal actual CPU seconds **not guaranteed** |
-| R16 | GCC/Clang Release, sanitizers, CLI smoke on CI | `.github/workflows/build-test.yml`, `.github/workflows/sanitizers.yml`; previous commit `9c77906...` passed GitHub CI | Current revision PENDING GitHub-hosted CI |
+| R16 | GCC/Clang Release, sanitizers, CLI smoke on CI | `.github/workflows/build-test.yml`, `.github/workflows/sanitizers.yml`; previous commit `9c77906...` passed GitHub CI | Post-audit repaired revision PENDING GitHub-hosted CI |
 | R17 | Explicit accurate scientific limitations/prior art | `docs/scientific_contract.md`, `docs/prior_art.md`, reporting | DOCUMENTED, no novelty/SOTA claim |
 
 ## Remaining known boundary conditions
@@ -33,3 +33,7 @@ The authoritative contract is [`PHASESHIFT_SPEC.md`](PHASESHIFT_SPEC.md). The st
 ## Final release gate
 
 G0–G5 require exact CTest and natural CLI acceptance evidence on the revision being proposed. G6 additionally requires passing GCC/Clang and ASan/UBSan GitHub Actions for that revision. A source file, a configured workflow, or passing results from an earlier commit alone cannot close G6.
+
+## Independent audit addendum
+
+The earlier R09/R12 **VERIFIED** labels were invalidated by independent source-level falsifiers (direct `HYPOTHESIZED`→`CONFIRMED` without holdout, and scaling discovery rows mislabeled holdout). Post-audit source now adds a SQLite v7 sealed confirmation evidence map, rejects unlinked positive verdicts, repairs cohort flags and report coordinates, validates config/plugin/CLI contracts, records native plugin binary SHA-256, and includes B07/B10/B11 targeted campaigns. See [`r7_audit_repair_2026-11-20.md`](r7_audit_repair_2026-11-20.md). **No post-audit GitHub CI result is claimed here.**

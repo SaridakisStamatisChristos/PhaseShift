@@ -2,7 +2,7 @@
 
 **A CPU-only, offline C++20 instrumented experiment engine for discovering and verifying structural behavior boundaries in algorithms.** Its output is a replayable, provenance-linked observation, not an assertion of a new mathematical or causal law.
 
-PHASESHIFT **v1.0 core features have passed local acceptance on Linux x86-64**, including all 21 tests on GCC Release, Clang Release and GCC ASan/UBSan (the longer suites were run in bounded batches). GitHub-hosted CI and unsupported platforms are **not** covered by those local results. See [`docs/release_checklist.md`](docs/release_checklist.md) for evidence and open gates.
+PHASESHIFT **v1.0 core passed 25/25 GCC, Clang and ASan/UBSan CTests plus three CLI smoke runs on GitHub Actions** at previous `main` commit `326863e92c6e` ([build-test](https://github.com/SaridakisStamatisChristos/PhaseShift/actions/runs/44744221461), [sanitizers](https://github.com/SaridakisStamatisChristos/PhaseShift/actions/runs/44744221259)). The subsequent independent R7 audit revealed scientific-evidence and interface defects. Post-audit repairs add regression gates; **their revised CI results must be checked independently before making a current-revision release claim**. See [`docs/r7_audit_repair_2026-11-20.md`](docs/r7_audit_repair_2026-11-20.md).
 
 ## Build on Linux
 
@@ -45,7 +45,7 @@ A native trusted plugin can implement the versioned C ABI in [`include/phaseshif
 ./build/phaseshift confirm --run runs/sort_001 --hypothesis H1
 ./build/phaseshift minimize --run runs/demo_001 --hypothesis H1
 ./build/phaseshift reproduce --run runs/sort_001 --case CASE_ID --algorithm std_sort --out witness.cpp
-./build/phaseshift replay --run runs/demo_001 --case CASE_ID
+./build/phaseshift replay --run runs/demo_001 --case CASE_ID --db runs/demo_001/run.sqlite
 ./build/phaseshift report --run runs/demo_001 --format markdown,json,csv,html
 ./build/phaseshift scaling --run runs/sort_001 --out runs/sort_scaling --seeds 3
 ./build/phaseshift ablate --config configs/adaptive_sparse.json --out runs/search_ablation
@@ -75,6 +75,8 @@ The benchmark/host provenance, significance limitations, acceptance test matrix,
 
 ## Licensing
 
+Native v1 plugin artifacts receive a SHA-256 binary identity in the algorithm evidence registry when the plugin file is available. A changed native binary under the same path is rejected rather than silently mixed into the run. External plugin build flags are not recoverable from this ABI; no metadata is fabricated.
+
 No project license has been selected; the repository owner retains applicable rights. System dependencies have their own licenses. Do not redistribute PHASESHIFT under an invented license.
 
 ## R7 v1.0 contract hardening
@@ -95,3 +97,9 @@ Config excerpts (both configuration forms persist into the immutable run manifes
 Use `phaseshift scaling --run RUN --out NEW_RUN --seeds 3` for empirical scaling fits. If a predeclared single-algorithm segmented candidate is identified, PHASESHIFT can check it on **new sizes and independent seeds**, applying the configured confidence and practical slope-change threshold. A model fit alone is never upgraded to a confirmed finding. Use `phaseshift intervene --run RUN --out NEW_RUN --hypothesis H1 --pairs 20` to measure matched-seed neighbor cases and enumerate observed morphology changes. This is an *intervention diagnostic*, **not a causal-identification proof**.
 
 `phaseshift compare --a RUN --b RUN` evaluates recorded host/build metadata and emits explicit compatibility states. The code or library revision, compiler flags, CPU model/affinity/governor, and platform can differ even when two configurations name the same algorithm. Matching metadata cannot prove thermal, noise or hardware equivalence. Do not embed secrets into compiler flags intended for public evidence reports.
+
+## Post-audit scientific evidence integrity (SQLite schema 7)
+
+Independent R7 audit findings F-001–F-009 are tracked in [`docs/r7_audit_repair_2026-11-20.md`](docs/r7_audit_repair_2026-11-20.md). SQLite v7 now requires a `TESTED` hypothesis and a sealed, SQL-linked independent holdout cohort before `CONFIRMED`; the audit can inspect actual CaseIds and SampleIds. A legacy v6 `CONFIRMED` row without a v7 seal is retained in raw storage but projected in reports as `UNVERIFIED_LEGACY_CONFIRMATION`, not independently attested. Scaling discovery and holdout populations are distinct, and the report publishes the actual new-size set. Unknown/duplicate CLI options are rejected; replay's `--db` selects and verifies the supplied existing SQLite database instead of being ignored. Unsupported primary metrics and native plugin-family combinations fail validation.
+
+The B07 real 0–1 graph comparison, deterministic B10/B11 synthetic research controls and B02 null-ablation scorecard are included in CTest. Per-method ablation reports discovery yield and null false positives when the ground truth is known; witness byte reduction is reported only if minimization actually ran, otherwise `NA`. Simulator successes are not physical CPU findings. The current acceptance suite and remote CI evidence must be verified at the exact proposed commit.

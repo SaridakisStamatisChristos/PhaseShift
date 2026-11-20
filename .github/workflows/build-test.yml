@@ -18,3 +18,16 @@ jobs:
       - run: cmake --build build -j2
       - run: ctest --test-dir build --output-on-failure
       - run: bash scripts/acceptance_smoke.sh
+      - name: Preserve B07/B10/B11 and null-ablation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-evidence-${{ matrix.cxx }}-${{ github.sha }}
+          path: |
+            build/ctest_b07_zero_one/report.json
+            build/ctest_b07_zero_one/samples.csv
+            build/ctest_null_ablation/ablation_scorecard.json
+            build/ctest_null_ablation/ablation.csv
+            build/ctest_b10_b11/
+          retention-days: 14
+          if-no-files-found: error

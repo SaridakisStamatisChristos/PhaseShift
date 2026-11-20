@@ -266,6 +266,18 @@ std::vector<Observation> measure(const Case& c,const std::vector<std::string>& n
  if(in[1]>=0)close(in[1]);
  close(out[0]);int status=0;
  pid_t reaped=waitpid(pid,&status,WNOHANG);
+ // A failed read may observe pipe EOF before SIGCHLD becomes waitable.
+ // Reap a genuinely crashed worker before deciding it timed out; a single
+ // WNOHANG check can race the kernel's final exit notification and mislabel
+ // SIGSEGV as an infrastructure failure. Never block indefinitely on hangs.
+ if(reaped==0){
+  const auto reap_until=std::chrono::steady_clock::now()+std::chrono::milliseconds(150);
+  while(reaped==0&&std::chrono::steady_clock::now()<reap_until){
+   (void)poll(nullptr,0,5);
+   reaped=waitpid(pid,&status,WNOHANG);
+   if(reaped<0&&errno==EINTR)reaped=0;
+  }
+ }
  if(reaped==0){
   for(auto& obs:result)if(obs.status=="infrastructure_error"&&obs.detail.find("timeout")!=std::string::npos)obs.status="timeout";
   kill(-pid,SIGKILL);kill(pid,SIGKILL);while((reaped=waitpid(pid,&status,0))<0&&errno==EINTR){}
