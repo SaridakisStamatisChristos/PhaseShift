@@ -21,7 +21,7 @@ int main(){try{
  require(accept==std::vector<bool>({true,false,true,false}),"BH known-reference decisions");
  require(ps::bh_fdr({0.90,0.87,1.0},0.01)==std::vector<bool>({false,false,false}),"BH null abstention");
  const auto holm=ps::holm_fwer({0.001,0.04,0.025,0.7},0.05);
- require(holm==std::vector<bool>({true,false,true,false}),"Holm known-reference decisions");
+ require(holm==std::vector<bool>({true,false,false,false}),"Holm known-reference decisions");
  require(ps::holm_fwer({0.01,0.015,0.03},0.05)==std::vector<bool>({true,true,true}),"Holm sequential thresholds");
  require(ps::holm_fwer({0.9,1.0},0.01)==std::vector<bool>({false,false}),"Holm null abstention");
  require(ps::holm_fwer({},0.05).empty(),"empty predeclared family");
