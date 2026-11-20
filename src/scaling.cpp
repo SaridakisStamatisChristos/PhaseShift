@@ -148,6 +148,7 @@ void scaling_study(const std::string& source,const std::string& out,int seed_cou
  fs::create_directories(out);Store store(out+"/run.sqlite");store.experiment(config.str(),environment());
  std::ostringstream csv;csv<<"n,seed,algorithm,case_id,status,ns_per_operation\n";
  std::map<std::string,std::map<int,std::vector<double>>> measurements;
+ std::map<std::string,int> rejected_cases;
  const auto clock_start=std::chrono::steady_clock::now();
  const auto hard_deadline=clock_start+std::chrono::seconds(cfg.total_wall_s);
  for(auto n:schedule)for(int i=0;i<seed_count;i++){
@@ -166,16 +167,32 @@ void scaling_study(const std::string& source,const std::string& out,int seed_cou
   c=make_case(c,cfg.max_bytes);
   const auto names=cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b};
   const auto obs=measure(c,names,3,1,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",hard_deadline);
+  // Timing evidence is all-or-nothing at the seed/case boundary: a wrong
+  // answer in any required block invalidates every comparison from that case.
+  // In A/B mode the ABBA order produces TWO samples per algorithm per block.
   std::map<std::string,std::vector<double>> case_values;
-  for(const auto& o:obs){store.add_observation(c,o,false);
-   if(o.status=="ok"&&o.ns>0&&o.batch>0)case_values[o.algorithm].push_back(static_cast<double>(o.ns)/static_cast<double>(o.batch));
+  std::map<std::string,std::map<int,int>> block_counts;
+  std::set<std::pair<std::int64_t,std::int64_t>> positions;
+  bool admissible=obs.size()==static_cast<std::size_t>(3*(names.size()==2?4:1));
+  for(const auto& o:obs){
+   store.add_observation(c,o,false);
+   if(std::find(names.begin(),names.end(),o.algorithm)==names.end()||o.block<0||o.block>=3||
+      o.status!="ok"||o.ns<=0||o.batch<=0||o.order_position<0||
+      !positions.emplace(o.block,o.order_position).second)admissible=false;
+   else{
+    block_counts[o.algorithm][static_cast<int>(o.block)]++;
+    case_values[o.algorithm].push_back(static_cast<double>(o.ns)/static_cast<double>(o.batch));
+   }
   }
   for(const auto& algorithm:names){
-   const auto it=case_values.find(algorithm);
-   const auto good=it!=case_values.end()&&!it->second.empty();
-   const auto value=good?sample_median(it->second):0.0;
-   if(good)measurements[algorithm][n].push_back(value);
-   csv<<n<<','<<c.seed<<','<<algorithm<<','<<c.id<<','<<(good?"ok":"invalid")<<','<<value<<'\n';
+   if(case_values[algorithm].size()!=static_cast<std::size_t>(3*(names.size()==2?2:1)))admissible=false;
+   for(int block=0;block<3;block++)if(block_counts[algorithm][block]!=(names.size()==2?2:1))admissible=false;
+  }
+  for(const auto& algorithm:names){
+   const auto value=admissible?sample_median(case_values.at(algorithm)):0.0;
+   if(admissible)measurements[algorithm][n].push_back(value);
+   else rejected_cases[algorithm]++;
+   csv<<n<<','<<c.seed<<','<<algorithm<<','<<c.id<<','<<(admissible?"ok":"invalid")<<','<<value<<'\n';
   }
  }
  /* The primary algorithm is the sole hypothesis selected for confirmation.
@@ -234,16 +251,23 @@ void scaling_study(const std::string& source,const std::string& out,int seed_cou
     if(discovery_ids.count(c.id)){samples_valid=false;break;}
     const auto rows=measure(c,names,1,1,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",hard_deadline);
     std::vector<double> timings;
+    bool cohort_valid=rows.size()==(names.size()==2?4U:1U);
+    std::map<std::string,int> counts;
+    std::set<std::int64_t> positions;
     for(const auto& row:rows){
      store.add_observation(c,row,true);
+     if(std::find(names.begin(),names.end(),row.algorithm)==names.end()||row.block!=0||
+        row.status!="ok"||row.ns<=0||row.batch<=0||row.order_position<0||
+        !positions.insert(row.order_position).second)cohort_valid=false;
+     counts[row.algorithm]++;
      if(row.algorithm==cfg.a&&row.status=="ok"&&row.ns>0&&row.batch>0)
       timings.push_back(static_cast<double>(row.ns)/static_cast<double>(row.batch));
-     else if(row.status!="ok")samples_valid=false;
     }
-    if(timings.empty())samples_valid=false;
+    for(const auto& algorithm:names)if(counts[algorithm]!=(names.size()==2?2:1))cohort_valid=false;
+    if(!cohort_valid){samples_valid=false;}
     else confirmed[n].push_back(sample_median(timings));
-    csv<<n<<','<<c.seed<<','<<cfg.a<<','<<c.id<<','<<(timings.empty()?"invalid_holdout":"holdout")<<','
-       <<(timings.empty()?0.0:sample_median(timings))<<'\n';
+    csv<<n<<','<<c.seed<<','<<cfg.a<<','<<c.id<<','<<(cohort_valid?"holdout":"invalid_holdout")<<','
+       <<(cohort_valid?sample_median(timings):0.0)<<'\n';
    }
    std::vector<double> seed_differences;
    if(samples_valid&&confirmed.size()==4){
@@ -282,10 +306,13 @@ void scaling_study(const std::string& source,const std::string& out,int seed_cou
  Json result;result.put("scaling_regime_evidence",std::move(scaling_evidence));result.put("study","independent held-out size fingerprint");result.put("source_run",fs::path(source).filename().string());result.put("seed_count_per_size",static_cast<std::int64_t>(seed_count));
  result.put("environment",Json::parse(store.environment()));
  auto* models=json_object_new_object();
- for(const auto& [algorithm,by_size]:measurements){
+ for(const auto& algorithm:(cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b})){
+  const auto& by_size=measurements[algorithm];
   std::vector<std::pair<double,double>> data;
   for(const auto& [n,times]:by_size)if(times.size()==static_cast<std::size_t>(seed_count))data.emplace_back(static_cast<double>(n),sample_median(times));
   Json alg;alg.put("status",data.size()>=6?"EMPIRICAL_FIT":"INSUFFICIENT_VALID_SIZES");
+  alg.put("rejected_discovery_cases",static_cast<std::int64_t>(rejected_cases[algorithm]));
+  alg.put("valid_discovery_sizes",static_cast<std::int64_t>(data.size()));
   auto* points=json_object_new_array();for(const auto& [n,y]:data){Json point;point.put("n",n);point.put("median_ns_per_operation",y);json_object_array_add(points,point.p);point.p=nullptr;}
   json_object_object_add(alg.p,"sizes",points);
   if(data.size()>=6){auto* fits=json_object_new_array();for(const auto& fit:fit_growth_models(data)){Json m;m.put("model",fit.model);m.put("cross_validated_mean_abs_log_error",fit.log_error);m.put("fitted_scale",fit.factor);json_object_array_add(fits,m.p);m.p=nullptr;}json_object_object_add(alg.p,"growth_models",fits);}

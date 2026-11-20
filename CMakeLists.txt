@@ -233,3 +233,11 @@ set_tests_properties(scaling_independent_holdout_knee PROPERTIES TIMEOUT 120 RUN
 configure_file(tests/run_cli_surface.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_cli_surface.cmake @ONLY)
 add_test(NAME cli_surface_contract COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_cli_surface.cmake)
 set_tests_properties(cli_surface_contract PROPERTIES TIMEOUT 20)
+
+# Fresh independent post-v1.0 audit: field-level invariants, worker-backed
+# plugin provenance, wrong-answer scaling quarantine and categorical witness.
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(NAME fresh_audit_regressions
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/fresh_audit_regressions.py
+ --repo ${CMAKE_CURRENT_SOURCE_DIR} --binary $<TARGET_FILE:phaseshift>)
+set_tests_properties(fresh_audit_regressions PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)

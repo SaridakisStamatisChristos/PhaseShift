@@ -1,5 +1,11 @@
 # PHASESHIFT v1.0 — Trillion Developer++ independent audit-finding closure
 
+> **Post-merge status (2026-11-20):** This document describes the earlier
+> local repair stage. That batch was subsequently merged into GitHub `main`
+> in commit [`c9193249be3a`](https://github.com/SaridakisStamatisChristos/PhaseShift/commit/c9193249be3a6eeeb11fa0662729b28b38309d6c),
+> and its GCC/Clang, ASan/UBSan and coverage workflows passed. The original
+> pre-merge notes below are preserved as historical provenance.
+
 **Contract:** `docs/PHASESHIFT_SPEC.md`, especially §7.3, §8.1–8.2 and §9.4.
 **Baseline:** GitHub `main` commit `dc67b066507e91b57d903382a9617cb5c976591a`.
 **Scope:** local Linux x86-64 C++20 implementation, no cross-platform migration, no proprietary/cloud features.

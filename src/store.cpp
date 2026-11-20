@@ -379,13 +379,14 @@ Json Store::summary(){
  const bool links_supported=sqlite3_column_int(schema.p,0)>=7;
  while(sqlite3_step(st.p)==SQLITE_ROW){auto str=[&](int i){auto* t=sqlite3_column_text(st.p,i);return std::string(t?reinterpret_cast<const char*>(t):"");};
   const auto recorded_status=str(1);
-  bool attested=true;
-  if(recorded_status=="CONFIRMED"||recorded_status=="MINIMIZED_CONFIRMED"){
-   attested=false;
+  const bool positive=recorded_status=="CONFIRMED"||recorded_status=="MINIMIZED_CONFIRMED";
+  bool attested=false;
+  if(positive){
    if(links_supported){Statement links(db_,"SELECT 1 FROM confirmation_seals WHERE hypothesis_id=?");links.text(1,str(0));attested=sqlite3_step(links.p)==SQLITE_ROW;}
   }
-  Json x;x.put("id",str(0));x.put("status",attested?recorded_status:"UNVERIFIED_LEGACY_CONFIRMATION");
-  if(!attested)x.put("raw_status",recorded_status);
+  Json x;x.put("id",str(0));x.put("status",positive&&!attested?"UNVERIFIED_LEGACY_CONFIRMATION":recorded_status);
+  if(positive&&!attested)x.put("raw_status",recorded_status);
+  x.put("confirmation_evidence_applicable",positive);
   x.put("confirmation_evidence_attested",attested);x.put("axis",str(2));x.put("left",static_cast<std::int64_t>(sqlite3_column_int64(st.p,3)));x.put("right",static_cast<std::int64_t>(sqlite3_column_int64(st.p,4)));x.put("effect",sqlite3_column_double(st.p,5));x.put("detail",str(6));x.put("kind",str(7));x.put("frozen_params",str(8));json_object_array_add(rows,x.p);x.p=nullptr;}
  json_object_object_add(report.p,"hypotheses",rows);
  auto count=[&](const char* q){Statement s(db_,q);if(sqlite3_step(s.p)!=SQLITE_ROW)throw Error("summary query error");return static_cast<std::int64_t>(sqlite3_column_int64(s.p,0));};

@@ -12,6 +12,7 @@
 #include <iomanip>
 #include <iostream>
 #include <numeric>
+#include <memory>
 #include <random>
 #include <set>
 #include <sstream>
@@ -213,7 +214,10 @@ Config config_from_json(const Json& j){
  if(c.axes.empty())c.axes[c.axis]={"0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15"};
  if(c.method!="grid"&&c.method!="random"&&c.method!="stratified"&&c.method!="adaptive_partition")throw Error("unknown search method");
  if(c.max_cases==0||c.max_cases>20000||c.max_queue==0||c.max_queue>100000||c.max_report_bytes<4096||c.max_report_bytes>1000000000||c.max_bytes<64||c.max_bytes>64ULL*1024*1024||c.blocks<1||c.blocks>100||c.confirm_blocks<1||c.confirm_blocks>100||c.warmup<0||c.warmup>100||c.sample_ms<100||c.sample_ms>60000||c.total_wall_s<1||c.total_wall_s>86400||c.rss_mb<64||c.rss_mb>65536||!std::isfinite(c.min_ratio)||c.min_ratio<1.01||c.min_ratio>100000||!std::isfinite(c.confirmation_confidence)||c.confirmation_confidence<0.90||c.confirmation_confidence>=1.0||!std::isfinite(c.fdr_q)||c.fdr_q<0.001||c.fdr_q>0.25||c.multiple_testing!="bh_fdr"||!std::isfinite(c.exploration_fraction)||c.exploration_fraction<0.0||c.exploration_fraction>1.0||c.minimum_batch_ms<1||c.minimum_batch_ms>100|| (c.isolation_mode!="per_case"&&c.isolation_mode!="per_sample"))throw Error("configuration resource/measurement bounds invalid");
- if(!c.axes.count(c.axis))c.axis=c.axes.begin()->first;
+ if(!c.axes.count(c.axis)){
+  if(j.get("primary_axis"))throw Error("explicit primary_axis is not declared in axes: "+c.axis);
+  c.axis=c.axes.begin()->first; /* Only omitted axes may use a deterministic inferred default. */
+ }
  if(c.family!="integer_array"&&(c.a.rfind("plugin:",0)==0||c.b.rfind("plugin:",0)==0))
   throw Error("native plugin ABI v1 supports integer_array only");
  auto valid=algorithms_for(c.family);if(std::find(valid.begin(),valid.end(),c.a)==valid.end()&&c.a.rfind("plugin:",0)!=0)throw Error("unknown primary algorithm for family");
@@ -1075,10 +1079,152 @@ static void minimize_performance(const std::string& run,const std::string& id,
  std::cout<<"Performance witness "<<status<<" case="<<smallest.id<<" evaluated="<<attempts<<"\n";
 }
 
+/* An unordered category has no scalar midpoint. Minimize only shared
+   nuisance structure, then re-run BOTH frozen labels on fresh matched seeds.
+   Every accepted candidate is independently rechecked; no timing result is
+   ever inferred from the numeric indices used to identify the two labels. */
+static void minimize_categorical(const std::string& run,const std::string& id,Store& source,
+                                 const Config& cfg,std::int64_t left,std::int64_t right){
+ if(fs::exists(run+"/minimization.sqlite")||fs::exists(run+"/witness.json"))
+  throw Error("categorical minimization evidence already exists; refusing to overwrite");
+ sqlite3_stmt* raw=nullptr;
+ if(sqlite3_prepare_v2(source.raw(),"SELECT kind FROM hypotheses WHERE id=?",-1,&raw,nullptr)!=SQLITE_OK)
+  throw Error("categorical minimization kind lookup failed");
+ std::unique_ptr<sqlite3_stmt,decltype(&sqlite3_finalize)> statement(raw,&sqlite3_finalize);
+ sqlite3_bind_text(statement.get(),1,id.c_str(),-1,SQLITE_TRANSIENT);
+ if(sqlite3_step(statement.get())!=SQLITE_ROW)throw Error("categorical minimization hypothesis missing");
+ const std::string kind=reinterpret_cast<const char*>(sqlite3_column_text(statement.get(),0));
+ const bool failure=kind=="CORRECTNESS_BOUNDARY"||kind=="MEMORY_OR_RESOURCE_BOUNDARY";
+ const bool calibration=kind=="CATEGORICAL_SYNTHETIC_CALIBRATION";
+ if(!failure&&!calibration&&kind!="CATEGORICAL_PERFORMANCE_CONTRAST"&&
+    kind!="CATEGORICAL_PERFORMANCE_CROSSOVER")throw Error("categorical minimization kind unsupported: "+kind);
+ const auto frozen=frozen_case(source,cfg,id);
+ const auto scope=scope_key(frozen,cfg);
+ std::vector<double> observed_left,observed_right;
+ std::string failure_status;
+ for(const auto& candidate:source.cases(false)){
+  if(scope_key(candidate,cfg)!=scope)continue;
+  const auto label=axis_label(candidate,cfg.axis);
+  if(label==categorical_value(cfg,left)){
+   if(auto m=metric(source,candidate,cfg,false))observed_left.push_back(*m);
+  }else if(label==categorical_value(cfg,right)){
+   if(auto m=metric(source,candidate,cfg,false))observed_right.push_back(*m);
+   if(failure)for(const auto& observation:source.observations(candidate.id,false))
+    if(observation.algorithm==cfg.a&&observation.status!="ok"){
+     if(!failure_status.empty()&&failure_status!=observation.status)
+      throw Error("categorical failure subtype is inconsistent in discovery evidence");
+     failure_status=observation.status;
+    }
+  }
+ }
+ if(failure&&failure_status.empty())throw Error("categorical failure lacks a frozen observed failure status");
+ if(!failure&&(observed_left.empty()||observed_right.empty()))
+  throw Error("categorical contrast lacks two admissible discovery categories");
+ const double expected_shift=failure?0.0:sample_median(observed_right)-sample_median(observed_left);
+ if(!failure&&std::abs(expected_shift)<std::log(cfg.min_ratio))throw Error("categorical discovery contrast is not practically significant");
+ const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(std::min(120,cfg.total_wall_s));
+ Store evidence(run+"/minimization.sqlite");evidence.experiment(source.config(),environment());
+ Case initial=frozen;assign(initial,cfg.axis,categorical_value(cfg,right));initial.seed=cfg.seed+50000000ULL;
+ initial=make_case(initial,cfg.max_bytes);
+ std::size_t attempts=0,successful=0;
+ auto check=[&](const Case& parameters,const std::string& stage)->bool{
+  if(std::chrono::steady_clock::now()>=deadline)throw Error("categorical witness total_wall_seconds budget exhausted");
+  const auto nonce=attempts++;
+  const int pair_count=20;
+  std::vector<double> differences;
+  for(int i=0;i<pair_count;i++){
+   std::array<std::optional<double>,2> values;
+   for(int side=0;side<2;side++){
+    Case c=parameters;assign(c,cfg.axis,categorical_value(cfg,side==0?left:right));
+    c.seed=cfg.seed+50000000ULL+static_cast<std::uint64_t>(nonce)*100000ULL+static_cast<std::uint64_t>(i)*101ULL;
+    c=make_case(c,cfg.max_bytes);
+    const auto names=cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b};
+    const auto obs=measure(c,names,1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,
+      cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline);
+    bool admissible=obs.size()==(cfg.b.empty()?1U:4U);
+    bool seen_primary=false;
+    for(const auto& row:obs){
+     evidence.add_observation(c,row,true);
+     if(row.algorithm==cfg.a){
+      seen_primary=true;
+      if(row.status!=(failure&&side==1?failure_status:"ok"))admissible=false;
+     }else if(row.algorithm==cfg.b&&row.status!="ok")admissible=false;
+    }
+    if(!admissible||!seen_primary){evidence.event("categorical_minimization_rejected",stage+": worker failure");return false;}
+    if(!failure){values[static_cast<std::size_t>(side)]=metric(evidence,c,cfg,true);
+     if(!values[static_cast<std::size_t>(side)])return false;}
+   }
+   if(!failure)differences.push_back(*values[1]-*values[0]);
+  }
+  bool preserved=true;
+  if(!failure){
+   if(calibration){
+    const auto change=sample_median(differences);
+    preserved=change*expected_shift>0&&std::abs(change)>=std::log(cfg.min_ratio);
+   }else{
+    const auto interval=paired_case_bootstrap(differences,cfg.seed+attempts*101ULL,0.99);
+    const auto probability=paired_sign_flip_p(differences,cfg.seed+attempts*397ULL);
+    const auto threshold=std::log(cfg.min_ratio);
+    preserved=probability<=std::min(0.01,cfg.fdr_q)&&
+      (expected_shift>0?interval.lower>threshold:interval.upper< -threshold);
+   }
+  }
+  if(preserved)successful++;
+  evidence.event("categorical_minimization_check",stage+": "+(preserved?"preserved":"rejected")+
+                 "; independent seed pairs="+std::to_string(pair_count));
+  return preserved;
+ };
+ ShrinkResult reduced;reduced.original=initial;reduced.smallest=initial;
+ bool baseline=false,validated=false;
+ try{
+  baseline=check(initial,"baseline_independent_revalidation");
+  if(baseline){
+   reduced=shrink_case(initial,[&](const Case& candidate){return check(candidate,"pair_preserving_candidate");},8,cfg.max_bytes);
+   validated=check(reduced.smallest,"final_independent_revalidation");
+  }
+ }catch(const std::exception& error){evidence.event("categorical_minimization_error",error.what());}
+ const auto& smallest=baseline?reduced.smallest:initial;
+ const auto verdict=validated&&reduced.reduced?"MINIMIZED_CONFIRMED":
+                    validated?"MINIMIZATION_FAILED":"MINIMIZED_PROVISIONAL";
+ Json record;record.put("schema_version",static_cast<std::int64_t>(1));
+ record.put("category","CATEGORICAL_PAIR_WITNESS");record.put("hypothesis_id",id);
+ record.put("kind",kind);record.put("status",verdict);
+ record.put("axis",cfg.axis);record.put("left_label",categorical_value(cfg,left));
+ record.put("right_label",categorical_value(cfg,right));
+ record.put("left_category_index",left);record.put("right_category_index",right);
+ record.put("left_right_are_unordered",true);
+ record.put("baseline_revalidated",baseline);record.put("final_revalidated",validated);
+ record.put("expected_failure_status",failure_status);
+ record.put("original_case_id",initial.id);record.put("case_id",smallest.id);
+ record.put("original_input_bytes",static_cast<std::int64_t>(initial.bytes.size()));
+ record.put("input_bytes",static_cast<std::int64_t>(smallest.bytes.size()));
+ record.put("input_sha256",sha256(smallest.bytes));
+ record.put("parameters",Json::parse(case_params(smallest)));
+ record.put("evaluations",static_cast<std::int64_t>(attempts));
+ record.put("preserved_evaluations",static_cast<std::int64_t>(successful));
+ record.put("fresh_seed_pairs_per_evaluation",static_cast<std::int64_t>(20));
+ record.put("minimization_evidence","minimization.sqlite");
+ auto* steps=json_object_new_array();for(const auto& step:reduced.trace){
+  Json v;v.put("case_id",step.case_id);v.put("action",step.action);
+  v.put("input_bytes",static_cast<std::int64_t>(step.input_bytes));
+  v.put("preserved",step.predicate_preserved);
+  json_object_array_add(steps,v.p);v.p=nullptr;
+ }
+ json_object_object_add(record.p,"shrink_trace",steps);
+ source.add_case(smallest);source.witness(id,smallest.id,verdict,record.str());
+ source.hypothesis(id,verdict,cfg.axis,left,right,std::abs(expected_shift),
+   "Unordered-category pair witness "+std::string(verdict)+
+   "; labels retained; independent evidence in minimization.sqlite",kind,case_params(frozen));
+ write_file(run+"/witness.json",record.str());write_file(run+"/witness.hex",hex_encode(smallest.bytes)+"\n");
+ report(run);
+ std::cout<<"Categorical pair witness "<<verdict<<" hypothesis="<<id
+          <<" fresh_pair_evaluations="<<attempts<<"\n";
+}
+
 void minimize(const std::string& run,const std::string& id){
  Store s(run+"/run.sqlite");auto cfg=config_from_json(Json::parse(s.config()));auto [status,axis,left,right]=read_hypothesis(s,id);
  if(status!="CONFIRMED")throw Error("only confirmed hypotheses can be minimized");
- if(!numeric_axis(axis))throw Error("categorical boundary has no ordered numeric minimizer; use frozen pair replay/export, not scalar shrink");
+ if(!numeric_axis(axis)){minimize_categorical(run,id,s,cfg,left,right);return;}
  if(cfg.family!="calibration"||axis!="x"){
   sqlite3_stmt* stmt=nullptr;
   if(sqlite3_prepare_v2(s.raw(),"SELECT kind FROM hypotheses WHERE id=?",-1,&stmt,nullptr)!=SQLITE_OK)throw Error("hypothesis kind lookup failed");
@@ -1168,6 +1314,35 @@ static Case locate_case(Store& store,const std::string& identity){
  if(!selected)throw Error("witness case ID not in run");
  return *selected;
 }
+struct RecordedAlgorithm {
+ std::string version,output_contract;
+ int abi=0;
+};
+static std::optional<RecordedAlgorithm> recorded_algorithm(Store& store,const std::string& algorithm){
+ sqlite3_stmt* raw=nullptr;
+ if(sqlite3_prepare_v2(store.raw(),"SELECT version,adapter_abi,output_contract FROM algorithms WHERE algorithm_id=?",-1,&raw,nullptr)!=SQLITE_OK)
+  throw Error("algorithm provenance query failed");
+ std::unique_ptr<sqlite3_stmt,decltype(&sqlite3_finalize)> stmt(raw,&sqlite3_finalize);
+ if(sqlite3_bind_text(stmt.get(),1,algorithm.c_str(),-1,SQLITE_TRANSIENT)!=SQLITE_OK)
+  throw Error("algorithm provenance binding failed");
+ const auto rc=sqlite3_step(stmt.get());
+ if(rc==SQLITE_DONE)return std::nullopt;
+ if(rc!=SQLITE_ROW)throw Error("algorithm provenance lookup failed");
+ auto value=[&](int column){const auto* bytes=sqlite3_column_text(stmt.get(),column);
+  return bytes?std::string(reinterpret_cast<const char*>(bytes)):std::string{};};
+ return RecordedAlgorithm{value(0),value(2),sqlite3_column_int(stmt.get(),1)};
+}
+static void require_replay_identity(Store& store,const std::string& algorithm,const std::string& family){
+ if(algorithm.rfind("plugin:",0)!=0)return;
+ const auto recorded=recorded_algorithm(store,algorithm);
+ if(!recorded||recorded->abi!=1||recorded->output_contract!=family+":exact-oracle-values"||
+    recorded->version.rfind("external-abi-v1;sha256=",0)!=0)
+  throw Error("ARTIFACT_MISMATCH: missing or incompatible native-plugin algorithm provenance");
+ const auto path=algorithm.substr(7);
+ if(!fs::is_regular_file(path))throw Error("UNAVAILABLE_PLUGIN: native-plugin artifact is not present: "+path);
+ if(recorded->version!="external-abi-v1;sha256="+sha256_file(path))
+  throw Error("ARTIFACT_MISMATCH: native-plugin file SHA-256 differs from persisted run: "+path);
+}
 void minimize_failure_case(const std::string& run,const std::string& case_id,const std::string& algorithm){
  if(algorithm.empty())throw Error("minimize-case requires an explicit algorithm");
  Store store(run+"/run.sqlite");const auto cfg=config_from_json(Json::parse(store.config()));
@@ -1217,6 +1392,7 @@ void replay_expected_failure(const std::string& run,const std::string& case_id,c
  static const std::set<std::string> accepted={"wrong_answer","timeout","out_of_memory","crashed","signaled"};
  if(!accepted.count(expected_status)||algorithm.empty())throw Error("expected-failure replay requires an explicit algorithm and supported status");
  Store store(db.empty()?run+"/run.sqlite":db,true);auto c=locate_case(store,case_id);
+ require_replay_identity(store,algorithm,c.family);
  for(const auto& o:measure(c,{algorithm},1,0,3000,1024)){
   if(o.status!=expected_status)throw Error("witness failure did not reproduce: expected "+expected_status+" got "+o.status);
   std::cout<<"REPLAY EXPECTED_FAILURE status="<<o.status<<" case="<<c.id<<" input_sha256="<<sha256(c.bytes)<<"\n";
@@ -1225,16 +1401,38 @@ void replay_expected_failure(const std::string& run,const std::string& case_id,c
  throw Error("empty witness replay");
 }
 void replay(const std::string& run,const std::string& case_id,const std::string& db){
- Store s(db.empty()?run+"/run.sqlite":db,true);auto cfg=config_from_json(Json::parse(s.config()));
- for(const auto& c:s.cases())if(c.id==case_id||c.id.rfind(case_id,0)==0){
-  const auto expected=oracle(c).values;const auto actual=execute(c,cfg.a).values;if(actual!=expected)throw Error("replay correctness failure");
-  std::cout<<"REPLAY OK case="<<c.id<<" input_sha256="<<sha256(c.bytes)<<" algorithm="<<cfg.a<<"\n";return;
+ Store store(db.empty()?run+"/run.sqlite":db,true);
+ const auto cfg=config_from_json(Json::parse(store.config()));
+ const auto c=locate_case(store,case_id); // Exact or uniquely prefixed ID; never first-match an ambiguous prefix.
+ require_replay_identity(store,cfg.a,c.family);
+ if(cfg.a.rfind("plugin:",0)==0){
+  // All external code executes inside the same bounded worker as ordinary
+  // measurements. Replaying never modifies the historical SQLite observations.
+  const auto obs=measure(c,{cfg.a},1,0,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,
+                         cfg.isolation_mode=="per_sample");
+  if(obs.size()!=1)throw Error("REPLAY_FAILED: native plugin did not return exactly one observation");
+  if(obs.front().status=="wrong_answer")throw Error("WRONG_ANSWER: native plugin disagrees with independently regenerated oracle");
+  if(obs.front().status!="ok"||obs.front().ns<=0||obs.front().batch<=0)
+   throw Error("REPLAY_FAILED: native plugin status="+obs.front().status+" "+obs.front().detail);
+  const auto expected_hash=sha256(encode_values(oracle(c).values));
+  if(obs.front().digest!=expected_hash)throw Error("WRONG_ANSWER: native-plugin output digest disagrees with oracle");
+ }else{
+  if(execute(c,cfg.a).values!=oracle(c).values)throw Error("WRONG_ANSWER: replay correctness failure");
  }
- throw Error("replay case not found");
+ std::cout<<"REPLAY OK case="<<c.id<<" input_sha256="<<sha256(c.bytes)<<" algorithm="<<cfg.a<<"\n";
 }
 static std::string csv_escape(const std::string& s){std::string o="\"";for(char c:s){if(c=='\"')o+="\"\"";else o+=c;}return o+"\"";}
 static std::string html_escape(const std::string& s){std::string o;for(char c:s){if(c=='&')o+="&amp;";else if(c=='<')o+="&lt;";else if(c=='>')o+="&gt;";else if(c=='\"')o+="&quot;";else o+=c;}return o;}
-void report(const std::string& run){
+void report(const std::string& run,const std::string& formats){
+ std::set<std::string> selected;
+ static const std::set<std::string> supported={"markdown","json","csv","html"};
+ std::size_t pos=0;
+ do{
+  const auto end=formats.find(',',pos);const auto format=formats.substr(pos,end==std::string::npos?end:end-pos);
+  if(!supported.count(format)||!selected.insert(format).second)throw Error("unsupported or duplicate report --format: "+format);
+  if(end==std::string::npos)break;
+  pos=end+1;
+ }while(true);
  Store s(run+"/run.sqlite");s.refresh_aggregates();auto summary=s.summary();auto cfg=config_from_json(Json::parse(s.config()));
  // Render category identifiers with their original labels; the stored
  // integer indices are exact design references, never metric coordinates.
@@ -1280,7 +1478,8 @@ void report(const std::string& run){
  json_object_object_add(report.p,"raw_samples",raw);
  if(report.str().size()>cfg.max_report_bytes)throw Error("JSON report exceeds max_report_bytes");
  if(csv.str().size()>cfg.max_report_bytes)throw Error("CSV report exceeds max_report_bytes");
- write_file(run+"/report.json",report.str());write_file(run+"/samples.csv",csv.str());
+ if(selected.count("json"))write_file(run+"/report.json",report.str());
+ if(selected.count("csv"))write_file(run+"/samples.csv",csv.str());
  auto* summary_obj=report.get("summary");Json summ(json_object_get(summary_obj));
  std::ostringstream md;md<<"# PHASESHIFT experimental report\n\n- Experiment: "<<cfg.experiment_id<<"\n- Family: "<<cfg.family<<"\n- Comparison: "<<cfg.a<<(cfg.b.empty()?"":" vs "+cfg.b)<<"\n- Discovered cases and holdouts: "<<summ.i("cases")<<" total\n- Raw observations: "<<summ.i("samples")<<"\n- Incorrect, timeout, crash or invalid observations: "<<summ.i("invalid_samples")<<"\n- Primary axis: "<<cfg.axis<<"\n- Full raw evidence: `samples.csv`, `report.json`, `run.sqlite`\n\n## Boundary candidates and verdicts\n\n";
  auto* hypotheses=summ.get("hypotheses");for(std::size_t i=0;i<json_object_array_length(hypotheses);i++){
@@ -1289,9 +1488,12 @@ void report(const std::string& run){
     <<" (effect="<<x.d("effect")<<"). "<<x.s("detail")<<"\n";
  }
  md<<"\n## Export completeness\n\n- Raw CSV/JSON projection "<<(truncated?"TRUNCATED by max_report_bytes; authoritative complete raw data remain in run.sqlite":"contains every recorded sample")<<".\n\n## Scientific limitations\n\n- Synthetic work units are not time; this fixture is an engineered calibration, not a natural discovery.\n- CPU timings vary by host, cache, thermal conditions, and compiler settings.\n- Real performance candidates are **not confirmed** without calibrated paired-case intervals and multiplicity controls.\n- Observational morphology alone does not establish causality.\n- Reproduce with `phaseshift replay --run "<<run<<" --case <case-id>` and inspect raw rows.\n";
- write_file(run+"/report.md",md.str());write_file(run+"/report.html","<!doctype html><meta charset=\"utf-8\"><title>PHASESHIFT report</title><style>body{font:16px system-ui;max-width:900px;margin:3em auto;white-space:pre-wrap}</style><main>"+html_escape(md.str())+"</main>");
- for(const auto& filename:{"report.json","samples.csv","report.md","report.html"})
+ if(selected.count("markdown"))write_file(run+"/report.md",md.str());
+ if(selected.count("html"))write_file(run+"/report.html","<!doctype html><meta charset=\"utf-8\"><title>PHASESHIFT report</title><style>body{font:16px system-ui;max-width:900px;margin:3em auto;white-space:pre-wrap}</style><main>"+html_escape(md.str())+"</main>");
+ for(const auto& format:selected){
+  const std::string filename=format=="markdown"?"report.md":format=="json"?"report.json":format=="csv"?"samples.csv":"report.html";
   s.artifact(filename,sha256_file(run+"/"+filename),"experiment-report");
+ }
 }
 void verify_bundle(const std::string& bundle){
  const auto path=fs::path(bundle);
@@ -1460,6 +1662,19 @@ void intervene(const std::string& source,const std::string& out,const std::strin
 }
 void compare(const std::string& a,const std::string& b){Store left(a+"/run.sqlite"),right(b+"/run.sqlite");auto x=config_from_json(Json::parse(left.config())),y=config_from_json(Json::parse(right.config()));
  if(x.family!=y.family||x.a!=y.a||x.b!=y.b)throw Error("incompatible algorithm output contracts");
+ // A plugin path is not an implementation identity. Reject mixed binary
+ // versions rather than treating a same-path comparison as reproducible.
+ for(const auto& algorithm:(x.b.empty()?std::vector<std::string>{x.a}:std::vector<std::string>{x.a,x.b})){
+  const auto lhs=recorded_algorithm(left,algorithm),rhs=recorded_algorithm(right,algorithm);
+  const bool is_plugin=algorithm.rfind("plugin:",0)==0;
+  if(is_plugin&&(!lhs||!rhs))throw Error("ARTIFACT_MISMATCH: native-plugin provenance missing from one run: "+algorithm);
+  if(lhs&&rhs&&(lhs->version!=rhs->version||lhs->abi!=rhs->abi||lhs->output_contract!=rhs->output_contract))
+   throw Error("ARTIFACT_MISMATCH: recorded algorithm identity/output contract differs for "+algorithm+
+               " A="+lhs->version+" B="+rhs->version);
+  if(is_plugin&&(lhs->abi!=1||lhs->output_contract!=x.family+":exact-oracle-values"))
+   throw Error("ARTIFACT_MISMATCH: native-plugin ABI/output contract invalid for "+algorithm);
+ }
+ std::cout<<"ALGORITHM_IDENTITY: RECORDED_ARTIFACTS_MATCH\n";
  std::cout<<"A: "<<left.summary().str()<<"\nB: "<<right.summary().str()<<"\n";
  const auto env_a=Json::parse(left.environment()),env_b=Json::parse(right.environment());
  const std::vector<std::string> compatibility={"architecture","cpu_model","compiler_id","compiler_version","stdlib","stdlib_version","build_type","build_flags","source_revision","cpu_affinity","cpu_governor","process_priority","sanitized_build"};

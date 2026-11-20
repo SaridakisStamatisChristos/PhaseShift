@@ -98,7 +98,7 @@ int main(int argc,char** argv){
   if(cmd=="reproduce"){ps::reproduce_case(run,option("--case"),option("--algorithm"),option("--out"));return 0;}
   if(cmd=="replay"){auto c=option("--case");if(c.empty())throw ps::Error("replay requires --case");
    const auto expected=option("--expect");if(expected.empty())ps::replay(run,c,option("--db"));else ps::replay_expected_failure(run,c,option("--algorithm"),expected,option("--db"));return 0;}
-  if(cmd=="report"){ps::report(run);std::cout<<"Generated markdown/json/csv/html in "<<run<<"\n";return 0;}
+  if(cmd=="report"){const auto formats=option("--format","markdown,json,csv,html");ps::report(run,formats);std::cout<<"Generated requested report formats ("<<formats<<") in "<<run<<"\n";return 0;}
   if(cmd=="export"){auto out=option("--out");if(out.empty())throw ps::Error("export requires --out");ps::export_run(run,out);return 0;}
   if(cmd=="verify-bundle"){auto bundle=option("--bundle");if(bundle.empty())throw ps::Error("verify-bundle requires --bundle");ps::verify_bundle(bundle);return 0;}
   if(cmd=="import"){auto bundle=option("--bundle"),out=option("--out");if(bundle.empty()||out.empty())throw ps::Error("import requires --bundle and --out");ps::import_bundle(bundle,out);return 0;}

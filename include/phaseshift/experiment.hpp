@@ -23,7 +23,7 @@ void minimize(const std::string& run,const std::string& id="H1");
 void replay(const std::string& run,const std::string& case_id,const std::string& db="");
 void minimize_failure_case(const std::string& run,const std::string& case_id,const std::string& algorithm);
 void replay_expected_failure(const std::string& run,const std::string& case_id,const std::string& algorithm,const std::string& expected_status,const std::string& db="");
-void report(const std::string& run);
+void report(const std::string& run,const std::string& formats="markdown,json,csv,html");
 void export_run(const std::string& run,const std::string& out);
 void verify_bundle(const std::string& bundle);
 void import_bundle(const std::string& bundle,const std::string& out);
