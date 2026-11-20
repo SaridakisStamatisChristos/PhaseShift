@@ -202,3 +202,34 @@ set_tests_properties(b02_null_ablation_scorecard PROPERTIES TIMEOUT 90 RUN_SERIA
 configure_file(tests/run_sota_audit_falsifiers.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_sota_audit_falsifiers.cmake @ONLY)
 add_test(NAME sota_audit_falsifiers COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_sota_audit_falsifiers.cmake)
 set_tests_properties(sota_audit_falsifiers PROPERTIES TIMEOUT 20 RUN_SERIAL TRUE)
+
+# Independent v1.0 contract falsifiers: frozen categorical coordinates,
+# reproducible seeded strata, failed holdout control, and absolute worker limits.
+foreach(mode IN ITEMS 1 2 3)
+ add_library(phaseshift_audit_boundary_${mode} SHARED tests/audit_boundary_plugin.c)
+ target_include_directories(phaseshift_audit_boundary_${mode} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+ target_compile_definitions(phaseshift_audit_boundary_${mode} PRIVATE AUDIT_MODE=${mode})
+ set_target_properties(phaseshift_audit_boundary_${mode} PROPERTIES PREFIX "" OUTPUT_NAME "audit_boundary_${mode}")
+endforeach()
+add_executable(phaseshift_full_v1_contract tests/full_v1_contract.cpp)
+target_link_libraries(phaseshift_full_v1_contract PRIVATE phaseshift_core)
+add_test(NAME full_v1_contract COMMAND phaseshift_full_v1_contract
+ ${CMAKE_CURRENT_BINARY_DIR}/ctest_full_v1_contract
+ $<TARGET_FILE:phaseshift_audit_boundary_1>
+ $<TARGET_FILE:phaseshift_audit_boundary_2>
+ $<TARGET_FILE:phaseshift_audit_boundary_3>)
+set_tests_properties(full_v1_contract PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+
+# Instrumentable synthetic knee. Runs the real worker pipeline with an
+# oracle-correct plugin; a deterministic test signal, never real SOTA evidence.
+add_library(phaseshift_scaling_knee SHARED tests/scaling_knee_plugin.c)
+target_include_directories(phaseshift_scaling_knee PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+set_target_properties(phaseshift_scaling_knee PROPERTIES PREFIX "" OUTPUT_NAME "scaling_knee")
+configure_file(tests/run_scaling_knee.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_scaling_knee.cmake @ONLY)
+add_test(NAME scaling_independent_holdout_knee COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_scaling_knee.cmake)
+set_tests_properties(scaling_independent_holdout_knee PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
+
+# Natural CLI behaviors including error exits and help/version/list surface.
+configure_file(tests/run_cli_surface.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_cli_surface.cmake @ONLY)
+add_test(NAME cli_surface_contract COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_cli_surface.cmake)
+set_tests_properties(cli_surface_contract PROPERTIES TIMEOUT 20)

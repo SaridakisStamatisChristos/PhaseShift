@@ -4,6 +4,8 @@ if(NOT result EQUAL 0)
   message(FATAL_ERROR "Ablation exited ${result}: ${stdout}\n${stderr}")
 endif()
 file(READ "@CMAKE_CURRENT_BINARY_DIR@/ctest_ablation/ablation.csv" report)
-if(NOT report MATCHES "adaptive_partition,24,24,64,64,.*CONFIRMED,23,24,0")
+# 24 discovery cases + 40 independently paired confirmation cases + one
+# independent oracle-validated negative-control case = 65 total.
+if(NOT report MATCHES "adaptive_partition,24,24,65,65,.*CONFIRMED,23,24,0")
   message(FATAL_ERROR "adaptive search did not localize exact threshold under equal discovery budget: ${report}")
 endif()

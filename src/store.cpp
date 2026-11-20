@@ -193,8 +193,32 @@ void Store::seal_confirmation(const std::string& id,const std::string& algorithm
   const auto params=Json::parse(reinterpret_cast<const char*>(sqlite3_column_text(rows.p,2)));
   std::string key=axis;
   if(key=="density"||key=="degree_skew"||key=="duplicate_fraction"||key=="disorder_fraction"||key=="sign_fraction")key+="_ppm";
-  if(!params.get(key.c_str()))throw Error("holdout case missing candidate axis: "+axis);
-  const auto value=params.i(key.c_str());
+  auto* raw_axis=params.get(key.c_str());
+  if(!raw_axis)throw Error("holdout case missing candidate axis: "+axis);
+  std::int64_t value=0;
+  const auto type=json_object_get_type(raw_axis);
+  if(type==json_type_string||type==json_type_boolean){
+   // Categorical hypothesis coordinates are stable indices into the
+   // immutable serialized experiment design, never numeric magnitudes.
+   const auto frozen=Json::parse(config());
+   auto* axes=frozen.get("axes");json_object* labels=nullptr;
+   if(!axes||!json_object_object_get_ex(axes,axis.c_str(),&labels)||
+      json_object_get_type(labels)!=json_type_array)
+    throw Error("categorical holdout lacks frozen category design");
+   const std::string observed=type==json_type_boolean?
+    (json_object_get_boolean(raw_axis)?"true":"false"):
+    std::string(json_object_get_string(raw_axis));
+   bool matched=false;
+   for(std::size_t index=0;index<json_object_array_length(labels);index++){
+    auto* candidate=json_object_array_get_idx(labels,index);
+    if(candidate&&json_object_get_type(candidate)==json_type_string&&
+       observed==json_object_get_string(candidate)){
+     value=static_cast<std::int64_t>(index);matched=true;break;
+    }
+   }
+   if(!matched)throw Error("holdout category is not in frozen experiment design");
+  }else if(type==json_type_int)value=params.i(key.c_str());
+  else throw Error("invalid holdout structural axis type");
   int side=-1;
   if(scaling){if(value<=left)side=0;else if(value>=right)side=1;}
   else{if(value==left)side=0;else if(value==right)side=1;}

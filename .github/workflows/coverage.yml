@@ -1,0 +1,27 @@
+name: production-line-coverage
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  coverage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install coverage tools and C++ dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm cmake ninja-build libsqlite3-dev libjson-c-dev libssl-dev pkg-config python3
+      - name: Gate production code and CLI at 95% line coverage
+        env:
+          PHASESHIFT_COVERAGE_BUILD: ${{ runner.temp }}/phaseshift-build-coverage
+        run: bash scripts/coverage.sh
+      - name: Preserve detailed coverage evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phaseshift-llvm-coverage
+          path: ${{ runner.temp }}/phaseshift-build-coverage/coverage.json
+          if-no-files-found: ignore
