@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "experiment_id": "v2-lazy-calibration",
+  "problem_family": "calibration",
+  "algorithms": [
+    "calibration"
+  ],
+  "seed": 141,
+  "primary_axis": "x",
+  "axes": {
+    "x": {
+      "values": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ]
+    },
+    "threshold": {
+      "values": [
+        3,
+        5
+      ]
+    }
+  },
+  "search": {
+    "policy_version": "v2",
+    "method": "uniform_v2",
+    "max_cases": 6
+  },
+  "measurement": {
+    "paired_discovery_blocks": 1,
+    "paired_confirm_blocks": 20,
+    "warmup_iterations": 0
+  },
+  "limits": {
+    "total_wall_seconds": 90,
+    "max_search_queue": 64
+  }
+}

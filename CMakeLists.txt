@@ -246,3 +246,7 @@ set_tests_properties(fresh_audit_regressions PROPERTIES TIMEOUT 180 RUN_SERIAL T
 add_executable(phaseshift_lazy_search_v2_tests tests/lazy_search_v2.cpp)
 target_link_libraries(phaseshift_lazy_search_v2_tests PRIVATE phaseshift_core)
 add_test(NAME lazy_search_v2 COMMAND phaseshift_lazy_search_v2_tests)
+
+configure_file(tests/run_v2_lazy.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_lazy.cmake @ONLY)
+add_test(NAME lazy_search_v2_cli COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_lazy.cmake)
+set_tests_properties(lazy_search_v2_cli PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)

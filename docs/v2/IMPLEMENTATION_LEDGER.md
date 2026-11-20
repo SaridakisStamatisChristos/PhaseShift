@@ -12,8 +12,9 @@ Preserve historical generator bytes/IDs, v1 CLI behavior, SQLite v7 evidence, na
 |---|---|---|
 | G0 main pinned | VERIFIED | SHA above and successful original push CI |
 | M0 frozen SOTA benchmark contract | PARTIAL | Scenario inventory only; equal-budget runs outstanding |
-| M2 lazy mixed-radix index and uniform sparse sampler | PARTIAL | Added separately tested class; not yet wired into CLI |
-| M1, M3–M12 | UNVERIFIED | Implementation and integration pending |
+| M2 lazy mixed-radix index and uniform sparse sampler | PARTIAL | Opt-in uniform_v2 CLI+resume added, CI verification pending; conditional subspaces/replication remain unimplemented |
+| M1 explicit policy version | PARTIAL | v1 default, v2 opt-in; cached evidence/budget ledger pending |
+| M3–M12 | UNVERIFIED | Implementation pending |
 | G1–G14 v2 hard gates | UNVERIFIED | No branch CI or held-out comparison yet |
 
 Research claim: **none**. Any synthetic fixture is a correctness calibration, not scientific novelty. No PR merge, license or release is authorized.
