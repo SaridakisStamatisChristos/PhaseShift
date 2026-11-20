@@ -85,6 +85,46 @@ int main(){try{
   require(pred(shrunk.smallest),"renumbered graph still preserves distances");
   replay(shrunk.smallest);
  }
+ {
+  // The undirected graph generator stores reciprocal arcs, but the schema
+  // counts logical edges. Shrink logical edges atomically and preserve that
+  // invariant even after vertex deletion and exact byte replay.
+  ps::Case c;c.family="graph";c.generator_version=2;c.directed=false;
+  c.vertices=6;c.edges=10;c.source=0;c.seed=972;c.weight_class="zero_one";
+  const auto original=ps::make_case(c);
+  const auto original_distances=ps::oracle(original).values;
+  auto pred=[&](const ps::Case& x){
+   if(x.vertices!=6||x.edges<1||x.directed)return false;
+   return ps::oracle(x).values==original_distances;
+  };
+  const auto reduced=ps::shrink_case(original,pred,500);
+  require(reduced.reduced,"undirected logical edge minimization reduced input");
+  require(reduced.smallest.generator_version==3,"undirected reduction uses literal graph v3");
+  require(!reduced.smallest.directed,"undirected interpretation preserved");
+  require(reduced.smallest.edges<original.edges,"undirected edge count reduced");
+  require(reduced.smallest.bytes.size()<original.bytes.size(),"undirected witness byte reduction");
+  require(ps::execute(reduced.smallest,"zero_one_bfs").values==original_distances,"undirected zero-one oracle retained");
+  replay(reduced.smallest);
+ }
+ {
+  ps::Case c;c.family="graph";c.generator_version=3;c.directed=false;
+  c.vertices=4;c.edges=3;c.source=0;
+  c.literal_hex=ps::hex_encode(ps::encode_values({4,6,0,
+   0,1,9,1,0,9,0,2,7,2,0,7,2,3,2,3,2,2}));
+  const auto original=ps::make_case(c);
+  auto keep=[](const ps::Case& x){
+   if(x.directed||x.source!=0||x.vertices<3)return false;
+   const auto distances=ps::oracle(x).values;
+   return std::find(distances.begin(),distances.end(),7)!=distances.end() &&
+          std::find(distances.begin(),distances.end(),9)!=distances.end();
+  };
+  const auto shrunk=ps::shrink_case(original,keep,250);
+  require(shrunk.reduced,"undirected renumber witness reduced");
+  require(shrunk.smallest.vertices==3,"undirected nonessential vertex renumbered");
+  require(shrunk.smallest.edges==2,"only essential reciprocal pairs remain");
+  require(keep(shrunk.smallest),"undirected distance witness preserved");
+  replay(shrunk.smallest);
+ }
  // A literal case is not an untyped input bypass: validate all lengths,
  // header fields, edge indices, restricted weights and upload caps.
  {
@@ -106,6 +146,12 @@ int main(){try{
   c.literal_hex=ps::hex_encode(ps::encode_values({2,1,0,0,1,2}));invalid(c,"zero_one graph weight restriction");
   c.literal_hex=ps::hex_encode(ps::encode_values({2,1,0,0,2,1}));invalid(c,"graph index restriction");
   c.literal_hex=ps::hex_encode(ps::encode_values({2,2,0,0,1,1}));invalid(c,"graph stored arc count restriction");
+  c.directed=false;
+  c.literal_hex=ps::hex_encode(ps::encode_values({2,2,0,0,1,1,1,0,1}));
+  replay(ps::make_case(c));
+  c.literal_hex=ps::hex_encode(ps::encode_values({2,2,0,0,1,1,1,0,0}));invalid(c,"undirected reciprocal weight mismatch");
+  c.literal_hex=ps::hex_encode(ps::encode_values({2,2,0,0,1,1,0,1,1}));invalid(c,"undirected missing reciprocal direction");
+  c.literal_hex=ps::hex_encode(ps::encode_values({2,2,0,0,0,1,0,0,1}));invalid(c,"undirected self loop rejection");
  }
  std::cout<<"PASS schema-aware literal ddmin, semantic preservation, replay and malformed inputs\n";
  return 0;

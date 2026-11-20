@@ -1,5 +1,6 @@
 #include "phaseshift/minimize.hpp"
 #include <algorithm>
+#include <map>
 #include <set>
 #include <tuple>
 #include <utility>
@@ -24,9 +25,9 @@ Case literal_array(const Case& parent,const std::vector<std::int64_t>& values){
  out.literal_hex=hex_encode(encode_values(values));return out;
 }
 Case literal_graph(const Case& parent,const std::vector<std::int64_t>& data){
- Case out=parent;out.generator_version=3;out.directed=true;
+ Case out=parent;out.generator_version=3;
  out.connectivity="none";out.community_count=1;out.density_ppm=-1;
- out.vertices=data[0];out.edges=data[1];out.source=data[2];
+ out.vertices=data[0];out.edges=data[1]/(parent.directed?1:2);out.source=data[2];
  out.literal_hex=hex_encode(encode_values(data));return out;
 }
 void structural_proposals(const Case& initial,std::vector<std::pair<Case,std::string>>& out){
@@ -49,38 +50,57 @@ void structural_proposals(const Case& initial,std::vector<std::pair<Case,std::st
   }
   return;
  }
- if(initial.family!="graph"||!initial.directed||data.size()<3||data[1]<0||
+ if(initial.family!="graph"||data.size()<3||data[1]<0||
     data.size()!=3+static_cast<std::size_t>(data[1])*3)return;
- const auto count=static_cast<std::size_t>(data[1]);
+ // Treat an undirected edge as a single removable unit, not two independent
+ // arcs. Removing one direction alone would silently change problem semantics.
+ using Edge=std::tuple<std::int64_t,std::int64_t,std::int64_t>;
+ std::vector<Edge> logical_edges;
+ const auto arcs=static_cast<std::size_t>(data[1]);
+ if(initial.directed){
+  for(std::size_t i=0;i<arcs;i++)logical_edges.emplace_back(data[3+3*i],data[4+3*i],data[5+3*i]);
+ }else{
+  std::map<std::pair<std::int64_t,std::int64_t>,std::int64_t> unique_edges;
+  for(std::size_t i=0;i<arcs;i++){
+   const auto a=data[3+3*i],b=data[4+3*i],w=data[5+3*i];
+   unique_edges[{std::min(a,b),std::max(a,b)}]=w;
+  }
+  for(const auto& [vertices,weight]:unique_edges)
+   logical_edges.emplace_back(vertices.first,vertices.second,weight);
+ }
+ const auto emit=[&](std::int64_t vertices,std::int64_t source,
+                     const std::vector<Edge>& edges,const std::string& why){
+  std::vector<std::int64_t> encoded{vertices,0,source};
+  encoded.reserve(3+3*edges.size()*(initial.directed?1:2));
+  for(const auto& [from,to,weight]:edges){
+   encoded.insert(encoded.end(),{from,to,weight});encoded[1]++;
+   if(!initial.directed){encoded.insert(encoded.end(),{to,from,weight});encoded[1]++;}
+  }
+  add_candidate(out,literal_graph(initial,encoded),why);
+ };
+ const auto count=logical_edges.size();
  std::vector<std::size_t> chunks={count/2,count/4,1};
  chunks.erase(std::remove(chunks.begin(),chunks.end(),0),chunks.end());
  chunks.erase(std::unique(chunks.begin(),chunks.end()),chunks.end());
  std::size_t emitted=0;
  for(const auto chunk:chunks)for(std::size_t offset=0;offset<count&&emitted<80;offset+=chunk){
   const auto end=std::min(count,offset+chunk);
-  std::vector<std::int64_t> remaining{data[0],static_cast<std::int64_t>(count-(end-offset)),data[2]};
-  remaining.reserve(3+3*(count-(end-offset)));
-  for(std::size_t e=0;e<count;e++)if(e<offset||e>=end){
-   remaining.push_back(data[3+3*e]);remaining.push_back(data[4+3*e]);remaining.push_back(data[5+3*e]);
-  }
-  add_candidate(out,literal_graph(initial,remaining),"ddmin_delete_graph_arcs");emitted++;
+  std::vector<Edge> remaining;remaining.reserve(count-(end-offset));
+  for(std::size_t e=0;e<count;e++)if(e<offset||e>=end)remaining.push_back(logical_edges[e]);
+  emit(data[0],data[2],remaining,initial.directed?"ddmin_delete_graph_arcs":"ddmin_delete_undirected_edge_pairs");
+  emitted++;
  }
- /* Removing any non-source vertex renumbers every surviving arc. This
-    preserves the chosen source and serializes an independently replayable
-    directed graph; no dangling vertex IDs are permitted. */
+ // Remove non-source vertices with exact renumbering, preserving reciprocal
+ // pairs for undirected cases and every surviving arc for directed cases.
  if(data[0]>1){
   for(std::int64_t drop=0;drop<data[0]&&emitted<90;drop++){
    if(drop==data[2])continue;
-   std::vector<std::int64_t> remaining{data[0]-1,0,data[2]-(data[2]>drop?1:0)};
-   for(std::size_t e=0;e<count;e++){
-    auto from=data[3+3*e],to=data[4+3*e];
+   std::vector<Edge> remaining;
+   for(const auto& [from,to,weight]:logical_edges){
     if(from==drop||to==drop)continue;
-    remaining.push_back(from-(from>drop?1:0));
-    remaining.push_back(to-(to>drop?1:0));
-    remaining.push_back(data[5+3*e]);
-    remaining[1]++;
+    remaining.emplace_back(from-(from>drop?1:0),to-(to>drop?1:0),weight);
    }
-   add_candidate(out,literal_graph(initial,remaining),"ddmin_remove_and_renumber_graph_vertex");
+   emit(data[0]-1,data[2]-(data[2]>drop?1:0),remaining,"ddmin_remove_and_renumber_graph_vertex");
    emitted++;
   }
  }

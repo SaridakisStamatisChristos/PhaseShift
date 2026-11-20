@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iomanip>
 #include <limits>
+#include <map>
 #include <sstream>
 #include <sys/utsname.h>
 #include <thread>
@@ -95,16 +96,39 @@ void validate_case_schema(const Case& c,std::uint64_t max_bytes){
   }
   if(c.family=="graph"){
    const auto data=decode_values(bytes);
-   if(!c.directed||data.size()<3||c.vertices<1||c.vertices>4096||c.source<0||c.source>=c.vertices||
-      c.edges<0||c.edges>200000||data[0]!=c.vertices||data[1]!=c.edges||data[2]!=c.source||
-      data.size()!=3+static_cast<std::size_t>(c.edges)*3)throw Error("literal graph header/shape invalid");
-   for(std::size_t i=3;i<data.size();i+=3)if(data[i]<0||data[i]>=c.vertices||
-      data[i+1]<0||data[i+1]>=c.vertices||data[i+2]<0||data[i+2]>1000000||
-      (c.weight_class=="zero_one"&&data[i+2]>1))throw Error("literal graph contains invalid arc/weight");
+   const auto arc_count=static_cast<std::uint64_t>(c.edges)*(c.directed?1ULL:2ULL);
+   if(data.size()<3||c.vertices<1||c.vertices>4096||c.source<0||c.source>=c.vertices||
+      c.edges<0||c.edges>200000||arc_count>400000||data[0]!=c.vertices||
+      data[1]!=static_cast<std::int64_t>(arc_count)||data[2]!=c.source||
+      data.size()!=3+static_cast<std::size_t>(arc_count)*3)throw Error("literal graph header/shape invalid");
    if(c.weight_class!="general"&&c.weight_class!="zero_one")throw Error("literal graph weight class invalid");
+   // For undirected v3 witnesses an edge must have exactly two reciprocal
+   // arcs with the same weight; no parallel edges or self loops. This is the
+   // same topology contract as the seeded v2 undirected generator.
+   std::map<std::pair<std::int64_t,std::int64_t>,std::pair<std::int64_t,unsigned>> reciprocal;
+   for(std::size_t i=3;i<data.size();i+=3){
+    const auto from=data[i],to=data[i+1],weight=data[i+2];
+    if(from<0||from>=c.vertices||to<0||to>=c.vertices||weight<0||weight>1000000||
+       (c.weight_class=="zero_one"&&weight>1))throw Error("literal graph contains invalid arc/weight");
+    if(!c.directed){
+     if(from==to)throw Error("literal undirected graph cannot contain self loops");
+     const auto key=std::minmax(from,to);
+     auto& record=reciprocal[{key.first,key.second}];
+     const auto flag=from<to?1U:2U;
+     if((record.second&flag)!=0|| (record.second!=0&&record.first!=weight))
+      throw Error("literal undirected arcs must be unique reciprocal equal-weight pairs");
+     record={weight,record.second|flag};
+    }
+   }
+   if(!c.directed){
+    if(reciprocal.size()!=static_cast<std::size_t>(c.edges))throw Error("literal undirected edge count mismatch");
+    for(const auto& [edge,record]:reciprocal){(void)edge;
+     if(record.second!=3U)throw Error("literal undirected edge lacks reciprocal arc");
+    }
+   }
    return;
   }
-  throw Error("literal v3 witness only supports arrays, Top-K and directed graphs");
+  throw Error("literal v3 witness only supports arrays, Top-K and graphs");
  }
  if(c.family=="calibration"){
   if(c.x<0||c.x>1000000||c.threshold<1||c.threshold>1000000||max_bytes<24)throw Error("invalid calibration schema/budget");
