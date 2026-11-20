@@ -59,12 +59,16 @@ int main(int argc,char** argv){if(argc>1&&std::string(argv[1])=="--worker")retur
    ps::Case c;c.family="integer_array";c.n=12;c=ps::make_case(c);
    const auto dir=std::filesystem::path(argv[0]).parent_path();
    auto bad=[&](int mode){auto lib=(dir/("fault_"+std::to_string(mode)+".so")).string();return ps::measure(c,{"plugin:"+lib},1,0,300,256);};
-   auto crashed=bad(1);
+   // Repeated fault/reap cycles must retain the true worker-exit classification
+   // even when pipe EOF is seen before waitpid(WNOHANG) reports SIGCHLD.
+   for(int attempt=0;attempt<12;attempt++){
+    auto crashed=bad(1);
 #ifdef PHASESHIFT_ASAN_BUILD
-   require(crashed.size()==1&&crashed[0].status=="crashed","ASan interception of segfault must remain isolated");
+    require(crashed.size()==1&&crashed[0].status=="crashed","ASan interception of segfault must remain isolated");
 #else
-   require(crashed.size()==1&&crashed[0].status=="signaled","segfault must be isolated and marked signaled");
+    require(crashed.size()==1&&crashed[0].status=="signaled","segfault must be isolated and marked signaled");
 #endif
+   }
    auto hung=bad(2);require(hung.size()==1&&hung[0].status=="timeout","hung worker must be terminated and timed out");
    ps::Case slow_case;slow_case.family="integer_array";slow_case.n=12;slow_case.distribution="ascending";slow_case=ps::make_case(slow_case);
    auto slow=ps::measure(slow_case,{"plugin:"+(dir/"fault_9.so").string()},1,0,300,256);

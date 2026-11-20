@@ -166,7 +166,7 @@ void scaling_study(const std::string& source,const std::string& out,int seed_cou
   const auto names=cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b};
   const auto obs=measure(c,names,3,1,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample");
   std::map<std::string,std::vector<double>> case_values;
-  for(const auto& o:obs){store.add_observation(c,o,true);
+  for(const auto& o:obs){store.add_observation(c,o,false);
    if(o.status=="ok"&&o.ns>0&&o.batch>0)case_values[o.algorithm].push_back(static_cast<double>(o.ns)/static_cast<double>(o.batch));
   }
   for(const auto& algorithm:names){
@@ -268,8 +268,9 @@ void scaling_study(const std::string& source,const std::string& out,int seed_cou
    scaling_evidence.put("status",pass?"CONFIRMED":"NOT_CONFIRMED");
    scaling_evidence.put("holdout_seed_count",static_cast<std::int64_t>(seed_differences.size()));
    scaling_evidence.put("holdout_new_size_count",static_cast<std::int64_t>(holdout_sizes.size()));
-   auto* used=json_object_new_array();for(const int n:sizes)json_object_array_add(used,json_object_new_int(n));
+   auto* used=json_object_new_array();for(const int n:holdout_sizes)json_object_array_add(used,json_object_new_int(n));
    json_object_object_add(scaling_evidence.p,"holdout_sizes",used);
+   if(pass)store.seal_confirmation("SCALE-H1",cfg.a,cfg.confirm_blocks,true);
    store.hypothesis("SCALE-H1",pass?"CONFIRMED":"NOT_CONFIRMED",axis,low,high,
      std::abs(candidate.slope_right-candidate.slope_left),
      pass?"New-size, new-seed 99% case-paired slope contrast confirmed; empirical finite n only":
