@@ -241,3 +241,8 @@ add_test(NAME fresh_audit_regressions
  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/fresh_audit_regressions.py
  --repo ${CMAKE_CURRENT_SOURCE_DIR} --binary $<TARGET_FILE:phaseshift>)
 set_tests_properties(fresh_audit_regressions PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+
+# Independent opt-in v2 lazy-space falsification suite.
+add_executable(phaseshift_lazy_search_v2_tests tests/lazy_search_v2.cpp)
+target_link_libraries(phaseshift_lazy_search_v2_tests PRIVATE phaseshift_core)
+add_test(NAME lazy_search_v2 COMMAND phaseshift_lazy_search_v2_tests)
