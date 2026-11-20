@@ -43,6 +43,18 @@ int main(int argc,char** argv){if(argc>1&&std::string(argv[1])=="--worker")retur
    /* Plugin is deliberately wrong for descending input; must be excluded from timing. */
    require(!bad.empty()&&bad[0].status=="wrong_answer","plugin correctness gate");
   }
+  {
+   ps::Case c;c.family="integer_array";c.n=12;c=ps::make_case(c);
+   const auto dir=std::filesystem::path(argv[0]).parent_path();
+   auto bad=[&](int mode){auto lib=(dir/("fault_"+std::to_string(mode)+".so")).string();return ps::measure(c,{"plugin:"+lib},1,0,300,256);};
+   auto crashed=bad(1);require(crashed.size()==1&&crashed[0].status=="signaled","segfault must be isolated and marked signaled");
+   auto hung=bad(2);require(hung.size()==1&&hung[0].status=="timeout","hung worker must be terminated and timed out");
+   auto oversize=bad(3);require(oversize.size()==1&&oversize[0].status=="infrastructure_error","oversized plugin output must fail");
+   auto exception=bad(4);require(exception.size()==1&&exception[0].status=="infrastructure_error","plugin exception must not escape worker");
+   auto rejected=bad(5);require(rejected.size()==1&&rejected[0].status=="invalid_input","plugin input rejection must not be timed");
+   auto oom=bad(6);require(oom.size()==1&&oom[0].status=="out_of_memory","out-of-memory must not be timed");
+   auto mismatch=bad(7);require(mismatch.size()==1&&mismatch[0].status=="infrastructure_error","ABI mismatch must fail");
+  }
   std::cout<<"PASS: deterministic generator / sorting / topk / graphs / calibration / invalid input / isolated worker / plugin oracle\n";return 0;
  }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
 }

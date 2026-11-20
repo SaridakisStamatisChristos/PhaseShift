@@ -26,8 +26,8 @@ static Result run_plugin(const Case& c,const std::string& path){
  if(api->reset)api->reset();
  ps_output_v1 out{};
  int status=PHASESHIFT_PLUGIN_ERROR;
- try{status=api->run(in,&out);}catch(...){if(out.release&&out.data)out.release(out.data,out.len);throw Error("plugin threw exception across C ABI");}
- if(status!=PHASESHIFT_PLUGIN_OK){if(out.release&&out.data)out.release(out.data,out.len);throw Error("plugin run returned failure: "+std::to_string(status));}
+ try{status=api->run(in,&out);}catch(const std::bad_alloc&){if(out.release&&out.data)out.release(out.data,out.len);throw;}catch(...){if(out.release&&out.data)out.release(out.data,out.len);throw Error("plugin threw exception across C ABI");}
+ if(status!=PHASESHIFT_PLUGIN_OK){if(out.release&&out.data)out.release(out.data,out.len);if(status==PHASESHIFT_PLUGIN_OUT_OF_MEMORY)throw std::bad_alloc();throw Error("plugin run returned failure: "+std::to_string(status));}
  if(!out.release || (out.len&&!out.data)||out.len>c.bytes.size()||out.len%8){if(out.release&&out.data)out.release(out.data,out.len);throw Error("plugin output shape/ownership invalid");}
  Bytes bytes;if(out.len)bytes.assign(out.data,out.data+out.len);out.release(out.data,out.len);
  return {decode_values(bytes),0};
@@ -50,12 +50,13 @@ static Json measure_one(const Case& c,const std::string& algorithm,int block,int
   }
   v.put("ns",static_cast<std::int64_t>(ns));v.put("batch",static_cast<std::int64_t>(iterations));v.put("work",static_cast<std::int64_t>(trial.work));v.put("digest",sha256(encode_values(last.values)));
  }catch(const std::bad_alloc&){v.put("status","out_of_memory");v.put("detail","std::bad_alloc");}
- catch(const std::exception& e){v.put("status","invalid_input");v.put("detail",std::string(e.what()).substr(0,400));}
+ catch(const std::exception& e){const auto message=std::string(e.what());v.put("status",message.find("plugin invalid input")!=std::string::npos?"invalid_input":"infrastructure_error");v.put("detail",message.substr(0,400));}
  return v;
 }
-Json worker_measure(const Json& request){
- auto params=request.s("params");auto family=request.s("family");auto bytes=hex_decode(request.s("bytes"));
- if(bytes.size()>32ULL*1024*1024)throw Error("IPC request bytes exceed 32 MiB");
+Json worker_measure(const Json& request,const Bytes& bytes){
+ if(request.i("protocol")!=1)throw Error("unsupported IPC protocol version");
+ auto params=request.s("params");auto family=request.s("family");
+ if(bytes.size()>64ULL*1024*1024||request.i("bytes_length")!=static_cast<std::int64_t>(bytes.size())||request.s("bytes_sha256")!=sha256(bytes))throw Error("invalid worker payload length/checksum");
  auto c=decode_case(family,params,static_cast<std::uint64_t>(request.i("seed")),bytes);
  auto* a=request.get("algorithms");if(!a||json_object_get_type(a)!=json_type_array||json_object_array_length(a)==0||json_object_array_length(a)>2)throw Error("invalid algorithm list");
  std::vector<std::string> names;for(std::size_t i=0;i<json_object_array_length(a);i++){auto* e=json_object_array_get_idx(a,i);if(json_object_get_type(e)!=json_type_string)throw Error("algorithm name must be string");names.emplace_back(json_object_get_string(e));}
@@ -68,13 +69,40 @@ Json worker_measure(const Json& request){
  }
  json_object_object_add(answer.p,"observations",list);return answer;
 }
-static void all_write(int fd,const std::uint8_t* b,std::size_t n){while(n){auto m=::write(fd,b,n);if(m<0&&errno==EINTR)continue;if(m<=0)throw Error("IPC write failed");b+=m;n-=static_cast<std::size_t>(m);}}
-static void write_frame(int fd,const std::string& s){if(s.size()>64ULL*1024*1024)throw Error("IPC payload too large");std::uint8_t length[4];const auto n=static_cast<std::uint32_t>(s.size());for(int i=0;i<4;i++)length[i]=static_cast<std::uint8_t>((n>>(8*i))&255);all_write(fd,length,4);all_write(fd,reinterpret_cast<const std::uint8_t*>(s.data()),s.size());}
-static bool read_exact(int fd,std::uint8_t* p,std::size_t n,int timeout_ms){
- while(n){struct pollfd f{fd,POLLIN,0};auto r=poll(&f,1,timeout_ms);if(r<0&&errno==EINTR)continue;if(r<=0) return false;auto got=::read(fd,p,n);if(got<0&&errno==EINTR)continue;if(got<=0)return false;p+=got;n-=static_cast<std::size_t>(got);}return true;
+/* Versioned, length-prefixed binary IPC: each frame uses PS01 + little-endian
+   u32 length + byte payload. A fixed deadline applies to entire read/write,
+   not to each arriving byte (which would admit slow-drip hangs). */
+static constexpr std::uint8_t magic[4]={'P','S','0','1'};
+static auto deadline_ms(int ms){return std::chrono::steady_clock::now()+std::chrono::milliseconds(ms);}
+static bool io_exact(int fd,std::uint8_t* b,std::size_t n,bool writing,std::chrono::steady_clock::time_point deadline){
+ while(n){auto remain=std::chrono::duration_cast<std::chrono::milliseconds>(deadline-std::chrono::steady_clock::now()).count();
+  if(remain<=0)return false;
+  struct pollfd p{fd,static_cast<short>(writing?POLLOUT:POLLIN),0};
+  auto ready=poll(&p,1,static_cast<int>(std::min<std::int64_t>(remain,60000)));
+  if(ready<0&&errno==EINTR)continue;
+  if(ready<=0||p.revents&(POLLERR|POLLNVAL))return false;
+  auto count=writing ? ::write(fd,b,n) : ::read(fd,b,n);
+  if(count<0&&(errno==EINTR||errno==EAGAIN))continue;
+  if(count<=0)return false;
+  b+=count;n-=static_cast<std::size_t>(count);
+ }
+ return true;
 }
-static std::string read_frame(int fd,int timeout_ms){
- std::uint8_t h[4];if(!read_exact(fd,h,4,timeout_ms))throw Error("worker response timeout/crash");std::uint32_t n=0;for(int i=0;i<4;i++)n|=static_cast<std::uint32_t>(h[i])<<(i*8);if(n>8*1024*1024)throw Error("oversized worker response");std::string s(n,'\0');if(n&&!read_exact(fd,reinterpret_cast<std::uint8_t*>(s.data()),n,timeout_ms))throw Error("truncated worker response");return s;
+static void write_frame(int fd,const std::uint8_t* b,std::size_t n,std::chrono::steady_clock::time_point deadline){
+ if(n>64ULL*1024*1024)throw Error("oversized IPC request");
+ std::uint8_t h[8]={'P','S','0','1',0,0,0,0};
+ for(int i=0;i<4;i++)h[4+i]=static_cast<std::uint8_t>((n>>(i*8))&255);
+ if(!io_exact(fd,h,8,true,deadline) || (n&&!io_exact(fd,const_cast<std::uint8_t*>(b),n,true,deadline)))throw Error("IPC write timeout/crash");
+}
+static void write_frame(int fd,const std::string& s,std::chrono::steady_clock::time_point deadline){write_frame(fd,reinterpret_cast<const std::uint8_t*>(s.data()),s.size(),deadline);}
+static Bytes read_frame(int fd,int timeout_ms,std::size_t limit){
+ const auto until=deadline_ms(timeout_ms);std::uint8_t h[8];
+ if(!io_exact(fd,h,8,false,until))throw Error("worker response timeout/crash");
+ if(!std::equal(magic,magic+4,h))throw Error("malformed IPC version/magic");
+ std::uint32_t n=0;for(int i=0;i<4;i++)n|=static_cast<std::uint32_t>(h[4+i])<<(i*8);
+ if(n>limit)throw Error("oversized IPC frame");
+ Bytes buf(n);if(n&&!io_exact(fd,buf.data(),n,false,until))throw Error("truncated worker frame");
+ return buf;
 }
 std::vector<Observation> measure(const Case& c,const std::vector<std::string>& names,int blocks,int warmup,int timeout_ms,int memory_mb){
  if(names.empty()||names.size()>2||blocks<1||blocks>100||timeout_ms<100||timeout_ms>60000||memory_mb<64||memory_mb>65536)throw Error("invalid runner limits");
@@ -87,16 +115,25 @@ std::vector<Observation> measure(const Case& c,const std::vector<std::string>& n
 #else
   (void)memory_mb; /* ASan reserves terabytes of virtual shadow address space. */
 #endif
+  struct rlimit no_core{0,0};setrlimit(RLIMIT_CORE,&no_core);
   struct rlimit cpu{static_cast<rlim_t>(std::max(1,(timeout_ms/1000)+1)),static_cast<rlim_t>(std::max(2,(timeout_ms/1000)+2))};setrlimit(RLIMIT_CPU,&cpu);
   execl("/proc/self/exe","phaseshift","--worker",static_cast<char*>(nullptr));_exit(127);
  }
  close(in[0]);close(out[1]);
+ /* Writing to a pipe must never block indefinitely after the worker exits. */
+ const int flags=fcntl(in[1],F_GETFL,0);if(flags>=0)fcntl(in[1],F_SETFL,flags|O_NONBLOCK);
  std::vector<Observation> result;
  try{
-  Json req;req.put("family",c.family);req.put("params",case_params(c));req.put("seed",static_cast<std::int64_t>(c.seed));req.put("bytes",hex_encode(c.bytes));req.put("blocks",static_cast<std::int64_t>(blocks));req.put("warmup",static_cast<std::int64_t>(warmup));
+  Json req;req.put("protocol",static_cast<std::int64_t>(1));req.put("family",c.family);req.put("params",case_params(c));req.put("seed",static_cast<std::int64_t>(c.seed));req.put("bytes_length",static_cast<std::int64_t>(c.bytes.size()));req.put("bytes_sha256",sha256(c.bytes));req.put("blocks",static_cast<std::int64_t>(blocks));req.put("warmup",static_cast<std::int64_t>(warmup));
   auto* arr=json_object_new_array();for(const auto& name:names)json_object_array_add(arr,json_object_new_string(name.c_str()));json_object_object_add(req.p,"algorithms",arr);
-  write_frame(in[1],req.str());close(in[1]);in[1]=-1;
-  const auto response=Json::parse(read_frame(out[0],timeout_ms));auto* list=response.get("observations");
+  /* Allow one per-sample deadline per operation, plus bounded IPC transfer. */
+  const auto operation_count=static_cast<std::int64_t>(blocks)*static_cast<std::int64_t>(names.size()==2?4:1);
+  const auto deadline=static_cast<int>(std::min<std::int64_t>(3600000,operation_count*timeout_ms+1000));
+  const auto until=deadline_ms(deadline);
+  write_frame(in[1],req.str(),until);
+  write_frame(in[1],c.bytes.data(),c.bytes.size(),until);close(in[1]);in[1]=-1;
+  auto raw=read_frame(out[0],deadline,8ULL*1024*1024);
+  const auto response=Json::parse(std::string(raw.begin(),raw.end()));auto* list=response.get("observations");
   if(!list||json_object_get_type(list)!=json_type_array)throw Error("malformed worker response");
   for(std::size_t i=0;i<json_object_array_length(list);i++){
    Json v(json_object_get(json_object_array_get_idx(list,i)));Observation s;
@@ -104,17 +141,30 @@ std::vector<Observation> measure(const Case& c,const std::vector<std::string>& n
   }
   if(result.empty())throw Error("empty worker response");
  }catch(const std::exception& e){
-  result.clear();for(const auto& n:names){Observation s;s.algorithm=n;s.detail=e.what();s.status=s.detail.find("timeout")!=std::string::npos?"timeout":"crashed";result.push_back(s);}
+  result.clear();for(const auto& n:names){Observation s;s.algorithm=n;s.detail=e.what();s.status="infrastructure_error";result.push_back(s);}
  }
  if(in[1]>=0)close(in[1]);
- close(out[0]);kill(-pid,SIGKILL);kill(pid,SIGKILL);int status=0;while(waitpid(pid,&status,0)<0&&errno==EINTR){}
+ close(out[0]);int status=0;
+ pid_t reaped=waitpid(pid,&status,WNOHANG);
+ if(reaped==0){
+  for(auto& obs:result)if(obs.status=="infrastructure_error"&&obs.detail.find("timeout")!=std::string::npos)obs.status="timeout";
+  kill(-pid,SIGKILL);kill(pid,SIGKILL);while((reaped=waitpid(pid,&status,0))<0&&errno==EINTR){}
+  reaped=-1; /* Parent-enforced kill is not a worker crash. */
+ }
+ else if(reaped<0&&errno==EINTR){while((reaped=waitpid(pid,&status,0))<0&&errno==EINTR){}}
+ if(reaped==pid&&WIFSIGNALED(status)){
+  for(auto& obs:result)if(obs.status=="infrastructure_error"||obs.status=="crashed"){
+   obs.status="signaled";obs.detail+="; worker signal "+std::to_string(WTERMSIG(status));
+  }
+ }
  return result;
 }
 int worker_entry(){
  try{
-  std::uint8_t h[4];if(!read_exact(STDIN_FILENO,h,4,3000))return 2;std::uint32_t n=0;for(int i=0;i<4;i++)n|=static_cast<std::uint32_t>(h[i])<<(8*i);if(n>64*1024*1024)return 3;
-  std::string input(n,'\0');if(!read_exact(STDIN_FILENO,reinterpret_cast<std::uint8_t*>(input.data()),n,3000))return 4;
-  auto answer=worker_measure(Json::parse(input));write_frame(STDOUT_FILENO,answer.str());return 0;
+  auto json=read_frame(STDIN_FILENO,30000,1ULL*1024*1024);
+  auto bytes=read_frame(STDIN_FILENO,30000,64ULL*1024*1024);
+  auto answer=worker_measure(Json::parse(std::string(json.begin(),json.end())),bytes);
+  write_frame(STDOUT_FILENO,answer.str(),deadline_ms(30000));return 0;
  }catch(const std::exception&){return 5;}
 }
 }

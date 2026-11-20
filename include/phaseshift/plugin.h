@@ -9,6 +9,7 @@ extern "C" {
 #define PHASESHIFT_PLUGIN_OK 0
 #define PHASESHIFT_PLUGIN_INVALID 1
 #define PHASESHIFT_PLUGIN_ERROR 2
+#define PHASESHIFT_PLUGIN_OUT_OF_MEMORY 3
 /* Output must be freed by 'release' supplied by plugin; never freed by host allocator. */
 typedef struct { const unsigned char *data; size_t len; } ps_input_v1;
 typedef struct { unsigned char *data; size_t len; void (*release)(unsigned char *, size_t); } ps_output_v1;
