@@ -1,5 +1,12 @@
 # PHASESHIFT — v1 acceptance checklist (2026-11-20)
 
+## Post-audit release evidence (verified)
+
+**Verified source SHA:** `6e343b8f1efec1ca279d0c2eff95bbead6ee0912`. GitHub-hosted [build-test](https://github.com/SaridakisStamatisChristos/PhaseShift/actions/runs/44756583264) completed **GCC 31/31 and Clang 31/31** tests and both CLI acceptance scripts. GitHub-hosted [sanitizers](https://github.com/SaridakisStamatisChristos/PhaseShift/actions/runs/44756583308) completed **ASan/UBSan 31/31** tests and the sanitized CLI acceptance script. The full reported test total is **93/93**, zero failures. B07/B10/B11 and null-ablation outputs were uploaded by the build workflow. This closes the audited F-001–F-010 regression and CI verification gates for tested Linux x86-64 targets, **not** cross-platform certification or universal scientific error control.
+
+The rest of the initial checklist is retained below as a historical pre-audit snapshot; references to pending CI in it should not be read as the current status.
+
+
 **Historical acceptance snapshot:** the initial table below describes the earlier 21-test development baseline. It is not the latest release verdict. Original `main` commit `326863e92c6e` passed GitHub Actions GCC/Clang/ASan+UBSan **25/25 each**, with all three CLI smoke runs; see [build-test #21](https://github.com/SaridakisStamatisChristos/PhaseShift/actions/runs/44744221461) and [sanitizers #21](https://github.com/SaridakisStamatisChristos/PhaseShift/actions/runs/44744221259). The subsequent R7 audit found blocking evidence defects; the fixes described in [`r7_audit_repair_2026-11-20.md`](r7_audit_repair_2026-11-20.md) are distinct and need their own exact-revision CI results. Contract: [`PHASESHIFT_SPEC.md`](PHASESHIFT_SPEC.md), particularly G0–G6 and the reproducibility/negative-control requirements.
 
 | Gate | Locally observed result | Remaining limitations / external evidence |

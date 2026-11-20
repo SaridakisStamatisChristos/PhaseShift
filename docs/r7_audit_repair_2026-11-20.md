@@ -1,5 +1,8 @@
 # PHASESHIFT R7 — Post-audit v1.0 repair ledger
 
+> **Verified closure (2026-11-20):** Repair source SHA `6e343b8f1efec1ca279d0c2eff95bbead6ee0912` passed [GCC/Clang CI](https://github.com/SaridakisStamatisChristos/PhaseShift/actions/runs/44756583264) and [ASan/UBSan CI](https://github.com/SaridakisStamatisChristos/PhaseShift/actions/runs/44756583308). GCC 31/31, Clang 31/31, ASan/UBSan 31/31; three CLI smoke passes. The entries below record the original repair execution and pending-state history before these CI outcomes.
+
+
 Date: 2026-11-20. Contract: [`PHASESHIFT_SPEC.md`](PHASESHIFT_SPEC.md), original PHASESHIFT R7 spec v1.0. The previous immutable `main` SHA `326863e92c6e5abcc70089c3996e556d29c3b9aa` passed 25/25 GCC, 25/25 Clang, 25/25 sanitizer tests plus three CLI smoke scripts, but the independent R7 audit correctly found specification defects. That prior green CI **does not** verify this revised source.
 
 The following describes remediation **source + targeted local tests**, not a claim of remote CI success on the new revision. R7 final gate: full GCC/Clang/ASan-UBSan tests and sanitized CLI smoke at the exact new SHA.
@@ -49,3 +52,11 @@ No merge, tag, publication or license change is implied by these repairs.
 The first GitHub-hosted GCC job on repair SHA `f006b6d90e9c0c414cbca7930cc6fbcfc497a6d6` passed 30/31 CTests; `core` failed its intentionally crashed plugin fixture with `segfault must be isolated and marked signaled`. The parent was calling `waitpid(...,WNOHANG)` once immediately after pipe EOF, then unconditionally killing an exiting worker when the exit status was not *yet* observable. The result could be labeled `infrastructure_error` or `timeout` instead of the real signal.
 
 Repair: bounded 150 ms natural child-exit grace with 5 ms polls before an explicit timeout kill, plus 12 independent fault/reap attempts in the core test. This preserves the deadline and ensures SIGSEGV remains a signaled failure rather than a benchmarkable sample. This incident invalidates any pre-repair claim of fully green remote CI; the revised SHA must pass complete GitHub-hosted GCC, Clang and sanitizer workflows before closure.
+
+## Final R7 exact-revision verification record
+
+- Source commit: `6e343b8f1efec1ca279d0c2eff95bbead6ee0912`, fast-forwarded to `main` after GitHub-hosted verification.
+- Build & Test workflow: https://github.com/SaridakisStamatisChristos/PhaseShift/actions/runs/44756583264 — GCC 31/31, Clang 31/31, respective CLI smoke PASS; research artifacts uploaded.
+- Sanitizers workflow: https://github.com/SaridakisStamatisChristos/PhaseShift/actions/runs/44756583308 — ASan/UBSan 31/31, sanitized CLI smoke PASS.
+- Main audit counterexamples F-001–F-010: implementation repairs and regression tests are incorporated in the verified SHA. The worker process-reaping race was independently exercised by repeated signal fault tests.
+- Scientific scope is conditional: synthetic B10/B11 noise controls are not physical hardware validation; simultaneous global false discovery across unlimited repeated runs is not claimed; trusted native plugins are fault contained, not sandboxed for hostile code. Linux x86-64 CI is verified, other hardware/OS targets are not.
