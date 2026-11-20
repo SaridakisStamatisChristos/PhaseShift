@@ -1,0 +1,23 @@
+#pragma once
+#include "phaseshift/runner.hpp"
+#include <sqlite3.h>
+namespace ps {
+class Store {
+ sqlite3* db_=nullptr;
+public:
+ explicit Store(const std::string& path); ~Store();
+ Store(const Store&)=delete;Store& operator=(const Store&)=delete;
+ void exec(const std::string& sql);
+ void experiment(const std::string& config,const std::string& env);
+ void add_case(const Case& c);
+ void add_observation(const Case& c,const Observation& s,bool holdout);
+ void hypothesis(const std::string& id,const std::string& status,const std::string& axis,std::int64_t left,std::int64_t right,double effect,const std::string& detail);
+ void witness(const std::string& hypothesis_id,const std::string& case_id,const std::string& status,const std::string& trace);
+ std::vector<Case> cases(bool include_holdout=true);
+ std::vector<Observation> observations(const std::string& case_id,bool holdout=false);
+ Json summary();
+ std::string config();
+ std::string environment();
+ sqlite3* raw(){return db_;}
+};
+}

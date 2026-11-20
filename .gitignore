@@ -1,0 +1,10 @@
+/build*/
+/runs/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.o
+*.so
+*.a
+*.log
+.DS_Store
