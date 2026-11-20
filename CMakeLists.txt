@@ -261,3 +261,12 @@ add_test(NAME hierarchical_policy_v2 COMMAND phaseshift_scheduler_v2_tests)
 configure_file(tests/run_v2_hierarchical.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_hierarchical.cmake @ONLY)
 add_test(NAME hierarchical_policy_v2_cli COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_hierarchical.cmake)
 set_tests_properties(hierarchical_policy_v2_cli PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+
+# Small frozen calibration comparison through actual CLI/worker/SQLite. It never
+# enforces a positive result; failed discoveries remain benchmark evidence.
+add_test(NAME v2_frozen_equal_case_budget_smoke COMMAND ${Python3_EXECUTABLE}
+ ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/v2/equal_budget.py
+ --binary $<TARGET_FILE:phaseshift>
+ --out ${CMAKE_CURRENT_BINARY_DIR}/v2_frozen_equal_case_budget
+ --seeds 31 --cases 12)
+set_tests_properties(v2_frozen_equal_case_budget_smoke PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
