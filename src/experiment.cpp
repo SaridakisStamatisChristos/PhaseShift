@@ -4,6 +4,7 @@
 #include "phaseshift/minimize.hpp"
 #include "phaseshift/reproducer.hpp"
 #include "phaseshift/lazy_search.hpp"
+#include "phaseshift/stratified_v2.hpp"
 #include "phaseshift/scheduler_v2.hpp"
 #include "phaseshift/interaction_v2.hpp"
 #include "phaseshift/boundary_v2.hpp"
@@ -287,7 +288,7 @@ Config config_from_json(const Json& j){
   }
   if(c.method!="grid"&&c.method!="random"&&c.method!="stratified"&&c.method!="adaptive_partition")throw Error("unknown search method");
  }else if(c.policy_version=="v2"){
-  if(c.method!="uniform_v2"&&c.method!="hierarchical_boundary_v2")throw Error("unsupported v2 search method");
+  if(c.method!="uniform_v2"&&c.method!="hierarchical_boundary_v2"&&c.method!="stratified_v2")throw Error("unsupported v2 search method");
   if(c.detector_version!="boundary_v1"&&c.detector_version!="multi_change_v2")
    throw Error("unsupported v2 detector version");
   if(c.detector_version=="multi_change_v2"&&!numeric_axis(c.axis))
@@ -778,10 +779,14 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
   throw Error("CARDINALITY_OVERFLOW: v2 coordinate/replicate universe");
  const auto virtual_count=space.cardinality()*replicas;
  SparsePermutation sampler(virtual_count,cfg.seed^0xb7d2f937c4abULL);
+ std::optional<StratifiedIndexSamplerV2> stratified;
+ if(cfg.method=="stratified_v2")
+  stratified.emplace(std::vector<LazySearchSpace::Axis>(cfg.axes.begin(),cfg.axes.end()),
+    cfg.admissible_subspaces,cfg.axis,replicas,cfg.seed^0xb4ad19f14acULL);
  std::optional<HierarchicalPolicyV2> hierarchy;
  if(cfg.method=="hierarchical_boundary_v2")
   hierarchy.emplace(static_cast<std::size_t>(space.cardinality()),cfg.seed^0xd9af2e13ULL,cfg.exploration_fraction);
- const auto rng_state=[&](){return hierarchy?hierarchy->rng_state():sampler.state();};
+ const auto rng_state=[&](){return hierarchy?hierarchy->rng_state():(stratified?stratified->state():sampler.state());};
  const auto cpu_ms=[&](const Case& c){
   double ms=0;
   for(const auto& o:store.observations(c.id,false))
@@ -799,13 +804,13 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
    validate_case_schema(c,cfg.max_bytes);
    return std::pair<std::uint64_t,Case>{static_cast<std::uint64_t>(*pos),std::move(c)};
   }
-  for(std::size_t attempts=0;attempts<10000&&sampler.has_next();++attempts){
-   auto index=sampler.next();Case c=cfg.base;c.seed=cfg.seed+(index%replicas);
+  for(std::size_t attempts=0;attempts<10000&&(stratified?stratified->has_next():sampler.has_next());++attempts){
+   auto index=stratified?stratified->next():sampler.next();Case c=cfg.base;c.seed=cfg.seed+(index%replicas);
    for(const auto& [axis,value]:space.at(index/replicas))assign(c,axis,value);
    try{validate_case_schema(c,cfg.max_bytes);}catch(const Error&){continue;}
    return std::pair<std::uint64_t,Case>{index,std::move(c)};
   }
-  if(sampler.has_next())throw Error("v2 exceeded deterministic invalid-proposal cap");
+  if(stratified?stratified->has_next():sampler.has_next())throw Error("v2 exceeded deterministic invalid-proposal cap");
   return std::nullopt;
  };
  std::size_t completed=0;
@@ -839,6 +844,7 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
    for(const auto& o:obs)store.add_observation(c,o,false);
    store.record_decision(static_cast<std::size_t>(next->first),c.id,rng_state());
    if(hierarchy)store.event("v2_acquisition",std::to_string(next->first)+";origin="+hierarchy->origin());
+   if(stratified)store.event("v2_acquisition",std::to_string(next->first)+";origin=stratified_primary_axis");
    store.exec("COMMIT");
   }catch(...){store.exec("ROLLBACK");throw;}
   add_evidence(next->first,c);

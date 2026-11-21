@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "experiment_id": "v2-stratified-calibration",
+  "problem_family": "calibration",
+  "algorithms": [
+    "calibration"
+  ],
+  "seed": 144,
+  "primary_axis": "x",
+  "axes": {
+    "x": {
+      "values": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    "negative": {
+      "values": [
+        false,
+        true
+      ]
+    },
+    "threshold": {
+      "values": [
+        2,
+        3
+      ]
+    }
+  },
+  "search": {
+    "policy_version": "v2",
+    "method": "stratified_v2",
+    "replicates": 2,
+    "max_cases": 12,
+    "admissible_subspaces": [
+      {
+        "negative": [
+          false
+        ],
+        "x": [
+          0,
+          1
+        ]
+      },
+      {
+        "negative": [
+          true
+        ],
+        "x": [
+          2,
+          3
+        ],
+        "threshold": [
+          3
+        ]
+      }
+    ]
+  },
+  "measurement": {
+    "paired_discovery_blocks": 1,
+    "paired_confirm_blocks": 20,
+    "warmup_iterations": 0
+  },
+  "limits": {
+    "total_wall_seconds": 90,
+    "max_search_queue": 64
+  }
+}
