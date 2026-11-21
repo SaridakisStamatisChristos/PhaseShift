@@ -1,4 +1,5 @@
 #include "phaseshift/store.hpp"
+#include "phaseshift/measurement_drift_v2.hpp"
 #include "phaseshift/morphology.hpp"
 #include <filesystem>
 #include <algorithm>
@@ -524,6 +525,46 @@ Json Store::summary(){
  if(campaign_supported){
   report.put("registered_campaigns",count("SELECT COUNT(*) FROM campaigns_v2"));
   report.put("familywise_positive_members",count("SELECT COUNT(*) FROM campaign_outcomes_v2 WHERE familywise_reject=1"));
+ }
+ if(current_schema>=8){
+  // Database-side grouping; bounded in-memory state of one case/algorithm.
+  Statement observations(db_,"SELECT case_id,algorithm,block,ns,batch FROM samples"
+   " WHERE holdout=0 AND status='ok' AND ns>0 AND batch>0"
+   " ORDER BY case_id,algorithm,block");
+  std::size_t scored=0,flagged=0,invalid=0;
+  double max_drift=0;
+  std::vector<std::pair<int,double>> sample_blocks;
+  std::string previous;
+  auto flush=[&](){
+   if(sample_blocks.empty())return;
+   auto result=block_drift_v2(sample_blocks);
+   if(result.eligible){
+    ++scored;if(result.flagged)++flagged;
+    max_drift=std::max(max_drift,std::abs(result.log_ratio));
+   }else if(sample_blocks.size()>=6)++invalid;
+   sample_blocks.clear();
+  };
+  while(sqlite3_step(observations.p)==SQLITE_ROW){
+   const auto* cid=sqlite3_column_text(observations.p,0);
+   const auto* algo=sqlite3_column_text(observations.p,1);
+   if(!cid||!algo)throw Error("invalid drift provenance");
+   auto key=std::string(reinterpret_cast<const char*>(cid))+
+    ":"+std::to_string(sqlite3_column_bytes(observations.p,0))+
+    ":"+std::string(reinterpret_cast<const char*>(algo));
+   if(!previous.empty()&&previous!=key)flush();
+   previous=std::move(key);
+   sample_blocks.emplace_back(sqlite3_column_int(observations.p,2),
+    static_cast<double>(sqlite3_column_int64(observations.p,3))/
+    static_cast<double>(sqlite3_column_int64(observations.p,4)));
+  }
+  flush();
+  Json drift;drift.put("scored_case_algorithm_groups",static_cast<std::int64_t>(scored));
+  drift.put("heuristic_flagged_groups",static_cast<std::int64_t>(flagged));
+  drift.put("invalid_or_duplicate_groups",static_cast<std::int64_t>(invalid));
+  drift.put("max_absolute_early_late_log_ratio",max_drift);
+  drift.put("relative_heuristic_threshold",0.20);
+  drift.put("statistical_claim","none, descriptive only, no false-positive calibration");
+  json_object_object_add(report.p,"block_drift_v2",drift.p);drift.p=nullptr;
  }
  return report;
 }
