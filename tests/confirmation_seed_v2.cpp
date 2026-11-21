@@ -20,7 +20,10 @@ int main(int argc,char** argv){
   // hypothesis; a naive database-wide seal would accept them.
   for(int i=0;i<20;++i)for(int side=0;side<2;++side){
    ps::Case c;c.family="calibration";c.x=side?8:7;c.seed=10000+static_cast<std::uint64_t>(i);
-   c=ps::make_case(c);s.add_observation(c,v,true);
+   c=ps::make_case(c);
+   auto unrelated=v;
+   if(i==0&&side==1)unrelated.status="wrong_answer";
+   s.add_observation(c,unrelated,true);
   }
   const std::vector<std::uint64_t> intended=[]{
    std::vector<std::uint64_t> x;for(int i=0;i<20;++i)x.push_back(20000+static_cast<std::uint64_t>(i));

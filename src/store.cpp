@@ -310,12 +310,15 @@ void Store::seal_confirmation(const std::string& id,const std::string& algorithm
   if(scaling){if(value<=left)side=0;else if(value>=right)side=1;}
   else{if(value==left)side=0;else if(value==right)side=1;}
   if(side<0)continue; // Prespecified remote-axis negative controls are not evidence pairs.
+  const auto raw_seed=static_cast<std::uint64_t>(sqlite3_column_int64(rows.p,3));
+  const std::uint64_t seed_group=scaling?raw_seed-static_cast<std::uint64_t>(value)*131ULL:raw_seed;
+  // Unrelated hypotheses can have failed/censored holdouts at the same
+  // geometry; they are not members of this prespecified seed family and
+  // cannot veto or support the current confirmation.
+  if(!prescribed.empty()&&!prescribed.count(seed_group))continue;
   const std::string observed=reinterpret_cast<const char*>(sqlite3_column_text(rows.p,4));
   if((!is_failure&&observed!="ok")||(is_failure&&side==0&&observed!="ok")||(is_failure&&side==1&&observed=="ok"))
     throw Error("confirmation includes an invalid primary-algorithm observation");
-  const auto raw_seed=static_cast<std::uint64_t>(sqlite3_column_int64(rows.p,3));
-  const std::uint64_t seed_group=scaling?raw_seed-static_cast<std::uint64_t>(value)*131ULL:raw_seed;
-  if(!prescribed.empty()&&!prescribed.count(seed_group))continue;
   Row v{cid,sample,value,side,seed_group};
   auto [it,inserted]=distinct.emplace(cid,v);
   if(!inserted && (it->second.side!=side||it->second.group!=seed_group))throw Error("inconsistent duplicate holdout sample");
