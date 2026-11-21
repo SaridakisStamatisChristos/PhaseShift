@@ -1063,7 +1063,8 @@ static void v2_slope_diagnostic(Store& store,const Config& cfg){
 
 // V2 uniform baseline: virtual candidate indices, no Cartesian materialization.
 // Case IDs and RNG are checked against the committed decision transcript.
-static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& store,std::size_t pause_after){
+static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& store,
+ std::size_t pause_after,bool verify_only=false){
  const AdmissibleSearchSpace space(std::vector<LazySearchSpace::Axis>(cfg.axes.begin(),cfg.axes.end()),cfg.admissible_subspaces);
  const auto replicas=static_cast<std::uint64_t>(cfg.replicate_count);
  if(space.cardinality()>static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())/replicas)
@@ -1165,6 +1166,11 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
  }
  if(completed>cfg.max_cases)throw Error("v2 persisted decisions exceed case budget");
  if(model_cache)model_cache->verify_no_ahead(completed);
+ if(verify_only){
+  if(!model_cache)throw Error("v2 model cache verification requires opt-in");
+  if(sampled_cpu_unknown)throw Error("v2 cache replay encountered incomplete sampled CPU");
+  return; // no report, terminal hypothesis or source SQLite mutation
+ }
  if(sampled_cpu_unknown)throw Error("v2 sampled worker CPU budget is unaccountable: incomplete or invalid timed observations preserved");
  bool sampled_cpu_limit=cfg.max_sampled_cpu_ns>0&&sampled_cpu_used>=cfg.max_sampled_cpu_ns;
  // A finalized budget-capped experiment is terminal across subsequent resumes.
@@ -1367,6 +1373,15 @@ void explore(const Config& cfg,const std::string& out,std::size_t pause_after){
  if(fs::exists(out+"/run.sqlite"))throw Error("output run already exists (will not overwrite evidence)");
  fs::create_directories(out);Store s(out+"/run.sqlite");if(cfg.policy_version=="v2")s.upgrade_v2_schema();s.experiment(config_json(cfg).str(),environment());
  execute_schedule(cfg,out,s,pause_after);
+}
+void verify_model_cache(const std::string& run){
+ if(!fs::exists(run+"/run.sqlite"))throw Error("run database missing for model-cache verification");
+ Store source(run+"/run.sqlite",true);
+ const auto cfg=config_from_json(Json::parse(source.config()));
+ if(cfg.policy_version!="v2"||!cfg.persist_model_cache_v2)
+  throw Error("verify-model-cache requires an opt-in v2 experiment");
+ execute_lazy_v2(cfg,run,source,0,true);
+ std::cout<<"Verified and reconciled nonauthoritative model cache against immutable run evidence\n";
 }
 void resume(const std::string& run,std::size_t pause_after){
  if(!fs::exists(run+"/run.sqlite"))throw Error("run database missing for resume");

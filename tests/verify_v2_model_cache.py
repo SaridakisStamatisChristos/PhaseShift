@@ -24,7 +24,7 @@ def count(path,query):
 
 
 def resume(expect_success):
-    p=subprocess.run([str(a.binary),"resume","--run",str(a.run)],
+    p=subprocess.run([str(a.binary),"verify-model-cache","--run",str(a.run)],
                      capture_output=True,text=True,timeout=90)
     assert (p.returncode==0)==expect_success,(p.returncode,p.stdout,p.stderr)
 

@@ -24,6 +24,7 @@ Config parse_config(const std::string& path);
 Config config_from_json(const Json& json);
 void explore(const Config& cfg,const std::string& out,std::size_t pause_after=0);
 void resume(const std::string& run,std::size_t pause_after=0);
+void verify_model_cache(const std::string& run);
 void ablate(const Config& cfg,const std::string& out);
 void intervene(const std::string& source,const std::string& out,const std::string& hypothesis_id="H1",int seed_pairs=9);
 void confirm_factorial(const std::string& run);
