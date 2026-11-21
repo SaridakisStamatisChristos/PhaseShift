@@ -82,7 +82,24 @@ static std::int64_t axis_value(const Case& c,const std::string& axis);
 static Json config_json(const Config& c){
  Json j;j.put("schema_version",static_cast<std::int64_t>(1));j.put("experiment_id",c.experiment_id);j.put("problem_family",c.family);j.put("algorithm_a",c.a);j.put("algorithm_b",c.b);j.put("search_method",c.method);j.put("primary_axis",c.axis);j.put("seed",static_cast<std::int64_t>(c.seed));j.put("max_cases",static_cast<std::int64_t>(c.max_cases));j.put("max_case_bytes",static_cast<std::int64_t>(c.max_bytes));j.put("max_search_queue",static_cast<std::int64_t>(c.max_queue));j.put("max_report_bytes",static_cast<std::int64_t>(c.max_report_bytes));j.put("discovery_blocks",static_cast<std::int64_t>(c.blocks));j.put("confirm_blocks",static_cast<std::int64_t>(c.confirm_blocks));j.put("warmup",static_cast<std::int64_t>(c.warmup));j.put("sample_ms",static_cast<std::int64_t>(c.sample_ms));j.put("rss_mb",static_cast<std::int64_t>(c.rss_mb));j.put("total_wall_seconds",static_cast<std::int64_t>(c.total_wall_s));j.put("min_practical_ratio",c.min_ratio);j.put("confirmation_confidence",c.confirmation_confidence);j.put("fdr_q",c.fdr_q);j.put("multiple_testing",c.multiple_testing);j.put("exploration_fraction",c.exploration_fraction);j.put("minimum_batch_ms",static_cast<std::int64_t>(c.minimum_batch_ms));j.put("isolation_mode",c.isolation_mode);if(c.policy_version=="v2"){
    j.put("policy_version",c.policy_version);
-   if(c.replicate_count>1){Json search;search.put("replicates",static_cast<std::int64_t>(c.replicate_count));j.put("search",std::move(search));}
+   if(c.replicate_count>1||!c.admissible_subspaces.empty()){
+     Json search;
+     if(c.replicate_count>1)search.put("replicates",static_cast<std::int64_t>(c.replicate_count));
+     if(!c.admissible_subspaces.empty()){
+      auto* array=json_object_new_array();
+      for(const auto& scope:c.admissible_subspaces){
+       Json entry;
+       for(const auto& [axis,allowed]:scope){
+        auto* values=json_object_new_array();
+        for(const auto& v:allowed)json_object_array_add(values,json_object_new_string(v.c_str()));
+        json_object_object_add(entry.p,axis.c_str(),values);
+       }
+       json_object_array_add(array,json_object_get(entry.p));
+      }
+      json_object_object_add(search.p,"admissible_subspaces",array);
+     }
+     j.put("search",std::move(search));
+    }
    if(c.detector_version!="boundary_v1"){Json detection;detection.put("detector_version",c.detector_version);j.put("detection",std::move(detection));}
   }
   j.put("base_params",case_params(c.base));
@@ -114,7 +131,9 @@ static void validate_configuration_shape(const Json& j){
    }else if(strings.count(name)){
     if(kind!=json_type_string)throw Error(field+" must be a string");
    }else if(structures.count(name)){
-    if(kind!=json_type_object&&!(name=="base_params"&&kind==json_type_string))throw Error(field+" must be an object");
+    if(kind!=json_type_object&&!(name=="base_params"&&kind==json_type_string)&&
+       !(scope=="search"&&name=="admissible_subspaces"&&kind==json_type_array))
+      throw Error(field+" must be an object or admissible subspace array");
    }else throw Error("unknown configuration parameter: "+field);
   }
  };
@@ -143,7 +162,7 @@ static void validate_configuration_shape(const Json& j){
  check(top.p,"config",integer_top,real_top,text_top,obj_top);
  if(auto* v=j.get("objective");v&&std::string(json_object_get_string(v))!="discover_structural_performance_boundaries")
   throw Error("unsupported objective");
- if(auto* v=j.get("search"))check(v,"search",{"max_cases","replicates"},{"exploration_fraction"},{"method","policy_version"},{});
+ if(auto* v=j.get("search"))check(v,"search",{"max_cases","replicates"},{"exploration_fraction"},{"method","policy_version"},{"admissible_subspaces"});
  if(auto* v=j.get("measurement"))check(v,"measurement",{"paired_discovery_blocks","paired_confirm_blocks","warmup_iterations","minimum_batch_ms"},{},{"primary_metric","isolation_mode"},{});
  if(auto* v=j.get("detection"))check(v,"detection",{},{"min_practical_ratio","confirmation_confidence","fdr_q"},{"multiple_testing","detector_version"},{});
  if(auto* v=j.get("limits"))check(v,"limits",{"total_wall_seconds","max_cases","max_case_bytes","max_worker_rss_mb","max_sample_wall_ms","max_report_bytes","max_search_queue"},{},{},{});
@@ -226,6 +245,36 @@ Config config_from_json(const Json& j){
   }
  }
  if(c.axes.empty())c.axes[c.axis]={"0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15"};
+ if(auto* search=j.get("search")){
+  json_object* scopes=nullptr;
+  if(json_object_object_get_ex(search,"admissible_subspaces",&scopes)){
+   if(!scopes||json_object_get_type(scopes)!=json_type_array||
+      json_object_array_length(scopes)==0||json_object_array_length(scopes)>256)
+    throw Error("search.admissible_subspaces must contain 1..256 objects");
+   for(std::size_t i=0;i<json_object_array_length(scopes);++i){
+    auto* item=json_object_array_get_idx(scopes,i);
+    if(!item||json_object_get_type(item)!=json_type_object||json_object_object_length(item)==0)
+     throw Error("admissible subspace must be a nonempty object");
+    std::map<std::string,std::vector<std::string>> scope;
+    json_object_object_foreach(item,key,labels){
+     if(!labels||json_object_get_type(labels)!=json_type_array||
+        json_object_array_length(labels)==0)
+      throw Error(std::string("admissible label set must be nonempty: ")+key);
+     auto& values=scope[key];
+     for(std::size_t k=0;k<json_object_array_length(labels);++k){
+      auto* value=json_object_array_get_idx(labels,k);
+      if(!value||json_object_get_type(value)==json_type_object||
+         json_object_get_type(value)==json_type_array||
+         (json_object_get_type(value)==json_type_double&&!std::isfinite(json_object_get_double(value))))
+       throw Error(std::string("invalid admissible label: ")+key);
+      values.push_back(value_string(value));
+     }
+    }
+    c.admissible_subspaces.push_back(std::move(scope));
+   }
+  }
+ }
+ 
  if(c.policy_version=="v1"){
   if(auto* detector=j.get("detection")){
    Json policy(json_object_get(detector));
@@ -234,6 +283,7 @@ Config config_from_json(const Json& j){
   if(auto* nested=j.get("search")){
    Json search(json_object_get(nested));
    if(search.get("replicates"))throw Error("v1 does not accept search.replicates");
+   if(search.get("admissible_subspaces"))throw Error("v1 does not accept search.admissible_subspaces");
   }
   if(c.method!="grid"&&c.method!="random"&&c.method!="stratified"&&c.method!="adaptive_partition")throw Error("unknown search method");
  }else if(c.policy_version=="v2"){
@@ -245,7 +295,7 @@ Config config_from_json(const Json& j){
   if(c.max_cases>c.max_queue)throw Error("v2 candidate budget exceeds memory bound");
   if(c.seed>static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())-static_cast<std::uint64_t>(c.replicate_count-1))
    throw Error("v2 replicate seeds overflow signed persistence");
-  if(c.method=="hierarchical_boundary_v2"&&(c.axes.size()!=1||!numeric_axis(c.axis)||c.replicate_count!=1))
+  if(c.method=="hierarchical_boundary_v2"&&(c.axes.size()!=1||!numeric_axis(c.axis)||c.replicate_count!=1||!c.admissible_subspaces.empty()))
    throw Error("hierarchical_boundary_v2 currently requires one ordered numeric axis");
   if(c.method=="hierarchical_boundary_v2"){
    std::optional<std::int64_t> previous;
@@ -286,7 +336,7 @@ Config config_from_json(const Json& j){
   for(const auto& value:dims[index].second){Case next=candidate;assign(next,dims[index].first,value);visit(index+1,next);}
  };
  if(c.policy_version=="v1")visit(0,c.base);
- else (void)LazySearchSpace(std::vector<LazySearchSpace::Axis>(c.axes.begin(),c.axes.end()));
+ else (void)AdmissibleSearchSpace(std::vector<LazySearchSpace::Axis>(c.axes.begin(),c.axes.end()),c.admissible_subspaces);
  return c;
 }
 Config parse_config(const std::string& path){return config_from_json(Json::file(path));}
@@ -722,7 +772,7 @@ static void v2_factorial_diagnostic(Store& store,const Config& cfg){
 // V2 uniform baseline: virtual candidate indices, no Cartesian materialization.
 // Case IDs and RNG are checked against the committed decision transcript.
 static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& store,std::size_t pause_after){
- const LazySearchSpace space(std::vector<LazySearchSpace::Axis>(cfg.axes.begin(),cfg.axes.end()));
+ const AdmissibleSearchSpace space(std::vector<LazySearchSpace::Axis>(cfg.axes.begin(),cfg.axes.end()),cfg.admissible_subspaces);
  const auto replicas=static_cast<std::uint64_t>(cfg.replicate_count);
  if(space.cardinality()>static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())/replicas)
   throw Error("CARDINALITY_OVERFLOW: v2 coordinate/replicate universe");

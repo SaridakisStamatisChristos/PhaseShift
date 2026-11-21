@@ -283,3 +283,11 @@ set_tests_properties(v2_conditional_factorial_discovery PROPERTIES TIMEOUT 90 RU
 configure_file(tests/run_v2_multi.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_multi.cmake @ONLY)
 add_test(NAME v2_multi_change_worker_smoke COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_multi.cmake)
 set_tests_properties(v2_multi_change_worker_smoke PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+
+# Exact opt-in structural feasible-union oracle and resumed SQLite evidence.
+add_executable(phaseshift_admissible_v2_tests tests/conditional_subspaces_v2.cpp)
+target_link_libraries(phaseshift_admissible_v2_tests PRIVATE phaseshift_core)
+add_test(NAME admissible_subspace_v2_oracle COMMAND phaseshift_admissible_v2_tests)
+configure_file(tests/run_v2_admissible.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_admissible.cmake @ONLY)
+add_test(NAME v2_admissible_subspaces_resume COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_admissible.cmake)
+set_tests_properties(v2_admissible_subspaces_resume PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)

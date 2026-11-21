@@ -17,3 +17,8 @@
 
 ## Unmet requirements
 Adaptive discovery replication, weighted/conditional search, multidimensional hybrid policy, uncertainty calibration, PELT, complete optional-stopping theory, accurate causal labels, full v2 persistence/migration, and competitive SOTA status remain outstanding.
+
+
+## Exact indexed admissible subspaces (M2 incremental)
+
+Opt-in `search.admissible_subspaces` accepts 1–256 explicitly disjoint rectangles of allowed axis labels. Each rectangle may omit unrestricted axes. Overlapping, empty, duplicate-label, unknown-axis, and off-domain rectangles fail closed. The valid union has a checked exact cardinality and mixed-radix random access; `uniform_v2` samples uniformly without replacement across the declared union and replicate indices, with no product enumeration. Resident storage is O(B × total axis label storage); index access O(log B + number of axes), overlap checks quadratic in B. The declaration is not a proof that all generated cases satisfy independent generator coupling constraints: nonrectangular constraints and invalid generator combinations are still outside this slice and retain existing bounded rejection. v1 does not accept this opt-in field. The hierarchical method does not yet support conditional subspaces.
