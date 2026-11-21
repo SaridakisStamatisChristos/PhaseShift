@@ -434,3 +434,8 @@ add_test(NAME weighted_v2_invalid_config_contract
  --binary ${CMAKE_CURRENT_BINARY_DIR}/phaseshift
  --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/weighted_admissible.json)
 set_tests_properties(weighted_v2_invalid_config_contract PROPERTIES TIMEOUT 90)
+
+# M2: bounded exact disjoint decomposition of conditional implication rules.
+add_executable(phaseshift_conditional_rule_v2_tests tests/conditional_rules_v2.cpp)
+target_link_libraries(phaseshift_conditional_rule_v2_tests PRIVATE phaseshift_core)
+add_test(NAME conditional_rules_v2_exhaustive_oracle COMMAND phaseshift_conditional_rule_v2_tests)
