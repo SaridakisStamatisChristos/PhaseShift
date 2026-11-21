@@ -804,9 +804,15 @@ static void v2_slope_diagnostic(Store& store,const Config& cfg){
    x.push_back(coordinate);y.push_back(sample_median(values));
   }
   std::vector<double> differences;
-  for(std::size_t i=1;i<y.size();++i)
-   differences.push_back(std::abs(static_cast<long double>(y[i]-y[i-1])/
-    (static_cast<long double>(x[i])-static_cast<long double>(x[i-1]))));
+  for(std::size_t i=1;i<y.size();++i){
+   const auto derivative=std::abs(
+    (static_cast<long double>(y[i])-static_cast<long double>(y[i-1]))/
+    (static_cast<long double>(x[i])-static_cast<long double>(x[i-1])));
+   if(!std::isfinite(derivative)||
+      derivative>static_cast<long double>(std::numeric_limits<double>::max()))
+    throw Error("v2 slope discovery derivative out of range");
+   differences.push_back(static_cast<double>(derivative));
+  }
   const auto noise=sample_median(differences);
   const auto penalty=std::max(1e-8,noise*noise*
    std::log(static_cast<double>(y.size())));
