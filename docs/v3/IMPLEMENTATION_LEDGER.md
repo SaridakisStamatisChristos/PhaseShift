@@ -27,9 +27,9 @@
 |---|---|---|---|
 | V3-00 | Live baseline, historical provenance | PARTIAL | Exact main/tree/3 push workflows matched; old fixtures not independently rerun |
 | V3-01 | Fair consumed-resource benchmark and falsification | PARTIAL | Real CLI diagnostic, 20-seed separate manifests, strict SQLite/raw-log verifier and Release CTest written; broader landscapes/full heldout/CI evidence pending |
-| V3-02 | Orchestrator extraction and typed control-plane | PARTIAL | Typed v3 keys, committed-only discovery snapshot, RAM budget ledger implemented; experiment.cpp extraction and golden adapters still outstanding |
+| V3-02 | Orchestrator extraction and typed control-plane | PARTIAL | Legacy v2 selection extracted to a dedicated adapter with differential characterization CTest; typed keys, committed-only snapshot and budget ledger present. Full coordinator extraction and exact-SHA gates still outstanding |
 | V3-03 | Fresh matched-seed adaptive discovery replication | PARTIAL | Deterministic paired discovery planner supports distinct structural keys; worker scheduling, persistence, replay and frozen holdout integration outstanding |
-| V3-04 | Legal cell / axis portfolio | OPEN | Exhaustive tiny-domain and huge virtual-space memory checks |
+| V3-04 | Legal cell / axis portfolio | PARTIAL | Standalone opt-in ordered-axis slice policy, legal mixed-space contexts, deterministic reserve and 2.048B virtual-index memory/feasibility oracle written; no main CLI wiring or held-out policy benefit established |
 | V3-05 | Predictive cost/uncertainty acquisition | OPEN | Frozen development-only calibration |
 | V3-06 | Optional surrogate challenger | NOT_REQUIRED_YET | Killable research branch; only promote if its evidence wins |
 | V3-07 | Boundary taxonomy & shape selection | OPEN | Independent multi-cliff / smooth truth |
@@ -49,3 +49,21 @@ No code file or benchmark number is self-certifying. States mean VERIFIED only a
 - `e9d4df2`: repair Release-build testing blind spot by replacing C++ `assert` with unconditional CHECK.
 
 All listed test/evidence outcomes remain **UNVERIFIED** until the exact branch head passes independent CI; a previous commit's green checks cannot be transferred automatically. No claims of measured v3 superiority, complete V3-03, or release readiness.
+
+## Continuation checkpoint (21 November 2026; branch head `6756d82182efa838b960486223716b22be7ed403`)
+
+- `793acb69`: V3-02 extracted the immutable v2 selector creation, feedback, RNG snapshots and acquisition origins into `v3/legacy_policy_adapter.hpp`. The coordinator still owns Case generation, Store, worker execution and full confirmation. Added independent direct-v2 differential tests for uniform/stratified/hierarchical/cliff/hybrid paths, invalid proposals and RNG/origin continuity. **Status:** implemented, exact-SHA CI pending.
+- `6756d821`: V3-04 introduced `v3/axis_slice.hpp` as a **standalone, not yet CLI-wired** bounded ordered-axis search challenger. Uses the existing disjoint legal-space coordinate index, explicitly freezes nominal coordinates rather than ranking them, reserves every fourth proposal for unbiased global candidates, caps active contexts/axis cardinality/proposals and accepts discovery-only committed feedback. Added exhaustive tiny-domain test, deterministic replay, missing/NaN/holdout rejection, and a virtual space of 2,048,000,000 legal candidates without eager materialization. **Status:** implemented, exact-SHA CI pending.
+- V3-03 `replicate_planner.hpp` still supplies deterministic matched-seed **planning only**. Atomic two-worker measurement, schema provenance and resume-safe pair replay remain **OPEN**.
+- No new v3 acquisition policy is enrolled in `explore`. No external matched comparators, no trained cost/surrogate model, no statistical calibration verdict. **SOTA unverified.**
+
+### Gate discipline
+CMake has native C++ and Python adversarial tests. Requiring the final head's Release GCC/Clang CTests, ASan/UBSan, real-worker diagnostic, coverage ≥95%, historical byte-for-byte replay and seeded policy trials remains mandatory. Earlier successful workflow runs do not transfer to later commits. Never merge or release without explicit owner approval.
+
+## Adversarial verification / repair checkpoint (2026-11-21)
+
+- On revision `793acb69`, GCC and Clang completed 97 CTests: 96 PASS, **1 FAIL** (`v3_real_worker_consumed_budget_scorecard`). Direct selector characterization passed. The `v3_axis_slice_exhaustive_legal_and_large_sparse` test also passed on later `6756d821` (97/98 CTests passed on GCC; only the same benchmark verifier failed). These are earlier-revision results, not current-head acceptance.
+- **F-010 diagnosis:** V3-01 had stored a SHA-256 of raw `run.sqlite` bytes, while SQLite WAL committed pages could later checkpoint. This produced an unstable file hash and could exclude committed pages from a raw main-file hash. The failure was in the evidence-verification protocol rather than the algorithm engine.
+- **F-010 repair:** `56ea0b71` replaces raw-file SHA with a read-only SQLite pager-backed backup snapshot digest, adds an independent WAL checkpoint stability regression, and preserves the source `run.sqlite` untouched. Earliest invalidated phase: V3-01 integration/verification contract; affected modules: `benchmarks/v3/protocol.py`, `run_internal.py`, `tests/v3/benchmark_fairness.py`, `fairness_contract.md`.
+- **F-011 hardening:** `49773d24` makes the new axis-slice acquisition reject a finite timing metric when the observation status is `wrong_answer` (or another non-`ok`), and rejects sealed confirmation feedback; test added. No v1/v2 source changed for this fix.
+- **Latest code SHA:** `56ea0b71f082c33dee893e97c747f50397d90beb`. Full exact-head CI and independent 20-seed evaluation pending verification. No new scientific-performance comparison claim or merger authority.

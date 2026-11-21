@@ -16,3 +16,21 @@ Training/evaluation manifests must be distinct before selecting policy weights; 
 Linux waited-child RUSAGE includes reaped descendants but not necessarily detached subprocesses; any v3 source must label this limitation rather than claim complete worker CPU. **State:** OPEN.
 
 Update each entry with exact SHA, reproduction command, actual results and repair. Do not delete failed attacks.
+
+## F-006 — Selector extraction changes legacy RNG/case schedule
+Attack: compare direct original policy-arm implementations against extracted adapter over fixed seeds, feedback, invalid proposals, RUSAGE budgets and acquisition origin. `tests/v3/selector_characterization.cpp` is the independent direct reference. **State:** test written; current-head CI not yet fully observed.
+
+## F-007 — Conditional virtual-space blowup
+Attack: enumerate small legal mixed/categorical spaces independently, then declare a legal 2.048B-candidate universe and measure bounded RSS. `tests/v3/axis_slice.cpp` asserts legal unique proposals, discovery-only input, deterministic replay and no virtual-sized allocation. **State:** test written; current-head CI pending.
+
+## F-008 — Policy feedback learns from sealed holdout
+Attack: supply `Cohort::Confirmation` to either the v3 snapshot or ordered-axis policy and assert hard rejection without consuming the pending proposal. **State:** tests written; end-to-end provenance enforcement outstanding.
+
+## F-009 — Local mid-gap pool masks an unsampled legal point
+Current ordered-axis midpoint heuristic examines nearby legal coordinates, then falls back to globally unbiased sampling if those are exhausted. This is a bounded but potentially suboptimal heuristic: nested forbidden/issued midpoint candidates can delay some legal gap points. **State:** explicit performance hypothesis; implement adversarial sparse-gap development ablation before promotion.
+
+## F-010 — Raw SQLite main-file hash silently excludes committed WAL state
+**Discovered in real CI:** `793acb69` GCC/Clang/coverage CTest #95 failed at `protocol.py:97`: `sha256_file(run.sqlite) != row["sqlite_sha256"]` for a fully completed calibration worker run. Confirmed independently: a committed SQLite WAL changes its main-file bytes upon checkpoint without changing logical observations. **Root cause:** a byte hash of the WAL-mode main DB is not a stable digest of authoritative committed SQLite evidence. **Repair:** `56ea0b71`, read-only `sqlite3.backup` snapshot digest with explicit connection cleanup and WAL→checkpoint regression. **State:** reproduced and repaired; exact-head CI re-verification required.
+
+## F-011 — Wrong-answer timing injected into new v3 slice scorer
+**Attack:** feed a finite effect together with `wrong_answer` status. **Repair:** `49773d24`, explicit non-`ok` status rejection and discovery-only cohort gate before pending-proposal consumption; adversarial unit test. **State:** implemented, current-head CI verification required.
