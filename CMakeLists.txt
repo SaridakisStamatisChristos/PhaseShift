@@ -559,3 +559,15 @@ target_link_libraries(phaseshift_v3_axis_slice_tests PRIVATE phaseshift_core)
 add_test(NAME v3_axis_slice_exhaustive_legal_and_large_sparse
  COMMAND phaseshift_v3_axis_slice_tests)
 set_tests_properties(v3_axis_slice_exhaustive_legal_and_large_sparse PROPERTIES TIMEOUT 60)
+
+# V3-03 opt-in real-worker paired discovery, isolated from legacy CLI.
+add_executable(phaseshift_v3_pairs apps/phaseshift_v3_pairs.cpp)
+target_link_libraries(phaseshift_v3_pairs PRIVATE phaseshift_core)
+add_dependencies(phaseshift_v3_pairs phaseshift_worker)
+add_test(NAME v3_paired_discovery_real_worker_atomic_resume
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/paired_worker_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/uniform_replicates.json
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_paired_workers)
+set_tests_properties(v3_paired_discovery_real_worker_atomic_resume PROPERTIES
+ TIMEOUT 180 RUN_SERIAL TRUE)

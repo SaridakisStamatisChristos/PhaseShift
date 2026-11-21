@@ -67,3 +67,10 @@ CMake has native C++ and Python adversarial tests. Requiring the final head's Re
 - **F-010 repair:** `56ea0b71` replaces raw-file SHA with a read-only SQLite pager-backed backup snapshot digest, adds an independent WAL checkpoint stability regression, and preserves the source `run.sqlite` untouched. Earliest invalidated phase: V3-01 integration/verification contract; affected modules: `benchmarks/v3/protocol.py`, `run_internal.py`, `tests/v3/benchmark_fairness.py`, `fairness_contract.md`.
 - **F-011 hardening:** `49773d24` makes the new axis-slice acquisition reject a finite timing metric when the observation status is `wrong_answer` (or another non-`ok`), and rejects sealed confirmation feedback; test added. No v1/v2 source changed for this fix.
 - **Latest code SHA:** `56ea0b71f082c33dee893e97c747f50397d90beb`. Full exact-head CI and independent 20-seed evaluation pending verification. No new scientific-performance comparison claim or merger authority.
+
+
+## V3-03 worker-backed pilot continuation
+
+Standalone opt-in `phaseshift_v3_pairs` executable, v10 authoritative discovery-only `run.sqlite` with atomic two-sided raw worker results, deterministic seed and order replay, input-byte tamper checks and pre/post-commit forced-kill recovery. New CTest `v3_paired_discovery_real_worker_atomic_resume`. Details and limitations in [PAIRED_DISCOVERY_PILOT.md](PAIRED_DISCOVERY_PILOT.md).
+
+**Evidence state:** code authored; new-revision CI pending. V3-03 **PARTIAL**: fixed endpoints, one axis; no adaptive replicate-vs-explore, general sealed campaign holdout, complete attempted-work budget accounting or statistical performance claim.
