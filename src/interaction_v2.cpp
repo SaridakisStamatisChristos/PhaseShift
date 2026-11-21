@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <map>
+#include <set>
 namespace ps {
 InteractionEvidenceV2 screen_factorial_v2(
  const std::array<std::string,2>& a,const std::array<std::string,2>& b,
@@ -71,6 +72,74 @@ InteractionEvidenceV2 screen_factorial_v2(
   result.kind="UNSTABLE_OR_AMBIGUOUS";return result;
  }
  result.kind="CONDITIONAL_PERFORMANCE_CANDIDATE";
+ return result;
+}
+
+FixedFactorialHoldoutV2 fixed_factorial_holdout_v2(
+ const std::array<std::string,2>& a,const std::array<std::string,2>& b,
+ const std::vector<FactorialCellV2>& holdout,
+ const std::vector<std::uint64_t>& discovery_seeds,
+ std::size_t frozen_n,int direction,double threshold,double alpha){
+ if(a[0].empty()||a[1].empty()||a[0]==a[1]||
+    b[0].empty()||b[1].empty()||b[0]==b[1]||
+    frozen_n<3||frozen_n>256||(direction!=1&&direction!=-1)||
+    !std::isfinite(threshold)||threshold<=0||
+    !std::isfinite(alpha)||alpha<=0||alpha>0.25||
+    holdout.size()>frozen_n*4)
+  throw Error("invalid frozen v2 factorial holdout design");
+ const std::set<std::uint64_t> used(discovery_seeds.begin(),discovery_seeds.end());
+ if(used.size()!=discovery_seeds.size())
+  throw Error("duplicate v2 discovery seed in holdout manifest");
+ using Cell=std::optional<FactorialCellV2>;
+ std::map<std::uint64_t,std::array<Cell,4>> cohorts;
+ for(const auto& row:holdout){
+  if(used.count(row.replicate_seed))
+   throw Error("v2 factorial holdout overlaps discovery seed stream");
+  const auto ai=row.first==a[0]?0:row.first==a[1]?1:-1;
+  const auto bi=row.second==b[0]?0:row.second==b[1]?1:-1;
+  if(ai<0||bi<0||row.status.empty()||
+     (row.status=="ok"&&(!row.log_metric||!std::isfinite(*row.log_metric)))||
+     (row.status!="ok"&&row.log_metric))
+   throw Error("invalid v2 factorial holdout cell");
+  auto& slot=cohorts[row.replicate_seed][static_cast<std::size_t>(ai*2+bi)];
+  if(slot)throw Error("duplicate v2 factorial holdout cell");
+  slot=row;
+ }
+ FixedFactorialHoldoutV2 result;
+ if(cohorts.size()!=frozen_n||holdout.size()!=4*frozen_n)return result;
+ std::vector<double> effects;
+ for(const auto& [seed,cells]:cohorts){
+  (void)seed;
+  for(const auto& cell:cells)if(!cell)return result;
+  for(const auto& cell:cells)if(cell->status!="ok"){
+   result.state="INVALID_OR_CENSORED_HOLDOUT";
+   return result;
+  }
+  const auto did=(*cells[3]->log_metric-*cells[2]->log_metric)-
+                 (*cells[1]->log_metric-*cells[0]->log_metric);
+  if(!std::isfinite(did))throw Error("nonfinite v2 holdout interaction contrast");
+  effects.push_back(static_cast<double>(direction)*did);
+  if(static_cast<double>(direction)*did>0)++result.consistent_sign_cohorts;
+ }
+ result.tested_cohorts=frozen_n;
+ result.median_signed_effect=sample_median(effects);
+ // Exact Binomial(n,1/2) upper tail: valid only for independent,
+ // sign-symmetric, fixed-size cohort contrasts. Ties count against signal.
+ long double term=std::ldexp(1.L,-static_cast<int>(frozen_n));
+ long double p=0;
+ for(std::size_t k=0;k<=frozen_n;++k){
+  if(k>=result.consistent_sign_cohorts)p+=term;
+  if(k<frozen_n)
+   term*=static_cast<long double>(frozen_n-k)/
+         static_cast<long double>(k+1);
+ }
+ result.unadjusted_one_sided_p=std::min(1.,static_cast<double>(p));
+ result.supports_predeclared_effect=
+   result.median_signed_effect>=threshold&&
+   result.unadjusted_one_sided_p<=alpha;
+ result.state=result.supports_predeclared_effect?
+   "FROZEN_HOLDOUT_SUPPORT_REQUIRES_CAMPAIGN_SEAL":
+   "FROZEN_HOLDOUT_NO_SUPPORT";
  return result;
 }
 }
