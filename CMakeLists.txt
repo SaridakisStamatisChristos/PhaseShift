@@ -602,3 +602,13 @@ add_test(NAME v3_conditional_disjoint_rectangles_worker_resume
  --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_conditional_workers)
 set_tests_properties(v3_conditional_disjoint_rectangles_worker_resume PROPERTIES
  TIMEOUT 180 RUN_SERIAL TRUE)
+
+# V3-04 frozen v2 conditional implication compilation (opt-in schema v13).
+add_test(NAME v3_conditional_implication_compiler_worker_replay
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/conditional_rules_worker_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/conditional_implications.json
+ --old-config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/admissible_calibration.json
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_implication_workers)
+set_tests_properties(v3_conditional_implication_compiler_worker_replay PROPERTIES
+ TIMEOUT 180 RUN_SERIAL TRUE)

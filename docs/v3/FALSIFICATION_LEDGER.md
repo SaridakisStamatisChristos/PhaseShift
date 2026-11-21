@@ -59,3 +59,7 @@ AdmissibleSearchSpace indexes disjoint rectangles but is not a complete oracle f
 ## F-017 — Mixed structural coordinates change across a matched seed
 
 Independent Python SQLite oracle checks matching category context, legal only-primary-axis shifts, same fresh seed, full raw workers, input digests, and deterministic decision transcript. Tamper a prior evidence digest, arm, coordinate, seed or effect and require verify to fail. Kill before and after pair commit. **State: test authored; exact-head CI pending.**
+
+## F-018 — Compiled conditional rule silently drops a prohibited branch
+
+The independent v13 Python oracle enumerates all 16 (`negative`,`threshold`,`x`) combinations and admits exactly six from the frozen implication rules. It independently checks every persisted matched-pair endpoint, holds non-primary context constant, checks rare stratum coverage, and rejects invalid rule axes. The v13 policy uses the existing canonical v2 rule compiler on run, verify and resume, not an ad hoc or duplicated implication evaluator. Earlier v12 run semantics do not change. **State: tests authored; final CI acceptance pending.**

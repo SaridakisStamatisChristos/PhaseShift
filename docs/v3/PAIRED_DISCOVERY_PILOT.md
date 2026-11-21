@@ -47,3 +47,17 @@ Every pair differs in only one primary numeric axis and retains the same categor
 Full ordered coordinate vectors, chosen action, and prior committed discovery digest are inserted in the same SQLite transaction as the two raw worker batches. Verify/restart independently recreates the schedule and observes only discovery data. A typed implication-rule config is **explicitly rejected** by this version: disjoint rectangles are supported, not arbitrary logical implications. This intentional limitation is a hard gate before any claim of general mixed conditional legality.
 
 Remaining hard gates: campaign-wide sealed independent confirmation, full resource accounting across killed uncommitted attempts, richer conditional-rule legality and region-tree refinement, multi-family held-out policy comparison, multiplicity control and external competition.
+
+## Optional v13 compiled logical implication rules
+
+Existing v12 `conditional` **continues to reject** implication-rule configurations, preserving its recorded design and replay semantics. The separate v13 protocol uses the original, validated v2 `compile_conditional_rules_v2()` to transform frozen conjunctions of `WHEN axis in labels → REQUIRE axis in labels` into a bounded, pairwise-disjoint admissible rectangle union. It never enumerates the Cartesian product.
+
+    ./build/phaseshift_v3_pairs conditional-rules --config configs/v2/conditional_implications.json --out /tmp/v3-implication-pilot --pairs 6 --pause-after 2
+    ./build/phaseshift_v3_pairs verify --run /tmp/v3-implication-pilot
+    ./build/phaseshift_v3_pairs resume --run /tmp/v3-implication-pilot
+
+The new v13 SQLite user_version is part of the same creation transaction as the frozen plan. Both discovery scheduling and fresh-seed worker execution use the **compiled legal union**, not the pre-rule universe. All subsequent verify/resume operations reconstruct the same union from the original frozen configuration and use the same independent raw-record and choice re-evaluation as v12. The older v10/v11/v12 pilot schemas remain valid and separate. Typed rules with invalid axes, labels, decomposition beyond 256 rectangles, or no feasible candidates are rejected by the canonical compiler.
+
+An independently authored tiny-domain truth oracle checks all 16 potential three-axis tuples in the calibration rule fixture, finding **six legal tuples** across three rare/common contexts. The adversarial real-worker test requires no forbidden paired endpoints, matching categorical contexts and seeds, deterministic pause/resume, pre/post-commit fault recovery and rejection of corrupted decisions/effects. All statistical and benchmark promotion claims remain unverified.
+
+**Known gaps:** This is a rules-to-rectangle compiler, not a full multidimensional adaptive region tree. It still requires a numeric primary axis with at least two legal neighbors in a candidate context, bounded context/cardinality and no full campaign confirmation or lost-worker work ledger. Entire V3-04 remains PARTIAL pending measured held-out performance.

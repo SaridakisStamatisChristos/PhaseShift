@@ -29,7 +29,7 @@
 | V3-01 | Fair consumed-resource benchmark and falsification | PARTIAL | Real CLI diagnostic, 20-seed separate manifests, strict SQLite/raw-log verifier and Release CTest written; broader landscapes/full heldout/CI evidence pending |
 | V3-02 | Orchestrator extraction and typed control-plane | PARTIAL | Legacy v2 selection extracted to a dedicated adapter with differential characterization CTest; typed keys, committed-only snapshot and budget ledger present. Full coordinator extraction and exact-SHA gates still outstanding |
 | V3-03 | Fresh matched-seed adaptive discovery replication | PARTIAL | v10 fixed-pair and v11 single-axis adaptive real-worker design, atomic two-sided SQLite evidence, deterministic resume; full cost and confirmation isolation gates remain open |
-| V3-04 | Legal cell / axis portfolio | PARTIAL | Standalone axis slicer plus new opt-in v12 multi-axis conditional matched worker portfolio over disjoint admissible rectangles; rare-stratum screening, 2.048B sparse index, replay and tamper falsifiers. Full region tree, implication rules and heldout benefit outstanding |
+| V3-04 | Legal cell / axis portfolio | PARTIAL | Standalone axis slicer plus new opt-in v12 multi-axis conditional matched worker portfolio over disjoint admissible rectangles; rare-stratum screening, 2.048B sparse index, replay and tamper falsifiers. Full region tree and heldout benefit outstanding |
 | V3-05 | Predictive cost/uncertainty acquisition | OPEN | Frozen development-only calibration |
 | V3-06 | Optional surrogate challenger | NOT_REQUIRED_YET | Killable research branch; only promote if its evidence wins |
 | V3-07 | Boundary taxonomy & shape selection | OPEN | Independent multi-cliff / smooth truth |
@@ -93,3 +93,11 @@ New conditional option in the existing opt-in phaseshift_v3_pairs executable cre
 Verification program: tests/v3/conditional_pair.cpp (exhaustive legal tiny oracle, guaranteed rare-stratum exposure, categorical XOR interaction isolation, malformed/nonfinite/holdout feedback, 2.048B cardinality sparse-RSS challenge); tests/v3/conditional_worker_cli.py (real workers, seeded pause/resume, before/after commit failure, raw and decision tamper, unsupported-rule rejection, fixed schema backward compatibility).
 
 **State:** code produced; full exact-head CI evidence required before VERIFIED engineering claims. The V3-04 milestone remains PARTIAL: no generalized implication-rule frontiers, advanced region splits/shape classification, independent heldout performance proof, or external competitor comparison.
+
+## V3-04 frozen implication-rule execution successor (schema v13)
+
+The new `conditional-rules` opt-in mode evaluates the **existing v2 compiler's** disjoint union from the frozen source rule set (not a new parser), then submits legal mixed-dimensional contrasts to the already-tested v12 real worker pair scheduler. v13 is a separate SQLite user_version; v12's rejection of implication rules is retained to preserve historical replay identity. The new protocol is only valid for nonempty declared rules.
+
+Added independent `tests/v3/conditional_rules_worker_cli.py`: exhaustively enumerated 16 calibration tuples with exactly six permitted by three implications; checks all raw worker pairs remain within the six legal tuples, all three contexts are screened, new independent matched seeds are used, SQLite design replay is deterministic under pause/resume, pre/post-commit forced exits recover, edited decision/seed/raw evidence is rejected, malformed rules fail closed, and v12 still rejects v13 input.
+
+**Status:** code authored, exact-head CI required. V3-04 **PARTIAL** because full multi-axis region splits, cost-aware acquisition, complete accounting, frozen held-out comparison and statistical confidence remain open.
