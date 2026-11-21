@@ -2,7 +2,7 @@
 import argparse,json,sqlite3,pathlib
 p=argparse.ArgumentParser();p.add_argument("--run",required=True);a=p.parse_args()
 with sqlite3.connect(pathlib.Path(a.run)/"run.sqlite") as db:
- rows=db.execute("SELECT d.pool_index,c.params,c.seed FROM scheduler_decisions d JOIN cases c ON c.case_id=d.case_id ORDER BY d.step").fetchall()
+ rows=db.execute("SELECT d.pool_index,c.params,c.seed FROM scheduler_decisions d JOIN cases c ON c.case_id=d.case_id ORDER BY d.seq").fetchall()
 # Exact deterministic primary-stratum warmup and complete valid-union sampling.
 assert len(rows)==12,len(rows)
 assert len({int(row[0]) for row in rows})==12
