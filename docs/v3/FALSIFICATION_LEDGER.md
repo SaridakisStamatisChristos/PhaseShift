@@ -63,3 +63,7 @@ Independent Python SQLite oracle checks matching category context, legal only-pr
 ## F-018 — Compiled conditional rule silently drops a prohibited branch
 
 The independent v13 Python oracle enumerates all 16 (`negative`,`threshold`,`x`) combinations and admits exactly six from the frozen implication rules. It independently checks every persisted matched-pair endpoint, holds non-primary context constant, checks rare stratum coverage, and rejects invalid rule axes. The v13 policy uses the existing canonical v2 rule compiler on run, verify and resume, not an ad hoc or duplicated implication evaluator. Earlier v12 run semantics do not change. **State: tests authored; final CI acceptance pending.**
+
+## F-019 — Conditional region tree silently revisits an edge or excludes a rare cell
+
+Independent finite oracle exhausts 62 legal edge pairs in two disjoint categorical cells, including contrasting double-cliff/xor signs; new edges may not repeat. Every legal context is represented independently before local bisection. Separate 2.048B virtual-domain test caps live contexts and checks no Cartesian allocation. Region-state hash and raw worker evidence must replay under forced crashes, with v12/v13 backward behavior unmodified. **State: tests authored; CI verification pending.**

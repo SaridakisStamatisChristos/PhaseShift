@@ -27,15 +27,19 @@ struct ConditionalPairChoice {
 class ConditionalPairPortfolio {
  using Coords=std::vector<AxisValue>;
  struct Evidence {std::vector<double> valid;std::size_t censored=0;};
+ struct Region {std::size_t lo=0,hi=0,depth=0;};
  struct Context {
   std::string key;
   std::vector<std::pair<std::size_t,std::uint64_t>> legal;
   std::unique_ptr<SparsePermutation> unseen;
   std::map<std::size_t,Evidence> observed;
+  std::vector<Region> frontier; // disjoint unissued-edge intervals
+  std::set<std::size_t> issued;  // bounded <= max_pairs
  };
  const AdmissibleSearchSpace& space_;
  std::vector<LazySearchSpace::Axis> axes_;
  std::size_t primary_=0,max_contexts_,max_pairs_,completed_=0;
+ bool region_tree_=false;
  std::uint64_t seed_;
  double practical_log_ratio_;
  SparsePermutation global_;
@@ -87,18 +91,64 @@ class ConditionalPairPortfolio {
   const auto n=created.legal.size()-1;
   created.unseen=std::make_unique<SparsePermutation>(
       static_cast<std::uint64_t>(n),seed_^stable_hash(key)^0x2a50baf4ULL);
+  if(region_tree_)created.frontier.push_back(Region{0,n-1,0});
   const auto id=contexts_.size();
   by_context_.emplace(key,id);
   contexts_.push_back(std::move(created));
   return id;
  }
+ bool claim_region(std::size_t id,std::size_t edge){
+  auto& c=contexts_.at(id);
+  if(!c.issued.insert(edge).second)return false;
+  for(std::size_t i=0;i<c.frontier.size();++i){
+   const auto node=c.frontier[i];
+   if(edge<node.lo||edge>node.hi)continue;
+   c.frontier.erase(c.frontier.begin()+static_cast<std::ptrdiff_t>(i));
+   if(node.lo<edge)c.frontier.push_back({node.lo,edge-1,node.depth+1});
+   if(edge<node.hi)c.frontier.push_back({edge+1,node.hi,node.depth+1});
+   return true;
+  }
+  throw Error("v3 region tree issued edge absent from legal frontier");
+ }
  std::optional<ConditionalPairChoice> explore_at(const Coords& point){
   const auto id=enroll(point);
   if(!id)return std::nullopt;
   auto& c=contexts_[*id];
-  if(!c.unseen->has_next())return std::nullopt;
-  const auto edge=static_cast<std::size_t>(c.unseen->next());
-  return choice(*id,edge,"explore");
+  // A region-tree proposal may have issued an edge without consuming its
+  // sparse-permutation slot. Only unseen legal edges are admissible.
+  while(c.unseen->has_next()){
+   const auto edge=static_cast<std::size_t>(c.unseen->next());
+   if(region_tree_&&!claim_region(*id,edge))continue;
+   return choice(*id,edge,"explore");
+  }
+  return std::nullopt;
+ }
+ // Deterministic conditional interval frontier: select a legal, unseen
+ // midpoint and bisect only that context. No Cartesian partition in memory.
+ std::optional<ConditionalPairChoice> region_refinement(){
+  struct Target {std::size_t id,edge;double score;};
+  std::optional<Target> best;
+  for(std::size_t id=0;id<contexts_.size();++id){
+   const auto& c=contexts_[id];
+   for(const auto& node:c.frontier){
+    const auto width=node.hi-node.lo+1;
+    const auto midpoint=node.lo+(node.hi-node.lo)/2;
+    double maximum=0.;
+    for(const auto& [edge,obs]:c.observed)
+     if(edge>=node.lo&&edge<=node.hi&&!obs.valid.empty())
+      maximum=std::max(maximum,std::min(4.,std::abs(median(obs.valid))));
+    const double score=static_cast<double>(width)*(1.+maximum)/
+                       (1.+static_cast<double>(node.depth));
+    if(!best||score>best->score||
+       (score==best->score&&std::pair{id,midpoint}<
+                              std::pair{best->id,best->edge}))
+     best=Target{id,midpoint,score};
+   }
+  }
+  if(!best)return std::nullopt;
+  if(!claim_region(best->id,best->edge))
+   throw Error("v3 region tree repeated issued legal midpoint");
+  return choice(best->id,best->edge,"explore");
  }
  ConditionalPairChoice choice(std::size_t id,std::size_t edge,
                               std::string arm)const {
@@ -123,7 +173,14 @@ class ConditionalPairPortfolio {
    if(auto c=explore_at(space_.at(global_.next())))return c;
   }
   for(std::size_t id=0;id<contexts_.size();++id)
-   if(contexts_[id].unseen->has_next()){
+   if(region_tree_&&!contexts_[id].frontier.empty()){
+    const auto node=contexts_[id].frontier.front();
+    const auto edge=node.lo+(node.hi-node.lo)/2;
+    if(!claim_region(id,edge))throw Error("v3 region tree fallback repeated edge");
+    return choice(id,edge,"explore");
+   }
+  for(std::size_t id=0;id<contexts_.size();++id)
+   while(!region_tree_&&contexts_[id].unseen->has_next()){
     const auto edge=static_cast<std::size_t>(contexts_[id].unseen->next());
     return choice(id,edge,"explore");
    }
@@ -155,9 +212,9 @@ public:
     std::vector<LazySearchSpace::Axis> axes,std::string primary,
     std::vector<AdmissibleSearchSpace::Subspace> declared_subspaces,
     std::uint64_t seed,std::size_t max_pairs,double min_ratio,
-    std::size_t max_contexts=64)
+    std::size_t max_contexts=64,bool region_tree=false)
  :space_(space),axes_(std::move(axes)),
-  max_contexts_(max_contexts),max_pairs_(max_pairs),seed_(seed),
+  max_contexts_(max_contexts),max_pairs_(max_pairs),region_tree_(region_tree),seed_(seed),
   practical_log_ratio_(std::log(min_ratio)),
   global_(space.cardinality(),seed^0xacc705e4ULL){
   if(axes_.size()<2||axes_.size()>32||!max_contexts_||max_contexts_>128||
@@ -194,7 +251,8 @@ public:
   }
  }
  std::string evidence_digest()const{
-  std::string data="phaseshift.v3.conditional-pair.1";
+  std::string data=region_tree_?"phaseshift.v3.region-tree-pair.1":
+                                 "phaseshift.v3.conditional-pair.1";
   append_u64(data,completed_);append_u64(data,max_pairs_);
   append_u64(data,next_stratum_);append_u64(data,global_.state());
   append_u64(data,std::bit_cast<std::uint64_t>(practical_log_ratio_));
@@ -207,6 +265,14 @@ public:
     append_u64(data,obs.valid.size());
     for(double d:obs.valid)append_u64(data,std::bit_cast<std::uint64_t>(d==0.?0.:d));
    }
+   if(region_tree_){
+    append_u64(data,c.issued.size());
+    for(const auto edge:c.issued)append_u64(data,edge);
+    append_u64(data,c.frontier.size());
+    for(const auto& node:c.frontier){
+     append_u64(data,node.lo);append_u64(data,node.hi);append_u64(data,node.depth);
+    }
+   }
   }
   return ps::sha256(data);
  }
@@ -216,11 +282,23 @@ public:
   const auto prior=evidence_digest();
   const auto replicate=replicate_target();
   const bool explore=completed_<2||completed_%4==0||!replicate;
-  auto candidate=explore?new_edge():std::optional<ConditionalPairChoice>{};
-  if(!candidate&&replicate)
-   candidate=choice(replicate->first,replicate->second,"replicate");
-  if(!candidate&&!explore)
-   candidate=new_edge();
+  std::optional<ConditionalPairChoice> candidate;
+  if(region_tree_){
+   // Every declared rare rectangle is screened *before* local refinement.
+   // Thereafter the frozen 25% global reserve is never traded for a local fit.
+   if(next_stratum_<strata_.size()||completed_<2||completed_%4==0)
+    candidate=new_edge();
+   else candidate=region_refinement();
+   if(!candidate&&replicate)
+    candidate=choice(replicate->first,replicate->second,"replicate");
+   if(!candidate)candidate=new_edge();
+  }else{
+   candidate=explore?new_edge():std::optional<ConditionalPairChoice>{};
+   if(!candidate&&replicate)
+    candidate=choice(replicate->first,replicate->second,"replicate");
+   if(!candidate&&!explore)
+    candidate=new_edge();
+  }
   if(!candidate)return std::nullopt;
   candidate->prior_evidence_digest=prior;
   pending_=*candidate;
@@ -241,6 +319,10 @@ public:
  }
  std::size_t committed()const noexcept{return completed_;}
  std::size_t tracked_contexts()const noexcept{return contexts_.size();}
+ std::size_t region_nodes()const noexcept{
+  std::size_t total=0;for(const auto& c:contexts_)total+=c.frontier.size();
+  return total;
+ }
  std::size_t resident_global_entries()const noexcept{return global_.resident_entries();}
 };
 } // namespace ps::v3

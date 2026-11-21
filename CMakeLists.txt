@@ -612,3 +612,20 @@ add_test(NAME v3_conditional_implication_compiler_worker_replay
  --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_implication_workers)
 set_tests_properties(v3_conditional_implication_compiler_worker_replay PROPERTIES
  TIMEOUT 180 RUN_SERIAL TRUE)
+
+# V3-04 region-tree conditional discovery, new opt-in schema v14.
+add_executable(phaseshift_v3_region_tree_tests tests/v3/region_tree.cpp)
+target_link_libraries(phaseshift_v3_region_tree_tests PRIVATE phaseshift_core)
+add_test(NAME v3_region_tree_double_cliff_xor_rare_billion_sparse
+ COMMAND phaseshift_v3_region_tree_tests)
+set_tests_properties(v3_region_tree_double_cliff_xor_rare_billion_sparse PROPERTIES
+ TIMEOUT 75)
+
+add_test(NAME v3_region_tree_real_worker_replay
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/region_tree_worker_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/admissible_calibration.json
+ --unsupported-config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/conditional_implications.json
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_region_tree_workers)
+set_tests_properties(v3_region_tree_real_worker_replay PROPERTIES
+ TIMEOUT 180 RUN_SERIAL TRUE)

@@ -61,3 +61,19 @@ The new v13 SQLite user_version is part of the same creation transaction as the 
 An independently authored tiny-domain truth oracle checks all 16 potential three-axis tuples in the calibration rule fixture, finding **six legal tuples** across three rare/common contexts. The adversarial real-worker test requires no forbidden paired endpoints, matching categorical contexts and seeds, deterministic pause/resume, pre/post-commit fault recovery and rejection of corrupted decisions/effects. All statistical and benchmark promotion claims remain unverified.
 
 **Known gaps:** This is a rules-to-rectangle compiler, not a full multidimensional adaptive region tree. It still requires a numeric primary axis with at least two legal neighbors in a candidate context, bounded context/cardinality and no full campaign confirmation or lost-worker work ledger. Entire V3-04 remains PARTIAL pending measured held-out performance.
+
+## Opt-in v14 conditional region-tree frontier
+
+Version 14 adds `phaseshift_v3_pairs conditional-tree` as a separate **new-run** protocol, preserving the existing v10 fixed, v11 adaptive, v12 disjoint and v13 implication-mode replay identities. It accepts validated v2 configurations with either disjoint admissible rectangles or frozen logical implications (precompiled by the canonical v2 configuration loader).
+
+    ./build/phaseshift_v3_pairs conditional-tree --config configs/v2/admissible_calibration.json --out /tmp/v3-tree --pairs 6 --pause-after 2
+    ./build/phaseshift_v3_pairs verify --run /tmp/v3-tree
+    ./build/phaseshift_v3_pairs resume --run /tmp/v3-tree
+
+**Algorithm:** each admitted legal non-primary context owns an interval frontier over adjacent *legal* primary-axis edge positions. The portfolio screens declared disjoint rare strata before local interval splits, reserves every fourth pair for global discovery, then selects the widest legal live interval midpoint and bisects only that context. Issued edges cannot repeat during exploration; fully exhausted frontiers may use fresh matched-seed replications chosen from committed discovery-only observations. Invalid/censored evidence cannot become a finite speed metric. Memory is bounded by the existing 128-context/4096-label/100-pair caps and sparse global sampling, not the virtual Cartesian universe.
+
+The v14 immutable predecision digest covers the conditional context map, issued edge keys, ordered live-region bounds/depth, and prior committed observations. Each proposal, pair's full coordinates, two raw worker outcomes and digests are transactionally stored in a separate new schema v14; verify/resume deterministically reconstructs each step and rejects raw/result/schedule tampering. Existing v12 and v13 protocols retain byte-identical policy paths because region mode defaults off.
+
+**Falsification:** standalone exhaustive 2-context 32-point oracle with two opposing cliffs in categorical XOR (all 62 possible edges screened once with no duplicate), discovery-only holdout rejection, missing/nonfinite result rejection, and 2.048-billion virtual candidate RSS/regime-capped legal test. Real-worker v14 CTest checks pause/resume, both crash points, rare legal context completeness, corrupted transcript detection, v12 implication rejection and v14 valid implication support.
+
+**Limitations:** the frontier uses deterministic midpoint partitions and a simple fixed portfolio, not an empirically proven acquisition optimum. No validated campaign-wide holdout performance comparison or resource-accounting closure; v3 remains opt-in and V3-04 remains PARTIAL under the master directive.

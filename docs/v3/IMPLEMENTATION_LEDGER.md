@@ -101,3 +101,11 @@ The new `conditional-rules` opt-in mode evaluates the **existing v2 compiler's**
 Added independent `tests/v3/conditional_rules_worker_cli.py`: exhaustively enumerated 16 calibration tuples with exactly six permitted by three implications; checks all raw worker pairs remain within the six legal tuples, all three contexts are screened, new independent matched seeds are used, SQLite design replay is deterministic under pause/resume, pre/post-commit forced exits recover, edited decision/seed/raw evidence is rejected, malformed rules fail closed, and v12 still rejects v13 input.
 
 **Status:** code authored, exact-head CI required. V3-04 **PARTIAL** because full multi-axis region splits, cost-aware acquisition, complete accounting, frozen held-out comparison and statistical confidence remain open.
+
+## V3-04 conditional region frontier successor (schema v14)
+
+New `ConditionalPairPortfolio(..., region_tree=true)` adds bounded per-context legal-edge intervals, deterministic midpoint bisection, issued-edge uniqueness, compiled-rule and rare-stratum preservation, and distinct region-state digests. This is opt-in `phaseshift_v3_pairs conditional-tree` creating schema v14, with v10–v13 replay unaffected. The executor and raw-worker schema are unchanged apart from the additive explicit new protocol version.
+
+Tests: `tests/v3/region_tree.cpp` independently enumerates 62 edges of a legal two-context 32-point domain with two injected opposing cliff locations, tests deterministic replay, null/nonfinite/holdout feedback and 2.048B virtual-space cap. `tests/v3/region_tree_worker_cli.py` tests real workers, both crash boundaries, rare strata, tampered choice/seed/effect and both disjoint and implication legality.
+
+**State:** code authored; exact-head GCC/Clang/ASan/coverage still to verify. Master V3-04 stays **PARTIAL**: no development-suite net discovery performance superiority, no calibrated CPU/parent overhead envelope and no universal categorical interaction or inference claim.
