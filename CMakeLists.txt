@@ -403,3 +403,8 @@ add_test(NAME v2_piecewise_linear_slope_oracle COMMAND phaseshift_multi_slope_v2
 configure_file(tests/run_v2_slope.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_slope.cmake @ONLY)
 add_test(NAME v2_slope_discovery_only_worker COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_slope.cmake)
 set_tests_properties(v2_slope_discovery_only_worker PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+
+configure_file(benchmarks/v2/run_sampled_cpu_challenge.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/v2_sampled_cpu_challenge.cmake @ONLY)
+add_test(NAME v2_sampled_worker_cpu_four_policy_challenge
+ COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/v2_sampled_cpu_challenge.cmake)
+set_tests_properties(v2_sampled_worker_cpu_four_policy_challenge PROPERTIES TIMEOUT 150 RUN_SERIAL TRUE)
