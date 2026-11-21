@@ -19,6 +19,9 @@ int main(int argc,char** argv){
  fs::create_directories(root);
  std::ofstream rows(root/"observations.csv");
  CHECK(rows.good());
+ std::ofstream raw(root/"datasets.csv");
+ CHECK(raw.good());
+ raw<<"scenario,seed,index,value\n";
  rows<<"scenario,seed,true_cut_1,true_cut_2,dp_changes,pelt_changes,dp_sse,pelt_sse,localization_error,model_version\n";
  struct Aggregate {int campaigns=0,with_any=0,near_truth=0;};
  std::map<std::string,Aggregate> summary;
@@ -37,6 +40,8 @@ int main(int argc,char** argv){
     if(scenario==4&&i==24)level=4.; // isolated outlier
     y[static_cast<std::size_t>(i)]=level+noise;
    }
+   for(std::size_t i=0;i<y.size();++i)
+    raw<<scenario<<","<<seed<<","<<i<<","<<y[i]<<"\n";
    const auto fit=ps::fit_multi_change_v2(y,3,3,2.5);
    const auto pruned=ps::fit_multi_change_pelt_v2(y,3,3,2.5);
    const auto error=std::abs(fit.penalized_sse-pruned.penalized_sse);
@@ -78,7 +83,8 @@ int main(int argc,char** argv){
       <<slope.penalized_sse<<",nan,"<<nearest<<",piecewise_linear_v2\n";
  }
  rows.flush();
- CHECK(rows.good());
+ raw.flush();
+ CHECK(rows.good()&&raw.good());
  std::ofstream report(root/"scorecard.json");
  report<<"{\n  \"schema\": 1,\n  \"claim\": \"noisy synthetic diagnostic, not statistical calibration or SOTA\",\n"
        <<"  \"seeds_per_scenario\": 20,\n  \"results\": {\n";
