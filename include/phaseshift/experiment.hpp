@@ -1,11 +1,13 @@
 #pragma once
 #include "phaseshift/store.hpp"
+#include "phaseshift/conditional_space_v2.hpp"
 namespace ps {
 struct Config {
  std::string experiment_id="experiment",family="calibration",a="calibration",b="",method="grid",axis="x",output="";
  Case base;
  std::map<std::string,std::vector<std::string>> axes;
  std::vector<std::map<std::string,std::vector<std::string>>> admissible_subspaces;
+ std::vector<ConditionalRuleV2> conditional_rules;
  std::map<std::string,std::map<std::string,double>> domain_priors; // v2 weighted_v2 only
  std::uint64_t seed=137,max_cases=128,max_bytes=64ULL*1024*1024,max_queue=10000,max_report_bytes=10000000,max_sampled_cpu_ns=0;
  int blocks=9,confirm_blocks=20,warmup=2,sample_ms=3000,rss_mb=1024,total_wall_s=600;

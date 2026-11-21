@@ -89,7 +89,7 @@ static std::int64_t axis_value(const Case& c,const std::string& axis);
 static Json config_json(const Config& c){
  Json j;j.put("schema_version",static_cast<std::int64_t>(1));j.put("experiment_id",c.experiment_id);j.put("problem_family",c.family);j.put("algorithm_a",c.a);j.put("algorithm_b",c.b);j.put("search_method",c.method);j.put("primary_axis",c.axis);j.put("seed",static_cast<std::int64_t>(c.seed));j.put("max_cases",static_cast<std::int64_t>(c.max_cases));j.put("max_case_bytes",static_cast<std::int64_t>(c.max_bytes));j.put("max_search_queue",static_cast<std::int64_t>(c.max_queue));j.put("max_report_bytes",static_cast<std::int64_t>(c.max_report_bytes));j.put("discovery_blocks",static_cast<std::int64_t>(c.blocks));j.put("confirm_blocks",static_cast<std::int64_t>(c.confirm_blocks));j.put("warmup",static_cast<std::int64_t>(c.warmup));j.put("sample_ms",static_cast<std::int64_t>(c.sample_ms));j.put("rss_mb",static_cast<std::int64_t>(c.rss_mb));j.put("total_wall_seconds",static_cast<std::int64_t>(c.total_wall_s));j.put("min_practical_ratio",c.min_ratio);j.put("confirmation_confidence",c.confirmation_confidence);j.put("fdr_q",c.fdr_q);j.put("multiple_testing",c.multiple_testing);j.put("exploration_fraction",c.exploration_fraction);j.put("minimum_batch_ms",static_cast<std::int64_t>(c.minimum_batch_ms));j.put("isolation_mode",c.isolation_mode);if(c.policy_version=="v2"){
    j.put("policy_version",c.policy_version);
-   if(c.replicate_count>1||!c.admissible_subspaces.empty()||!c.domain_priors.empty()){
+   if(c.replicate_count>1||!c.admissible_subspaces.empty()||!c.domain_priors.empty()||!c.conditional_rules.empty()){
      Json search;
      if(c.replicate_count>1)search.put("replicates",static_cast<std::int64_t>(c.replicate_count));
      if(!c.admissible_subspaces.empty()){
@@ -113,6 +113,25 @@ static Json config_json(const Config& c){
         prior_json.put(axis.c_str(),std::move(labels));
        }
        search.put("domain_priors",std::move(prior_json));
+      }
+      if(!c.conditional_rules.empty()){
+       auto* rules=json_object_new_array();
+       for(const auto& rule:c.conditional_rules){
+        Json item;
+        const auto add_clause=[&](const char* member,const std::string& axis,
+                                   const std::vector<std::string>& labels){
+         Json clause;clause.put("axis",axis);
+         auto* values=json_object_new_array();
+         for(const auto& label:labels)
+          json_object_array_add(values,json_object_new_string(label.c_str()));
+         json_object_object_add(clause.p,"values",values);
+         item.put(member,std::move(clause));
+        };
+        add_clause("when",rule.when_axis,rule.when_labels);
+        add_clause("require",rule.require_axis,rule.require_labels);
+        json_object_array_add(rules,json_object_get(item.p));
+       }
+       json_object_object_add(search.p,"conditional_rules",rules);
       }
       j.put("search",std::move(search));
     }
@@ -153,7 +172,7 @@ static void validate_configuration_shape(const Json& j){
     if(kind!=json_type_string)throw Error(field+" must be a string");
    }else if(structures.count(name)){
     if(kind!=json_type_object&&!(name=="base_params"&&kind==json_type_string)&&
-       !(scope=="search"&&name=="admissible_subspaces"&&kind==json_type_array))
+       !(scope=="search"&&(name=="admissible_subspaces"||name=="conditional_rules")&&kind==json_type_array))
       throw Error(field+" must be an object or admissible subspace array");
    }else throw Error("unknown configuration parameter: "+field);
   }
@@ -183,7 +202,7 @@ static void validate_configuration_shape(const Json& j){
  check(top.p,"config",integer_top,real_top,text_top,obj_top);
  if(auto* v=j.get("objective");v&&std::string(json_object_get_string(v))!="discover_structural_performance_boundaries")
   throw Error("unsupported objective");
- if(auto* v=j.get("search"))check(v,"search",{"max_cases","replicates"},{"exploration_fraction"},{"method","policy_version"},{"admissible_subspaces","domain_priors"});
+ if(auto* v=j.get("search"))check(v,"search",{"max_cases","replicates"},{"exploration_fraction"},{"method","policy_version"},{"admissible_subspaces","domain_priors","conditional_rules"});
  if(auto* v=j.get("measurement"))check(v,"measurement",{"paired_discovery_blocks","paired_confirm_blocks","warmup_iterations","minimum_batch_ms"},{},{"primary_metric","isolation_mode","protocol_version"},{});
  if(auto* v=j.get("detection"))check(v,"detection",{},{"min_practical_ratio","confirmation_confidence","fdr_q"},{"multiple_testing","detector_version"},{});
  if(auto* v=j.get("limits"))check(v,"limits",{"total_wall_seconds","max_cases","max_case_bytes","max_worker_rss_mb","max_sample_wall_ms","max_report_bytes","max_search_queue","max_sampled_cpu_ns"},{},{},{});
@@ -296,6 +315,52 @@ Config config_from_json(const Json& j){
    }
   }
  }
+ // Typed v2 implication rules: reject unknown nested keys and malformed
+ // values before compiling exact, pairwise-disjoint admissible rectangles.
+ if(auto* search=j.get("search")){
+  json_object* rules=nullptr;
+  if(json_object_object_get_ex(search,"conditional_rules",&rules)){
+   if(!rules||json_object_get_type(rules)!=json_type_array||
+      json_object_array_length(rules)==0||json_object_array_length(rules)>32)
+    throw Error("search.conditional_rules must contain 1..32 rules");
+   const auto parse_clause=[&](json_object* item,const char* key,
+                               std::string& axis,std::vector<std::string>& values){
+    json_object* clause=nullptr;
+    if(!json_object_object_get_ex(item,key,&clause)||!clause||
+       json_object_get_type(clause)!=json_type_object||
+       json_object_object_length(clause)!=2)
+     throw Error(std::string("v2 conditional clause requires axis and values: ")+key);
+    json_object* axis_json=nullptr,*labels=nullptr;
+    if(!json_object_object_get_ex(clause,"axis",&axis_json)||
+       !axis_json||json_object_get_type(axis_json)!=json_type_string||
+       !json_object_get_string(axis_json)[0]||
+       !json_object_object_get_ex(clause,"values",&labels)||
+       !labels||json_object_get_type(labels)!=json_type_array||
+       json_object_array_length(labels)==0)
+     throw Error(std::string("v2 conditional clause shape invalid: ")+key);
+    axis=json_object_get_string(axis_json);
+    for(std::size_t k=0;k<json_object_array_length(labels);++k){
+     auto* value=json_object_array_get_idx(labels,k);
+     if(!value||json_object_get_type(value)==json_type_object||
+        json_object_get_type(value)==json_type_array||
+        (json_object_get_type(value)==json_type_double&&
+         !std::isfinite(json_object_get_double(value))))
+      throw Error("invalid v2 conditional label");
+     values.push_back(value_string(value));
+    }
+   };
+   for(std::size_t i=0;i<json_object_array_length(rules);++i){
+    auto* rule=json_object_array_get_idx(rules,i);
+    if(!rule||json_object_get_type(rule)!=json_type_object||
+       json_object_object_length(rule)!=2)
+     throw Error("v2 conditional rule requires when and require");
+    ConditionalRuleV2 parsed;
+    parse_clause(rule,"when",parsed.when_axis,parsed.when_labels);
+    parse_clause(rule,"require",parsed.require_axis,parsed.require_labels);
+    c.conditional_rules.push_back(std::move(parsed));
+   }
+  }
+ }
  // Prior maps are opt-in and versioned; unspecified labels retain weight 1.
  if(auto* search=j.get("search")){
   json_object* prior_object=nullptr;
@@ -329,6 +394,7 @@ Config config_from_json(const Json& j){
    Json search(json_object_get(nested));
    if(search.get("replicates"))throw Error("v1 does not accept search.replicates");
    if(search.get("admissible_subspaces"))throw Error("v1 does not accept search.admissible_subspaces");
+    if(search.get("conditional_rules"))throw Error("v1 does not accept search.conditional_rules");
    if(search.get("domain_priors"))throw Error("v1 does not accept search.domain_priors");
   }
   if(auto* l=j.get("limits")){Json limits(json_object_get(l));if(limits.get("max_sampled_cpu_ns"))throw Error("v1 does not accept max_sampled_cpu_ns");}
@@ -395,6 +461,8 @@ Config config_from_json(const Json& j){
  if(c.policy_version=="v1")visit(0,c.base);
  else{
    const auto ordered_axes=std::vector<LazySearchSpace::Axis>(c.axes.begin(),c.axes.end());
+   c.admissible_subspaces=compile_conditional_rules_v2(ordered_axes,
+     c.admissible_subspaces,c.conditional_rules);
    (void)AdmissibleSearchSpace(ordered_axes,c.admissible_subspaces);
    if(c.method=="weighted_v2")
     (void)WeightedIndexSamplerV2(ordered_axes,c.admissible_subspaces,
