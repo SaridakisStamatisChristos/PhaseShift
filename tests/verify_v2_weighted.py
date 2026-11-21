@@ -14,7 +14,7 @@ def read(path):
     with sqlite3.connect(path + "/run.sqlite") as db:
         conf = json.loads(db.execute("SELECT config FROM experiments WHERE id=1").fetchone()[0])
         decisions = db.execute(
-            "SELECT seq,pool_index,case_id,next_rng_state "
+            "SELECT seq,pool_index,case_id,rng_state "
             "FROM scheduler_decisions ORDER BY seq"
         ).fetchall()
         events = db.execute(
