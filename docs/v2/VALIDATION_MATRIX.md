@@ -38,3 +38,5 @@ States are deliberately strict; no intermediate green workflow grants final-bran
 ## Exact revision gates — continuation
 
 Latest source changes include calibrated timing, seed-isolated campaign seals, dependency-aware null stress and budget-ledger cross-validation. These are **PENDING exact-SHA CI**; do not infer passing from the prior green 58/58 run. The separate synthetic null test does not constitute empirical engine-wide familywise error calibration. No equal full CPU / wall budget comparison or external matched competitor has been performed.
+
+- M9 crash/retry matrix: direct simulated failure injection after observation, after scheduler decision and after CPU-budget ledger write, each before COMMIT, checks full SQLite rollback and successful exact restart of the same canonical case. Real OS kill/power loss and all future schema tables remain additional gates.

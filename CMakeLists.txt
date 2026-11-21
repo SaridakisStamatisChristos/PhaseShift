@@ -366,3 +366,9 @@ add_executable(phaseshift_fwer_null_tests tests/fwer_correlated_null.cpp)
 target_link_libraries(phaseshift_fwer_null_tests PRIVATE phaseshift_core)
 add_test(NAME v2_correlated_null_holm_smoke COMMAND phaseshift_fwer_null_tests)
 set_tests_properties(v2_correlated_null_holm_smoke PROPERTIES TIMEOUT 25)
+
+# M9 failpoint injection around sample, decision and budget commit boundary.
+add_executable(phaseshift_v2_atomicity_tests tests/v2_atomicity.cpp)
+target_link_libraries(phaseshift_v2_atomicity_tests PRIVATE phaseshift_core)
+add_test(NAME v2_atomic_case_decision_budget_recovery COMMAND phaseshift_v2_atomicity_tests ${CMAKE_CURRENT_BINARY_DIR}/ctest_v2_atomic)
+set_tests_properties(v2_atomic_case_decision_budget_recovery PROPERTIES TIMEOUT 30)
