@@ -1,8 +1,129 @@
 # PHASESHIFT
 
-**A CPU-only, offline C++20 instrumented experiment engine for discovering and verifying structural behavior boundaries in algorithms.** Its output is a replayable, provenance-linked observation, not an assertion of a new mathematical or causal law.
+**Discover where an algorithm changes behavior — and preserve the evidence needed to verify it.**
 
-PHASESHIFT **v1.0 core passed 25/25 GCC, Clang and ASan/UBSan CTests plus three CLI smoke runs on GitHub Actions** at previous `main` commit `326863e92c6e` ([build-test](https://github.com/SaridakisStamatisChristos/PhaseShift/actions/runs/44744221461), [sanitizers](https://github.com/SaridakisStamatisChristos/PhaseShift/actions/runs/44744221259)). The subsequent independent R7 audit revealed scientific-evidence and interface defects. Post-audit repairs add regression gates; **the revised commit `6e343b8f1efe` passed GCC, Clang, ASan/UBSan and sanitized CLI acceptance on GitHub Actions: 31/31 tests per toolchain** ([build-test](https://github.com/SaridakisStamatisChristos/PhaseShift/actions/runs/44756583264), [sanitizers](https://github.com/SaridakisStamatisChristos/PhaseShift/actions/runs/44756583308)). See [`docs/r7_audit_repair_2026-11-20.md`](docs/r7_audit_repair_2026-11-20.md).
+PHASESHIFT is an **offline, CPU-only C++20 research engine for algorithmic behavior boundaries**. It systematically varies inputs, measures real implementations, searches for significant changes, independently tests candidate findings, and preserves reproducible evidence.
+
+It is **not just another benchmark**. The central question is not simply *“Which algorithm is faster?”* It is:
+
+> **Under which specific input conditions does an algorithm become slower, faster, incorrect, or resource-intensive — and can we reproduce that change?**
+
+A boundary can be a performance cliff, a crossover between implementations, a correctness failure, or a resource limit. PHASESHIFT is designed to investigate these boundaries rather than assume that a smooth average benchmark represents every input regime.
+
+## Why this exists
+
+Most benchmarks answer a narrow question: how long did an implementation take on a chosen set of inputs? They are useful, but a single average can conceal the **shape of an algorithm's behavior**.
+
+For example, consider two sorting implementations:
+
+| Input regime | Algorithm A | Algorithm B | What matters |
+|---|---|---|---|
+| Small, randomly distributed arrays | Faster | Slower | A is preferable here |
+| Larger, randomly distributed arrays | Similar | Similar | No decisive difference yet |
+| Larger, nearly sorted arrays | Much slower | Faster | A possible structural performance cliff |
+| Large arrays with many duplicate values | Depends on implementation | Depends on implementation | Investigate a different structural regime |
+
+*This table is illustrative, not measured PHASESHIFT output.*
+
+A conventional benchmark may report that B wins overall. PHASESHIFT aims to answer the deeper questions:
+
+- **Where?** At what input sizes or structural conditions does behavior change?
+- **What kind of change?** An abrupt cliff, a gradual trend, a crossover, a wrong answer, or a timeout?
+- **Under which conditions?** Does the change depend on input distribution, duplicates, graph connectivity, or another parameter?
+- **Is it real?** Does it survive fresh seeds, independent oracle checks, and a predeclared confirmation procedure?
+- **Can someone else inspect it?** Can we preserve the original measurements, decision transcript, input identity, and a minimal reproducer when supported?
+
+The goal is **evidence-backed algorithmic discovery** — finding interesting behavior that developers might otherwise miss, including *negative findings* where a suspected boundary does not hold.
+
+## What PHASESHIFT actually does
+
+```text
+Define algorithm(s) + an input space
+                 |
+                 v
+Generate structural test cases
+(size, distribution, parameters, seeds)
+                 |
+                 v
+Run real implementations in bounded workers
+(correctness, timing, CPU, memory, failure status)
+                 |
+                 v
+Search for candidate boundaries
+(cliffs, crossovers, failures, resource limits)
+                 |
+                 v
+Freeze a testable hypothesis
+                 |
+                 v
+Re-test with independent evidence
+                 |
+                 v
+Report CONFIRMED / NOT_CONFIRMED / NO_CONFIRMED_BOUNDARY
++ provenance, measurements, replay, witnesses where supported
+```
+
+A successful run **does not have to find a boundary**. Rejecting a candidate or reporting no confirmed boundary is a legitimate research result, not a failure of the engine.
+
+### A concrete built-in example
+
+The `calibration` family has a synthetic threshold fixture whose expected transition is known by construction. This exercises the discovery and confirmation pipeline without presenting synthetic operation counts as real-world performance.
+
+```bash
+# Build first (commands in the next section).
+./build/phaseshift demo --out runs/first_demo
+./build/phaseshift report --run runs/first_demo --format markdown,json,csv,html
+```
+
+You can also run a **real algorithm comparison**:
+
+```bash
+./build/phaseshift validate --config configs/sorting_quicksort.json
+./build/phaseshift explore --config configs/sorting_quicksort.json --out runs/sorting_study
+./build/phaseshift report --run runs/sorting_study --format markdown,json,csv,html
+```
+
+The sorting example explores input sizes and distributions while comparing `std_sort` with a first-pivot quicksort implementation. It may or may not produce a confirmed finding on your system. The report and SQLite data provide the evidence; **do not interpret an exploratory score as an independently confirmed result**.
+
+## What is it useful for?
+
+| Use case | Question PHASESHIFT can investigate | Current scope |
+|---|---|---|
+| **Sorting implementations** | Where does input size or distribution change the performance ranking? | Built in |
+| **Top-K selection** | When does a heap, full sort, or selection-based approach become advantageous? | Built in |
+| **Graph / shortest-path algorithms** | Which graph densities, weights, or connectivity regimes change behavior? | Built in |
+| **Correctness and resource boundaries** | Which inputs trigger wrong answers, crashes, timeouts, or excessive memory? | Status-aware workers and evidence; supported cases vary |
+| **Custom native algorithms** | Does a proprietary implementation have a reproducible pathological input? | Trusted native-plugin interface currently supports the integer-array contract |
+| **CUDA kernels or MEV route searches** | Where do specialized kernels or search/pruning strategies cease to scale well? | **Potential future integration**, not a built-in CUDA/MEV engine |
+
+These results can help developers choose implementation strategies, target optimizations, build regression tests, and understand unexplained changes in performance. **PHASESHIFT investigates; it does not automatically rewrite or optimize algorithms.**
+
+## What makes it different from a simple benchmark?
+
+PHASESHIFT combines **structured input-space exploration**, independent correctness checks, measurements from actual workers, boundary-search policies, **fresh-sample confirmation**, and evidence persistence. It keeps failed measurements rather than treating an invalid answer, crash, or timeout as a performance win.
+
+Each run can retain its configuration, environment information, generator identity, candidate decisions, raw observations, hypothesis status, confirmation evidence, and replay/witness material. This makes the output **auditable and falsifiable**, not merely a table of timings.
+
+### Scientific limits
+
+PHASESHIFT must **not** be described as:
+
+- a general mathematical theorem prover or a proof of asymptotic Big-O complexity;
+- a system that establishes causality from observational performance patterns alone;
+- an automatic optimizer or universal fastest-algorithm selector;
+- a guarantee that a significant-looking candidate is true without independent confirmation;
+- a proven state-of-the-art (SOTA) search engine solely because its code or CI passes.
+
+Confirmation is tied to the supported statistical protocol and explicit provenance. Hardware noise, finite input ranges, selection bias, resource budgets, and differences between benchmark contracts still matter.
+
+## Project status
+
+- **`main`** contains the working v1 research engine and an **experimental v2 core**, including additional search policies. The v1 behavior remains the compatibility baseline.
+- **Further v2 development** is tracked in [draft PR #5](https://github.com/SaridakisStamatisChristos/PhaseShift/pull/5). Work on that branch is **not yet merged into `main`**.
+- GitHub CI exercises GCC, Clang, sanitizers, and production-line coverage. Passing tests demonstrate implementation quality; they do **not** establish superiority over external search methods.
+- For implementation contracts and limitations, see [the full specification](docs/PHASESHIFT_SPEC.md), [v2 research documentation](docs/v2/), and the [PR #5 review](https://github.com/SaridakisStamatisChristos/PhaseShift/pull/5).
+
+The long-term ambition is an **autonomous experimental laboratory for algorithms**: given implementations and a well-defined input space, systematically uncover important behavioral regimes and preserve the evidence to challenge or confirm each finding.
 
 ## Build on Linux
 
