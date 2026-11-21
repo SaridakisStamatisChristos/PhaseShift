@@ -14,6 +14,22 @@ A boundary can be a performance cliff, a crossover between implementations, a co
 
 Most benchmarks answer a narrow question: how long did an implementation take on a chosen set of inputs? They are useful, but a single average can conceal the **shape of an algorithm's behavior**.
 
+### A benchmark versus a boundary investigation
+
+```mermaid
+flowchart LR
+    subgraph B["Typical fixed-workload benchmark"]
+        direction TB
+        B1["Choose test inputs"] --> B2["Measure runtime"] --> B3["Rank implementations"]
+    end
+    subgraph P["PHASESHIFT investigation"]
+        direction TB
+        P1["Explore input conditions"] --> P2["Locate changes in behavior"] --> P3["Re-test on fresh evidence"] --> P4["Preserve findings or non-findings"]
+    end
+```
+
+*Conceptual comparison — not a measured performance result. Both approaches are useful; PHASESHIFT focuses on finding the conditions under which behavior changes.*
+
 For example, consider two sorting implementations:
 
 | Input regime | Algorithm A | Algorithm B | What matters |
@@ -37,31 +53,27 @@ The goal is **evidence-backed algorithmic discovery** — finding interesting be
 
 ## What PHASESHIFT actually does
 
-```text
-Define algorithm(s) + an input space
-                 |
-                 v
-Generate structural test cases
-(size, distribution, parameters, seeds)
-                 |
-                 v
-Run real implementations in bounded workers
-(correctness, timing, CPU, memory, failure status)
-                 |
-                 v
-Search for candidate boundaries
-(cliffs, crossovers, failures, resource limits)
-                 |
-                 v
-Freeze a testable hypothesis
-                 |
-                 v
-Re-test with independent evidence
-                 |
-                 v
-Report CONFIRMED / NOT_CONFIRMED / NO_CONFIRMED_BOUNDARY
-+ provenance, measurements, replay, witnesses where supported
+```mermaid
+flowchart TD
+    A["Algorithms + structured input space"] --> B["Generate cases and record seeds"]
+    B --> C["Run bounded workers and independent correctness checks"]
+    C --> D{"Usable performance evidence?"}
+    D -->|"No"| E["Record invalid or censored observations"]
+    D -->|"Yes"| F["Search for behavior boundaries"]
+    F --> G{"Candidate discovered?"}
+    G -->|"No"| H["NO_CONFIRMED_BOUNDARY"]
+    G -->|"Yes"| I["Freeze hypothesis and independent confirmation inputs"]
+    I --> J["Run fresh confirmation measurements"]
+    J --> K{"Meets confirmation protocol?"}
+    K -->|"Yes"| L["CONFIRMED with sealed evidence"]
+    K -->|"No"| M["NOT_CONFIRMED"]
+    E --> N[("Preserved raw run evidence")]
+    H --> N
+    L --> N
+    M --> N
 ```
+
+*The diagram is conceptual. Exact hypothesis states, eligibility, and confirmation checks follow the supported versioned experimental protocol.*
 
 A successful run **does not have to find a boundary**. Rejecting a candidate or reporting no confirmed boundary is a legitimate research result, not a failure of the engine.
 
@@ -103,6 +115,22 @@ These results can help developers choose implementation strategies, target optim
 PHASESHIFT combines **structured input-space exploration**, independent correctness checks, measurements from actual workers, boundary-search policies, **fresh-sample confirmation**, and evidence persistence. It keeps failed measurements rather than treating an invalid answer, crash, or timeout as a performance win.
 
 Each run can retain its configuration, environment information, generator identity, candidate decisions, raw observations, hypothesis status, confirmation evidence, and replay/witness material. This makes the output **auditable and falsifiable**, not merely a table of timings.
+
+### From observation to reproducible evidence
+
+```mermaid
+flowchart LR
+    A["Config + generator version"] --> D["Case identity"]
+    B["Seed + scheduler decisions"] --> D
+    D --> W["Worker execution + correctness oracle"]
+    W --> S["Measurements and failure statuses"]
+    S --> DB[("Versioned SQLite run evidence")]
+    H["Frozen hypothesis + fresh holdout"] --> DB
+    DB --> R["Reports and hypothesis status"]
+    DB --> P["Replay, witnesses and verified export"]
+```
+
+*Confirmation requires appropriate fresh holdout evidence and a valid seal; merely storing a hypothesis does not make it confirmed.*
 
 ### Scientific limits
 
