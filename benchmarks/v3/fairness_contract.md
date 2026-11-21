@@ -18,3 +18,10 @@ Every policy is run through real `explore --pause-after 1`, `resume`, and condit
 **Accounting:** observed waited CLI-subtree CPU (including the CLI and workers) and Python harness CPU are distinct; *pure worker CPU* is not isolated. Both ceilings apply at complete case boundaries. Confirmations after the cap do not count as successes; overshoots and incomplete executions remain visible. The terminal known-truth confirmation time is conservatively assigned to the full completed trial. Equal cap != equal consumption, and case counts are a separate estimand.
 
 **Claim:** diagnostic only. The 20 seeds are a floor, not calibrated 5% FWER proof. No external competitors and no benchmark-driven SOTA determination yet. Large `run.sqlite`/raw results belong in retained CI artifacts, never committed to git.
+
+**SQLite evidence seal repair:** the read-only SQLite backup pager snapshot SHA-256
+(`sqlite_snapshot_sha256`) includes all committed WAL pages. Raw `run.sqlite`
+file-byte hashes are not stable across WAL checkpoints and can omit committed
+rows; the adversarial WAL→checkpoint regression in
+`tests/v3/benchmark_fairness.py` enforces the corrected logical digest.
+Snapshots are ephemeral and never replace authoritative `run.sqlite`.

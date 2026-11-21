@@ -11,6 +11,7 @@ import json
 import math
 import pathlib
 import sqlite3
+import tempfile
 
 ALLOWED_POLICIES = frozenset((
     "adaptive_partition", "grid", "random", "stratified",
@@ -31,6 +32,33 @@ def sha256_file(path):
         for block in iter(lambda: source.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def sqlite_snapshot_sha256(path):
+    """Hash a consistent read-only SQLite *logical snapshot*, including WAL.
+
+    Hashing run.sqlite raw bytes is not safe while the database uses WAL:
+    checkpointing can change the main file after a hash was taken without
+    changing a single committed observation. SQLite backup reads through
+    the pager and produces a fully committed snapshot without mutating the
+    source; the temporary snapshot is immediately removed.
+    """
+    path = pathlib.Path(path)
+    if not path.is_file():
+        raise ValueError("authoritative run.sqlite missing")
+    with tempfile.TemporaryDirectory(prefix="phaseshift-v3-sqlite-snapshot-") as tmp:
+        snapshot = pathlib.Path(tmp) / "snapshot.sqlite"
+        source = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
+        target = None
+        try:
+            source.execute("PRAGMA query_only=ON")
+            target = sqlite3.connect(snapshot)
+            source.backup(target, pages=256)
+        finally:
+            if target is not None:
+                target.close()
+            source.close()
+        return sha256_file(snapshot)
 
 
 def seal(data):
@@ -64,6 +92,7 @@ def load_plan(root):
     assert plan["source_commit"] and len(plan["source_commit"]) == 40
     assert plan["binary_sha256"] and len(plan["binary_sha256"]) == 64
     assert plan["accounting"] == "waited_cli_subtree_cpu_plus_harness_cpu"
+    assert plan["sqlite_evidence_digest"] == "read_only_pager_backup_sha256_v1"
     assert plan["eligible_for_claim"] is False
     expected = {(f, p, s) for f in plan["manifest"]["fixtures"]
                 for p in plan["manifest"]["policies"]
@@ -94,7 +123,7 @@ def verify_results(root):
         sqlite_path = work / "run.sqlite"
         assert work.is_dir() and command_path.is_file() and sqlite_path.is_file()
         assert sha256_file(command_path) == row["commands_sha256"], name
-        assert sha256_file(sqlite_path) == row["sqlite_sha256"], name
+        assert sqlite_snapshot_sha256(sqlite_path) == row["sqlite_snapshot_sha256"], name
         events = [json.loads(line) for line in command_path.read_text().splitlines()]
         assert 1 <= len(events) <= manifest["cases"] + 1
         assert [e["iteration"] for e in events] == list(range(len(events)))

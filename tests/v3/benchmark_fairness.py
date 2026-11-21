@@ -11,7 +11,7 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "benchmarks" / "v3"))
 from protocol import (assert_manifest, exact_binomial_interval,
-                      seal, sha256_file, verify_results)
+                      seal, sha256_file, sqlite_snapshot_sha256, verify_results)
 from scorecard import score
 
 
@@ -29,6 +29,7 @@ def make_fixture(root):
         "binary_sha256": "c"*64,
         "run_order": [["single_cliff", p, 7] for p in manifest["policies"]],
         "accounting": "waited_cli_subtree_cpu_plus_harness_cpu",
+        "sqlite_evidence_digest": "read_only_pager_backup_sha256_v1",
         "eligible_for_claim": False,
     }
     (root / "frozen_plan.json").write_text(
@@ -62,7 +63,7 @@ def make_fixture(root):
         rows.append({
             "fixture": "single_cliff", "policy": policy, "seed": 7,
             "commands_sha256": sha256_file(commands),
-            "sqlite_sha256": sha256_file(path),
+            "sqlite_snapshot_sha256": sqlite_snapshot_sha256(path),
             "observed_total_cpu_ns": full,
             "observed_total_wall_ns": full,
             "observed_parent_cpu_ns": full//4,
@@ -113,6 +114,25 @@ class BenchmarkContractTests(unittest.TestCase):
         self.assertGreater(fast["success_vs_full_system_cpu"]["normalized_trapezoid_auc"],
                            slow["success_vs_full_system_cpu"]["normalized_trapezoid_auc"])
         self.assertFalse(result["sota_claim"])
+
+    def test_wal_checkpoint_does_not_change_logical_digest(self):
+        path = self.root / "wal_state.sqlite"
+        conn = sqlite3.connect(path)
+        self.assertEqual(conn.execute("PRAGMA journal_mode=WAL").fetchone()[0], "wal")
+        conn.execute("CREATE TABLE events(id INTEGER PRIMARY KEY, value TEXT)")
+        conn.execute("INSERT INTO events VALUES(1,'committed')")
+        conn.commit()
+        # WAL main-file bytes lack the newest committed page until checkpoint.
+        before_raw = sha256_file(path)
+        before_snapshot = sqlite_snapshot_sha256(path)
+        conn.close()
+        after_raw = sha256_file(path)
+        after_snapshot = sqlite_snapshot_sha256(path)
+        self.assertNotEqual(before_raw, after_raw)
+        self.assertEqual(before_snapshot, after_snapshot)
+        with sqlite3.connect(path) as replay:
+            self.assertEqual(replay.execute("SELECT value FROM events").fetchone(),
+                             ("committed",))
 
     def test_missing_trial_rejected(self):
         self.save(self.rows[:1])

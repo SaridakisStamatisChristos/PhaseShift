@@ -19,7 +19,7 @@ ROOT = HERE.parents[1]
 sys.path.insert(0, str(ROOT / "benchmarks" / "v2"))
 from dual_cap_challenge import run_one  # existing real CLI, holdout and oracle
 
-from protocol import assert_manifest, canonical, seal, sha256_file
+from protocol import assert_manifest, canonical, seal, sha256_file, sqlite_snapshot_sha256
 
 
 def main():
@@ -70,6 +70,7 @@ def main():
         "binary_sha256": sha256_file(a.binary),
         "run_order": planned,
         "accounting": "waited_cli_subtree_cpu_plus_harness_cpu",
+        "sqlite_evidence_digest": "read_only_pager_backup_sha256_v1",
         "eligible_for_claim": False,
         "sota_claim": False,
         "limitations": [
@@ -90,7 +91,7 @@ def main():
                       manifest["wall_budget_ns"])
         name = f"{fixture}_{policy}_{seed}"
         row["commands_sha256"] = sha256_file(root / (name + ".commands.jsonl"))
-        row["sqlite_sha256"] = sha256_file(root / name / "run.sqlite")
+        row["sqlite_snapshot_sha256"] = sqlite_snapshot_sha256(root / name / "run.sqlite")
         rows.append(row)
         print(json.dumps({"fixture": fixture, "policy": policy, "seed": seed,
                           "completed_cases": row["completed_cases"],
