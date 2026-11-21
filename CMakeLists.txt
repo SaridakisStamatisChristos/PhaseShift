@@ -510,3 +510,9 @@ target_link_libraries(phaseshift_v2_large_space_rss_tests PRIVATE phaseshift_cor
 add_test(NAME v2_billion_coordinate_measured_rss
  COMMAND phaseshift_v2_large_space_rss_tests)
 set_tests_properties(v2_billion_coordinate_measured_rss PROPERTIES TIMEOUT 30)
+
+# M2 numeric morphology compatibility and exhaustive single-axis validation.
+add_test(NAME v2_typed_ordered_axis_contract
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/verify_v2_axis_contract.py
+ --binary ${CMAKE_CURRENT_BINARY_DIR}/phaseshift)
+set_tests_properties(v2_typed_ordered_axis_contract PROPERTIES TIMEOUT 90)
