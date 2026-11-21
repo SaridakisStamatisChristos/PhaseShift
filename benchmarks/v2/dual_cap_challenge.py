@@ -9,6 +9,7 @@ never claimed. Confirmation is an additional measured step and only counts
 if it completes within both remaining ceilings and has a positive seal.
 """
 import argparse
+import copy
 import csv
 import hashlib
 import json
@@ -52,11 +53,23 @@ def measured_call(args, deadline_s):
 
 
 def run_one(binary, root, policy, fixture, seed, cases, cpu_budget_ns,
-            wall_budget_ns):
+            wall_budget_ns, prepared_config=None):
     name = f"{fixture}_{policy}_{seed}"
     folder = root / name
     manifest = root / (name + ".config.json")
-    cfg = config(policy, seed, cases, negative=(fixture == "constant_null"))
+    if prepared_config is None:
+        cfg = config(policy, seed, cases, negative=(fixture == "constant_null"))
+    else:
+        cfg = copy.deepcopy(prepared_config)
+        cfg["experiment_id"] = "dual-cap-" + name
+        cfg["seed"] = seed
+        cfg["search"]["method"] = policy
+        cfg["search"]["max_cases"] = cases
+        if policy.endswith("_v2"):
+            cfg["search"]["policy_version"] = "v2"
+        else:
+            cfg["search"].pop("policy_version", None)
+            cfg.pop("policy_version", None)
     cfg["limits"]["total_wall_seconds"] = max(
         5, min(86400, (wall_budget_ns // 1_000_000_000) + 20))
     manifest.write_text(json.dumps(cfg, sort_keys=True, indent=2) + "\n")

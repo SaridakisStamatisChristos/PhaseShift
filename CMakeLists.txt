@@ -468,3 +468,9 @@ add_executable(phaseshift_fixed_factorial_holdout_tests tests/factorial_holdout_
 target_link_libraries(phaseshift_fixed_factorial_holdout_tests PRIVATE phaseshift_core)
 add_test(NAME v2_fixed_independent_factorial_holdout_math
  COMMAND phaseshift_fixed_factorial_holdout_tests)
+
+configure_file(benchmarks/v2/run_real_family_dual_cap.cmake.in
+ ${CMAKE_CURRENT_BINARY_DIR}/run_real_family_dual_cap.cmake @ONLY)
+add_test(NAME v2_real_sorting_topk_graph_dual_cap
+ COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_real_family_dual_cap.cmake)
+set_tests_properties(v2_real_sorting_topk_graph_dual_cap PROPERTIES TIMEOUT 240 RUN_SERIAL TRUE)
