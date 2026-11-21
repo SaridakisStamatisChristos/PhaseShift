@@ -148,6 +148,9 @@ def run_one(binary, root, policy, fixture, seed, cases, cpu_budget_ns,
                 had_failure = True
                 stopped = "confirmation_command_failed"
 
+    measured_case_proposal_wall_ns = None
+    measured_case_worker_wall_ns = None
+    budget_phase_events = None
     status = "NO_HYPOTHESIS"
     h1_kind = None
     h1_left = h1_right = None
@@ -162,6 +165,20 @@ def run_one(binary, root, policy, fixture, seed, cases, cpu_budget_ns,
             seals = db.execute("SELECT COUNT(*) FROM confirmation_seals").fetchone()[0]
             holdout_samples = db.execute(
                 "SELECT COUNT(*) FROM samples WHERE holdout=1").fetchone()[0]
+            # Read real, transactionally committed v2 phase events. V1
+            # legitimately has none; never invent a measured overhead.
+            phases = db.execute(
+                "SELECT detail FROM events WHERE event='v2_phase_budget'"
+            ).fetchall()
+            if phases:
+                decoded = [json.loads(item[0]) for item in phases]
+                for event in decoded:
+                    assert event["proposal_wall_ns"]>=0 and event["worker_invocation_wall_ns"]>=0
+                budget_phase_events = len(decoded)
+                measured_case_proposal_wall_ns = sum(
+                    event["proposal_wall_ns"] for event in decoded)
+                measured_case_worker_wall_ns = sum(
+                    event["worker_invocation_wall_ns"] for event in decoded)
             valid, invalid = db.execute(
                 "SELECT SUM(CASE WHEN status='ok' THEN 1 ELSE 0 END),"
                 " SUM(CASE WHEN status!='ok' THEN 1 ELSE 0 END) "
@@ -174,6 +191,18 @@ def run_one(binary, root, policy, fixture, seed, cases, cpu_budget_ns,
         "full_wall_ceiling_ns":wall_budget_ns, "accounted_cpu_ceiling_ns":cpu_budget_ns,
         "observed_total_wall_ns":used_wall, "observed_total_cpu_ns":used_cpu,
         "observed_parent_cpu_ns":used_parent, "observed_waited_child_cpu_ns":used_child,
+        "phase_events":budget_phase_events,
+        "measured_case_proposal_wall_ns":measured_case_proposal_wall_ns,
+        "measured_case_worker_wall_ns":measured_case_worker_wall_ns,
+        "total_unattributed_wall_ns":(
+            max(0,used_wall-measured_case_proposal_wall_ns-measured_case_worker_wall_ns)
+            if measured_case_proposal_wall_ns is not None else None),
+        "proposal_fraction_of_total_wall":(
+            measured_case_proposal_wall_ns / used_wall
+            if measured_case_proposal_wall_ns is not None and used_wall else None),
+        "non_worker_wall_upper_bound_fraction":(
+            max(0,used_wall-measured_case_worker_wall_ns)/used_wall
+            if measured_case_worker_wall_ns is not None and used_wall else None),
         "cpu_overshoot_ns":max(0, used_cpu-cpu_budget_ns),
         "wall_overshoot_ns":max(0, used_wall-wall_budget_ns),
         "within_both_ceilings":within, "stop_reason":stopped,

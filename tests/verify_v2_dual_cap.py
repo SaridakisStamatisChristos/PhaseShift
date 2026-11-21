@@ -32,6 +32,16 @@ for row in rows:
         0,row["observed_total_wall_ns"]-plan["wall_ceiling_ns"])
     assert 0<=row["completed_cases"]<=plan["cases"]
     assert row["verified_sota_claim"] is False
+    if row["policy"].endswith("_v2"):
+        assert row["phase_events"] == row["completed_cases"]
+        assert row["measured_case_proposal_wall_ns"] >= 0
+        assert row["measured_case_worker_wall_ns"] >= 0
+        assert row["total_unattributed_wall_ns"] >= 0
+        assert 0 <= row["proposal_fraction_of_total_wall"] <= 1
+        assert 0 <= row["non_worker_wall_upper_bound_fraction"] <= 1
+    else:
+        assert row["phase_events"] is None
+        assert row["proposal_fraction_of_total_wall"] is None
     folder=a.root/f"{row['fixture']}_{row['policy']}_{row['seed']}"
     assert folder.is_dir()
     with sqlite3.connect(folder/"run.sqlite") as db:
