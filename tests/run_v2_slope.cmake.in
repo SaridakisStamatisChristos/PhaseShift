@@ -1,0 +1,14 @@
+set(RUN "@CMAKE_CURRENT_BINARY_DIR@/v2_slope_ctest")
+file(REMOVE_RECURSE "${RUN}")
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" explore
+ --config "@CMAKE_CURRENT_SOURCE_DIR@/configs/v2/slope_calibration.json"
+ --out "${RUN}" RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "v2 slope discovery-only smoke failed")
+endif()
+execute_process(COMMAND "@Python3_EXECUTABLE@"
+ "@CMAKE_CURRENT_SOURCE_DIR@/tests/verify_v2_slope.py"
+ --run "${RUN}" RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "v2 slope exploratory SQL evidence missing")
+endif()

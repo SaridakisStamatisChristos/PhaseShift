@@ -12,6 +12,7 @@
 #include "phaseshift/hybrid_v2.hpp"
 #include "phaseshift/interaction_v2.hpp"
 #include "phaseshift/boundary_v2.hpp"
+#include "phaseshift/slope_v2.hpp"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -306,9 +307,9 @@ Config config_from_json(const Json& j){
   if(c.measurement_protocol_version!="legacy_retained_outputs_v1"&&
      c.measurement_protocol_version!="calibrated_batch_v2")
    throw Error("unsupported v2 measurement protocol; kernel_only_v2 is unavailable");
-  if(c.detector_version!="boundary_v1"&&c.detector_version!="multi_change_v2"&&c.detector_version!="multi_change_pelt_v2")
+  if(c.detector_version!="boundary_v1"&&c.detector_version!="multi_change_v2"&&c.detector_version!="multi_change_pelt_v2"&&c.detector_version!="multi_slope_v2")
    throw Error("unsupported v2 detector version");
-  if((c.detector_version=="multi_change_v2"||c.detector_version=="multi_change_pelt_v2")&&!numeric_axis(c.axis))
+  if((c.detector_version=="multi_change_v2"||c.detector_version=="multi_change_pelt_v2"||c.detector_version=="multi_slope_v2")&&!numeric_axis(c.axis))
    throw Error("multi_change_v2 requires an ordered numeric primary axis");
   if(c.max_cases>c.max_queue)throw Error("v2 candidate budget exceeds memory bound");
   if(c.seed>static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())-static_cast<std::uint64_t>(c.replicate_count-1))
@@ -788,6 +789,45 @@ static void v2_factorial_diagnostic(Store& store,const Config& cfg){
  store.event("v2_factorial_screen_discovery_only",record.str());
 }
 
+// This detector is deliberately exploratory: a slope break is not a jump,
+// does not license v1 two-side confirmation, and has no p-value. Retain the
+// raw model and all selected cuts without manufacturing an HYPOTHESIZED claim.
+static void v2_slope_diagnostic(Store& store,const Config& cfg){
+ std::map<std::string,std::map<std::int64_t,std::vector<double>>> cohorts;
+ for(const auto& c:store.cases(false))
+  if(const auto value=metric(store,c,cfg,false))
+   cohorts[scope_key(c,cfg)][axis_value(c,cfg.axis)].push_back(*value);
+ for(const auto& [scope,points]:cohorts){
+  if(points.size()<6||points.size()>512)continue;
+  std::vector<std::int64_t> x;std::vector<double> y;
+  for(const auto& [coordinate,values]:points){
+   x.push_back(coordinate);y.push_back(sample_median(values));
+  }
+  std::vector<double> differences;
+  for(std::size_t i=1;i<y.size();++i)
+   differences.push_back(std::abs((y[i]-y[i-1])/
+    static_cast<double>(x[i]-x[i-1])));
+  const auto noise=sample_median(differences);
+  const auto penalty=std::max(1e-8,noise*noise*
+   std::log(static_cast<double>(y.size())));
+  const auto fit=fit_multi_slope_v2(x,y,3,3,penalty);
+  Json entry;entry.put("model_version","multi_slope_v2");
+  entry.put("scope",scope);
+  entry.put("sample_count",static_cast<std::int64_t>(y.size()));
+  entry.put("changes",static_cast<std::int64_t>(fit.changes.size()));
+  entry.put("residual_sse",fit.residual_sse);
+  entry.put("penalized_sse",fit.penalized_sse);
+  entry.put("confirmatory_significance",false);
+  auto* cuts=json_object_new_array();
+  for(const auto at:fit.changes){
+   Json cut;cut.put("left",x[at-1]);cut.put("right",x[at]);
+   json_object_array_add(cuts,cut.p);cut.p=nullptr;
+  }
+  json_object_object_add(entry.p,"cut_intervals",cuts);
+  store.event("v2_slope_model_discovery_only",entry.str());
+ }
+}
+
 // V2 uniform baseline: virtual candidate indices, no Cartesian materialization.
 // Case IDs and RNG are checked against the committed decision transcript.
 static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& store,std::size_t pause_after){
@@ -928,6 +968,7 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
  }
  if(completed==cfg.max_cases||exhausted||sampled_cpu_limit){
   v2_factorial_diagnostic(store,cfg);
+  if(cfg.detector_version=="multi_slope_v2")v2_slope_diagnostic(store,cfg);
   std::optional<Detection> selected=detect(store,cfg);
   std::vector<Detection> ranked_multi;
   if(cfg.detector_version=="multi_change_v2"||cfg.detector_version=="multi_change_pelt_v2"){
