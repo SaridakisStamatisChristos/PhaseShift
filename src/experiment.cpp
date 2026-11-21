@@ -989,7 +989,21 @@ void resume(const std::string& run,std::size_t pause_after){
  sqlite3_stmt* st=nullptr;
  if(sqlite3_prepare_v2(s.raw(),"SELECT COUNT(*) FROM hypotheses",-1,&st,nullptr)!=SQLITE_OK)throw Error("hypothesis lookup failed");
  auto rc=sqlite3_step(st);const auto done=rc==SQLITE_ROW?sqlite3_column_int64(st,0):0;sqlite3_finalize(st);
- if(done)throw Error("experiment has finalized hypothesis; resume would overwrite evidence");
+ if(done){
+  // Narrow opt-in exception: a fully sealed sampled-CPU-budget stop is
+  // idempotently resumable as a no-op, never as a new discovery write.
+  if(cfg.policy_version=="v2"&&cfg.max_sampled_cpu_ns>0){
+   sqlite3_stmt* check=nullptr;
+   if(sqlite3_prepare_v2(s.raw(),
+     "SELECT COUNT(DISTINCT event) FROM events WHERE event IN ('v2_sampled_cpu_limit_reached','search_complete')",
+     -1,&check,nullptr)!=SQLITE_OK)throw Error("budget finalization evidence query failed");
+   const auto step=sqlite3_step(check);
+   const bool terminal=step==SQLITE_ROW&&sqlite3_column_int(check,0)==2;
+   sqlite3_finalize(check);
+   if(terminal){report(run);return;}
+  }
+  throw Error("experiment has finalized hypothesis; resume would overwrite evidence");
+ }
  execute_schedule(cfg,run,s,pause_after);
 }
 static std::tuple<std::string,std::string,std::int64_t,std::int64_t> read_hypothesis(Store& s,const std::string& id){
