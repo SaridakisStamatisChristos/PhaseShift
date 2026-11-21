@@ -7,7 +7,7 @@ import shutil
 import sqlite3
 import subprocess
 
-def run(binary, root, name, negative):
+def run(binary, root, name, negative, persistent_detector=False):
     cfg = {
         "schema_version":1, "experiment_id":"cliff-bracket-"+name,
         "problem_family":"calibration","algorithms":["calibration"],
@@ -20,6 +20,9 @@ def run(binary, root, name, negative):
                        "warmup_iterations":0},
         "limits":{"total_wall_seconds":90,"max_search_queue":80},
     }
+    if persistent_detector:
+        cfg["detection"]={"detector_version":"multi_change_jump_v2",
+                          "min_practical_ratio":1.2}
     manifest=root/(name+".json")
     manifest.write_text(json.dumps(cfg,sort_keys=True)+"\n")
     folder=root/name
@@ -51,12 +54,19 @@ def main():
     first=run(a.binary.resolve(),a.out,"threshold",False)
     repeated=run(a.binary.resolve(),a.out,"threshold_repeat",False)
     other=run(a.binary.resolve(),a.out,"negative",True)
+    # Exercise the complete opt-in detector through real workers and SQLite,
+    # not merely its numerical unit helper. Detection versions do not influence
+    # the search proposal order, but they can change the final hypothesis.
+    guarded=run(a.binary.resolve(),a.out,"guarded_threshold",False,True)
+    guarded_null=run(a.binary.resolve(),a.out,"guarded_negative",True,True)
+    assert guarded==first,(guarded,first)
+    assert len(guarded_null)==8
     # An adaptive policy MUST be permitted to change its decision sequence
     # when the observed performance signal changes. Determinism compares
     # equal experiments, not a planted cliff with an independent null.
     assert first==repeated,(first,repeated)
     assert len(other)==8 and len(set(other))==8,other
-    print("PASS cliff-bracketing threshold 23..24, null rejection, same-signal deterministic CLI replay")
+    print("PASS cliff bracketing and persistent-jump detector: threshold 23..24, both null controls, same-signal replay")
 
 if __name__=="__main__":
     main()
