@@ -41,4 +41,19 @@ for _id, params, seed in cases:
         negative and x in (2, 3) and threshold == 3
     ), j
     assert seed in (334, 335)
+for run in (args.resumed, args.uninterrupted):
+    with sqlite3.connect(run + "/run.sqlite") as db:
+        phases = [json.loads(x[0]) for x in db.execute(
+            "SELECT detail FROM events WHERE event='v2_phase_budget' ORDER BY id"
+        )]
+        decisions = [x[0] for x in db.execute(
+            "SELECT pool_index FROM scheduler_decisions ORDER BY seq"
+        )]
+    assert len(phases) == len(decisions) == 12
+    assert [p["virtual_index"] for p in phases] == decisions
+    for event in phases:
+        assert event["accounting_model"] == "descriptive_v2_case_boundary_v1"
+        assert event["proposal_wall_ns"] >= 0 and event["worker_invocation_wall_ns"] >= 0
+        assert event["valid_timed_cpu_ns"] >= 0
+        assert isinstance(event["timed_cpu_complete"], bool)
 print("PASS weighted admissible space exactly-once replay and independent SQLite evidence")

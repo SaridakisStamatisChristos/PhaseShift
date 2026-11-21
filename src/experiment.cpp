@@ -987,9 +987,13 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
  bool budget_hit=false,exhausted=false;std::size_t this_call=0;
  while(completed<cfg.max_cases&&!sampled_cpu_limit&&(pause_after==0||this_call<pause_after)){
   if(std::chrono::steady_clock::now()>=deadline){budget_hit=true;break;}
+  const auto proposal_started=std::chrono::steady_clock::now();
   auto next=next_valid();
   if(!next){exhausted=true;break;}
+  const auto proposal_wall_ns=std::chrono::duration_cast<std::chrono::nanoseconds>(
+   std::chrono::steady_clock::now()-proposal_started).count();
   auto c=make_case(next->second,cfg.max_bytes);std::vector<Observation> obs;
+  const auto worker_started=std::chrono::steady_clock::now();
   try{
    obs=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},
     cfg.blocks,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,
@@ -998,8 +1002,22 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
    if(std::string(e.what()).find("total_wall_seconds budget exhausted")!=std::string::npos){budget_hit=true;break;}
    throw;
   }
+  const auto worker_wall_ns=std::chrono::duration_cast<std::chrono::nanoseconds>(
+   std::chrono::steady_clock::now()-worker_started).count();
   if(std::chrono::steady_clock::now()>=deadline){budget_hit=true;break;}
   account_samples(obs);
+  // Descriptive, per-commit accounting. Neither clock is a parent-CPU or
+  // complete process-tree CPU measurement; every retained worker failure
+  // must be labeled rather than treated as zero-cost evidence.
+  std::int64_t timed_cpu=0;
+  bool timed_cpu_complete=true;
+  for(const auto& o:obs){
+   if(o.status!="ok"||o.cpu_ns<0||
+      o.cpu_ns>std::numeric_limits<std::int64_t>::max()-timed_cpu){
+    timed_cpu_complete=false;continue;
+   }
+   timed_cpu+=o.cpu_ns;
+  }
   store.exec("BEGIN IMMEDIATE");
   try{
    for(const auto& o:obs)store.add_observation(c,o,false);
@@ -1010,6 +1028,14 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
    if(hybrid)store.event("v2_acquisition",std::to_string(next->first)+";origin="+hybrid->origin());
    if(stratified)store.event("v2_acquisition",std::to_string(next->first)+";origin=stratified_primary_axis");
    if(weighted)store.event("v2_acquisition",std::to_string(next->first)+";origin=weighted_domain_prior");
+   Json phases;
+   phases.put("virtual_index",static_cast<std::int64_t>(next->first));
+   phases.put("proposal_wall_ns",static_cast<std::int64_t>(proposal_wall_ns));
+   phases.put("worker_invocation_wall_ns",static_cast<std::int64_t>(worker_wall_ns));
+   phases.put("valid_timed_cpu_ns",timed_cpu);
+   phases.put("timed_cpu_complete",timed_cpu_complete);
+   phases.put("accounting_model","descriptive_v2_case_boundary_v1");
+   store.event("v2_phase_budget",phases.str());
    if(cfg.max_sampled_cpu_ns){
     Json cost;cost.put("sampled_cpu_ns",static_cast<std::int64_t>(sampled_cpu_used));
     cost.put("limit_ns",static_cast<std::int64_t>(cfg.max_sampled_cpu_ns));
