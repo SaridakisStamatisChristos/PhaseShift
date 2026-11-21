@@ -35,6 +35,7 @@ class HybridMixedPolicyV2 {
  std::set<std::uint64_t> rejected_;
  std::map<std::string,std::map<std::size_t,Sample>> groups_;
  std::priority_queue<Gap> gaps_;
+ std::optional<std::uint64_t> pending_replication_;
  static std::string encoded(const std::string& x){return std::to_string(x.size())+":"+x;}
  std::string context(const std::vector<std::pair<std::string,std::string>>& coords,
   std::uint64_t seed)const{
@@ -98,6 +99,38 @@ class HybridMixedPolicyV2 {
   }
   return std::nullopt;
  }
+ // Discovery-only adaptive replication: when a strong seed-matched
+ // contrast appears, spend two measurements at the SAME endpoints on
+ // a fresh shared seed. This is a heuristic, not calibrated uncertainty.
+ std::optional<std::uint64_t> replication_target(){
+  if(replicas_<2)return std::nullopt;
+  double best_contrast=0.75;
+  std::optional<std::pair<std::uint64_t,std::uint64_t>> best_pair;
+  for(const auto& [context_key,group]:groups_){
+   (void)context_key;
+   if(group.size()<2)continue;
+   for(auto left=group.begin(),right=std::next(left);
+       right!=group.end();++left,++right){
+    if(!left->second.signal||!right->second.signal)continue;
+    const double contrast=std::abs(*left->second.signal-*right->second.signal);
+    if(!(contrast>best_contrast))continue;
+    const auto l_coordinate=left->second.index/replicas_;
+    const auto r_coordinate=right->second.index/replicas_;
+    for(std::uint64_t seed=0;seed<replicas_;++seed){
+     const auto l=l_coordinate*replicas_+seed;
+     const auto r=r_coordinate*replicas_+seed;
+     if(observed_.count(l)||observed_.count(r)||
+        rejected_.count(l)||rejected_.count(r))continue;
+     best_contrast=contrast;
+     best_pair=std::pair<std::uint64_t,std::uint64_t>{l,r};
+     break;
+    }
+   }
+  }
+  if(!best_pair)return std::nullopt;
+  pending_replication_=best_pair->second;
+  return best_pair->first;
+ }
  std::optional<std::uint64_t> baseline(){
   while(stratified_.has_next()){
    const auto index=stratified_.next();
@@ -123,6 +156,7 @@ public:
  void reject(std::uint64_t i){
   if(i>=space_.cardinality()*replicas_||observed_.count(i)||
      !rejected_.insert(i).second)throw Error("invalid hybrid rejected proposal");
+  pending_replication_.reset(); // an invalid half cannot force a pairing
  }
  void observe(std::uint64_t i,std::optional<double> value,double cpu_ms){
   if(i>=space_.cardinality()*replicas_||rejected_.count(i)||
@@ -150,7 +184,22 @@ public:
  }
  std::optional<std::uint64_t> next(){
   if(observed_.size()+rejected_.size()==space_.cardinality()*replicas_)return std::nullopt;
+  if(pending_replication_){
+   const auto paired=*pending_replication_;
+   pending_replication_.reset();
+   if(!observed_.count(paired)&&!rejected_.count(paired)){
+    origin_="hybrid_paired_replication";
+    return paired;
+   }
+  }
   const auto n=observed_.size();
+  // Bounded discovery allocation; this never replaces independent holdout.
+  if(n>=4&&replicas_>1&&n%4==0){
+   if(const auto candidate=replication_target()){
+    origin_="hybrid_paired_replication";
+    return candidate;
+   }
+  }
   const auto quota=[&](std::size_t count){
    return static_cast<std::size_t>(std::floor(static_cast<double>(count)*fraction_+1.e-9));
   };
