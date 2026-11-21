@@ -1,4 +1,5 @@
 #include "phaseshift/interaction_v2.hpp"
+#include "phaseshift/core.hpp"
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -35,7 +36,7 @@ int main(){
  CHECK(fixed_factorial_holdout_v2(
   a,b,censored,discovery,20,1,0.5,0.05).state=="INVALID_OR_CENSORED_HOLDOUT");
  const auto rejects=[&](auto&& fn){
-  try{fn();}catch(const Error&){return true;}return false;
+  try{fn();}catch(const ps::Error&){return true;}return false;
  };
  CHECK(rejects([&]{(void)fixed_factorial_holdout_v2(
   a,b,holdout,{100},20,1,0.5,0.05);}));
