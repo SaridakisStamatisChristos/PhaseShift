@@ -1,0 +1,87 @@
+name: v2-heldout-research
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/v2-heldout-research.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  twenty-seed-dual-ceiling:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      PYTHONHASHSEED: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reproducible build dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build g++ libsqlite3-dev libjson-c-dev libssl-dev pkg-config
+      - run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++
+      - run: cmake --build build -j2
+      - name: Frozen twenty-seed synthetic cliff/null worker campaign
+        shell: bash
+        run: |
+          set -euo pipefail
+          seeds="$(seq -s, 1001 1020)"
+          python3 benchmarks/v2/dual_cap_challenge.py \
+            --binary build/phaseshift --out build/v2_synthetic_20 \
+            --seeds "$seeds" --cases 8 --cpu-budget-ns 5000000000 \
+            --wall-budget-ns 15000000000
+          python3 tests/verify_v2_dual_cap.py --root build/v2_synthetic_20
+          python3 benchmarks/v2/summarize_dual_cap.py \
+            --root build/v2_synthetic_20 \
+            --output build/v2_synthetic_20/scorecard.json
+      - name: Frozen twenty-seed sorting, Top-K and graph worker campaign
+        shell: bash
+        run: |
+          set -euo pipefail
+          seeds="$(seq -s, 1001 1020)"
+          python3 benchmarks/v2/real_family_dual_cap.py \
+            --binary build/phaseshift --out build/v2_real_20 \
+            --seeds "$seeds" --cases 8 --cpu-budget-ns 5000000000 \
+            --wall-budget-ns 15000000000
+          python3 tests/verify_v2_dual_cap.py --root build/v2_real_20
+          python3 benchmarks/v2/summarize_dual_cap.py \
+            --root build/v2_real_20 \
+            --output build/v2_real_20/scorecard.json
+      - name: Preserve all raw outcomes, including failures and cap overshoots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-heldout-dual-caps-${{ github.sha }}
+          path: |
+            build/v2_synthetic_20/
+            build/v2_real_20/
+          retention-days: 14
+          if-no-files-found: warn
+
+  matched-external-detector:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      PYTHONHASHSEED: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reproducible build dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build g++ libsqlite3-dev libjson-c-dev libssl-dev pkg-config python3-venv
+      - run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=g++
+      - run: cmake --build build --target phaseshift_v2_noisy_detection_tests -j2
+      - name: Freeze independent C++ 20-seed dataset with exact DP/PELT scores
+        run: ctest --test-dir build -R '^v2_noisy_holdout_segmentation_challenge$' --output-on-failure
+      - name: Pinned ruptures 1.1.10, detector-only matched objective
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv build/ruptures_env
+          build/ruptures_env/bin/pip install --disable-pip-version-check 'ruptures==1.1.10'
+          build/ruptures_env/bin/python benchmarks/v2/external_ruptures.py \
+            --dataset-root build/ctest_v2_noisy \
+            --out build/ctest_v2_noisy/ruptures_comparison.json
+      - name: Preserve external, C++ and ineligible objective results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-ruptures-detector-${{ github.sha }}
+          path: build/ctest_v2_noisy/
+          retention-days: 14
+          if-no-files-found: warn
