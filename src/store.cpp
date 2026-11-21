@@ -40,7 +40,16 @@ Store::Store(const std::string& path,bool readonly){
  }
  check(sqlite3_open_v2(readonly?uri.c_str():path.c_str(),&db_,readonly?SQLITE_OPEN_READONLY|SQLITE_OPEN_URI:SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE,nullptr),db_,"SQL open");
  if(!readonly)exec("PRAGMA foreign_keys=ON;PRAGMA journal_mode=WAL;PRAGMA busy_timeout=5000;");
- auto old=sqlite3_get_autocommit(db_);(void)old;Statement st(db_,"PRAGMA user_version");auto rc=sqlite3_step(st.p);check(rc,db_,"schema version");auto version=sqlite3_column_int(st.p,0);if(version>8|| (readonly&&version!=6&&version!=7&&version!=8))throw Error("unsupported database schema version");
+ auto old=sqlite3_get_autocommit(db_);(void)old;
+ int version=-1;
+ {Statement st(db_,"PRAGMA user_version");auto rc=sqlite3_step(st.p);check(rc,db_,"schema version");
+  version=sqlite3_column_int(st.p,0);}
+ if(version>8||(readonly&&version!=6&&version!=7&&version!=8)){
+  // A constructor that throws never runs Store::~Store; release the handle
+  // after the version query statement has finalized (also under LeakSanitizer).
+  sqlite3_close(db_);db_=nullptr;
+  throw Error("unsupported database schema version");
+ }
  if(version==0&&!readonly){exec(R"SQL(
  BEGIN;
  CREATE TABLE IF NOT EXISTS experiments(id INTEGER PRIMARY KEY CHECK(id=1),config TEXT NOT NULL,config_hash TEXT NOT NULL,environment TEXT NOT NULL,created_at TEXT NOT NULL);
