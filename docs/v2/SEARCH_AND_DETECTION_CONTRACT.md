@@ -32,3 +32,8 @@ Opt-in `search.method=stratified_v2` uses one exactly permuted without-replaceme
 ## Pruned exact changepoint model (M5 incremental)
 
 Opt-in `detection.detector_version=multi_change_pelt_v2` supports squared-error penalized segmentation with delayed PELT candidate pruning under a minimum segment size. An unconstrained optimal partition containing more changes than the configured K-bound is **not truncated**: it falls back to the existing exact K-bounded DP. Worst-case complexity remains quadratic for the pruned search and O(KN²) for fallback. Unit tests compare every result to the exact K-bounded oracle on exhaustive binary sequences and test zero/smooth/multiple transitions. Scores are exploratory; candidate selection never establishes independent holdout significance.
+
+
+## Ranked candidate identity and confirmation multiplicity
+
+Opt-in `multi_change_v2` / `multi_change_pelt_v2` now persists at most 16 distinct geometric hypotheses (`H1..H16`) at the point discovery is complete; it keeps the strongest selected `H1` unchanged and stores ranked alternatives as **HYPOTHESIZED** only. Repeated identical left/right geometry is deduplicated rather than claiming distinct conditional causal scopes from the same axis cut. These are not 16 confirmed findings. Each hypothesis has a separate deterministic, nonoverlapping fixed-holdout seed window. The campaign must be frozen **before** the first confirmation to make any family-wise claim. No claim is made that every alternative can be independently confirmed under a finite run's budget.

@@ -894,28 +894,47 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
  if(completed==cfg.max_cases||exhausted||sampled_cpu_limit){
   v2_factorial_diagnostic(store,cfg);
   std::optional<Detection> selected=detect(store,cfg);
+  std::vector<Detection> ranked_multi;
   if(cfg.detector_version=="multi_change_v2"||cfg.detector_version=="multi_change_pelt_v2"){
-   const auto candidates=detect_multi_v2(store,cfg);
+   ranked_multi=detect_multi_v2(store,cfg);
    std::size_t rank=0;
-   for(const auto& c:candidates){
+   for(const auto& c:ranked_multi){
     Json evidence;evidence.put("rank",static_cast<std::int64_t>(++rank));
     evidence.put("left",c.left);evidence.put("right",c.right);
     evidence.put("effect",c.effect);evidence.put("scope",c.scope);
     evidence.put("model_version",cfg.detector_version);
     store.event("v2_multiple_change_discovery_only",evidence.str());
    }
-   if(!candidates.empty()&&(!selected||
+   if(!ranked_multi.empty()&&(!selected||
       (selected->kind!="CORRECTNESS_BOUNDARY"&&
        selected->kind!="MEMORY_OR_RESOURCE_BOUNDARY"&&
        selected->kind!="PERFORMANCE_CROSSOVER"&&
-       candidates.front().effect>=selected->effect)))
-    selected=candidates.front();
+       ranked_multi.front().effect>=selected->effect)))
+    selected=ranked_multi.front();
   }
   if(auto d=selected){
    store.hypothesis("H1","OBSERVED",cfg.axis,d->left,d->right,d->effect,
     "Exploratory v2 candidate, not independently confirmed",d->kind,d->frozen_params);
    store.hypothesis("H1","HYPOTHESIZED",cfg.axis,d->left,d->right,d->effect,
-    "V2 uniform discovery; independent holdout required",d->kind,d->frozen_params);
+    "V2 discovery; frozen independent holdout required",d->kind,d->frozen_params);
+   // Up to 15 further distinct geometric boundaries remain HYPOTHESIZED,
+   // never automatically confirmed. All must be predeclared together before
+   // holdout in a family manifest; same-geometry scopes cannot currently
+   // claim independent conditional effects.
+   std::set<std::pair<std::int64_t,std::int64_t>> geometry;
+   geometry.emplace(d->left,d->right);
+   std::size_t next_id=2;
+   for(const auto& candidate:ranked_multi){
+    if(next_id>16)break;
+    if(!geometry.emplace(candidate.left,candidate.right).second)continue;
+    const auto id="H"+std::to_string(next_id++);
+    store.hypothesis(id,"OBSERVED",cfg.axis,candidate.left,candidate.right,
+      candidate.effect,"Exploratory ranked multi-change candidate; untested",
+      candidate.kind,candidate.frozen_params);
+    store.hypothesis(id,"HYPOTHESIZED",cfg.axis,candidate.left,candidate.right,
+      candidate.effect,"Frozen discovery rank; independent holdout and campaign multiplicity required",
+      candidate.kind,candidate.frozen_params);
+   }
   }else store.hypothesis("H1","NO_CONFIRMED_BOUNDARY",cfg.axis,0,0,0,
     "No convincing isolated structural discontinuity under declared thresholds");
   if(sampled_cpu_limit)store.event("v2_sampled_cpu_limit_reached",

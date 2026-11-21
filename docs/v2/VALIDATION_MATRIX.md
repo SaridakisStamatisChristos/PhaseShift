@@ -30,3 +30,5 @@ States are deliberately strict; no intermediate green workflow grants final-bran
 - M1 opt-in measured timed-region CPU stopping limit: per-case ledger, crash/resume raw-cost derivation, v1 isolation and invalid-cost refusal; only partial full experiment-budget contract. Full CPU/wall accounting and equal-budget SOTA still outstanding.
 
 - M9 SQLite additive v8 opt-in: newly implemented, allows historical v7 read-only and v1 untouched; budget ledger FK and atomic transaction tests added. Does not yet implement full campaign, model-cache or candidate-key table set. Independent latest-revision CI pending.
+
+- M5/M7 ranked multiple candidates: up to 16 distinct geometric, HYPOTHESIZED-only H1..H16 with explicit frozen candidate data; unique v2 holdout seed streams. Provisional until a real multi-change/real-worker campaign passes and family correction is sealed.
