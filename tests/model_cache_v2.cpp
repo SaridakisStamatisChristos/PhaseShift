@@ -41,5 +41,48 @@ int main(int argc,char** argv){
   ps::ModelCheckpointCacheV2 resumed(cache,"config-id");
   resumed.remember(2,8,"case2",0xf01,std::nullopt,1.,{o});
  }));
+ {
+  const auto folder=dir/"not-a-file";
+  std::filesystem::create_directory(folder);
+  CHECK(rejected([&]{ps::ModelCheckpointCacheV2 bad(folder.string(),"config-id");}));
+  CHECK(rejected([&]{ps::ModelCheckpointCacheV2 bad(cache,"");}));
+ }
+ {
+  const auto other=(dir/"foreign-schema.sqlite").string();
+  sqlite3* foreign=nullptr;
+  CHECK(sqlite3_open(other.c_str(),&foreign)==SQLITE_OK);
+  CHECK(sqlite3_exec(foreign,"CREATE TABLE unrelated(data INTEGER)",
+                    nullptr,nullptr,nullptr)==SQLITE_OK);
+  sqlite3_close(foreign);
+  CHECK(rejected([&]{ps::ModelCheckpointCacheV2 bad(other,"config-id");}));
+ }
+ {
+  const auto future=(dir/"future-schema.sqlite").string();
+  sqlite3* version=nullptr;
+  CHECK(sqlite3_open(future.c_str(),&version)==SQLITE_OK);
+  CHECK(sqlite3_exec(version,"PRAGMA user_version=2",nullptr,nullptr,nullptr)==SQLITE_OK);
+  sqlite3_close(version);
+  CHECK(rejected([&]{ps::ModelCheckpointCacheV2 bad(future,"config-id");}));
+ }
+ {
+  ps::ModelCheckpointCacheV2 verified(cache,"config-id");
+  CHECK(rejected([&]{verified.remember(0,0,"case",1,std::nullopt,1.,{o});}));
+  CHECK(rejected([&]{verified.remember(1,7,"case1",0xf00,2.,-1.,{o});}));
+  CHECK(rejected([&]{verified.remember(1,7,"case1",0xf00,2.,
+     std::numeric_limits<double>::infinity(),{o});}));
+  CHECK(rejected([&]{verified.remember(1,7,"case1",0xf00,
+     std::numeric_limits<double>::quiet_NaN(),2.,{o});}));
+  CHECK(rejected([&]{verified.remember(1,7,"case1",0xf00,2.,2.,{});}));
+  CHECK(rejected([&]{verified.remember(1,8,"case1",0xf00,2.,2.,{o});}));
+  CHECK(rejected([&]{verified.remember(1,7,"other-case",0xf00,2.,2.,{o});}));
+  CHECK(rejected([&]{verified.remember(1,7,"case1",0xf01,2.,2.,{o});}));
+ }
+#ifndef _WIN32
+ {
+  const auto link=dir/"symlink.sqlite";
+  std::filesystem::create_symlink(cache,link);
+  CHECK(rejected([&]{ps::ModelCheckpointCacheV2 bad(link.string(),"config-id");}));
+ }
+#endif
  return 0;
 }
