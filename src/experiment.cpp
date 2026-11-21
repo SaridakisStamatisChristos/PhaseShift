@@ -9,6 +9,7 @@
 #include "phaseshift/lazy_search.hpp"
 #include "phaseshift/stratified_v2.hpp"
 #include "phaseshift/weighted_v2.hpp"
+#include "phaseshift/evidence_view_v2.hpp"
 #include "phaseshift/scheduler_v2.hpp"
 #include "phaseshift/hybrid_v2.hpp"
 #include "phaseshift/interaction_v2.hpp"
@@ -554,8 +555,8 @@ static std::int64_t axis_value(const Case& c,const std::string& axis){
  if(axis=="max_weight")return c.max_weight;
  throw Error("unsupported structural axis: "+axis);
 }
-static std::optional<double> metric(Store& store,const Case& c,const Config& cfg,bool holdout){
- const auto obs=store.observations(c.id,holdout);
+static std::optional<double> metric_from_rows(
+ const std::vector<Observation>& obs,const Config& cfg){
  std::map<std::int64_t,std::vector<double>> a,b;
  for(const auto& o:obs){
   /* A case with *any* failed target execution is inadmissible. Otherwise a
@@ -580,6 +581,9 @@ static std::optional<double> metric(Store& store,const Case& c,const Config& cfg
  }
  if(paired.empty())return {};
  return sample_median(paired);
+}
+static std::optional<double> metric(Store& store,const Case& c,const Config& cfg,bool holdout){
+ return metric_from_rows(store.observations(c.id,holdout),cfg);
 }
 /* Group every non-primary axis by exact typed parameter values, not by the
    partially observed primary metric. Categorical dimensions are conditioned
@@ -974,15 +978,15 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
  const auto rng_state=[&](){return hybrid?hybrid->rng_state():
   (hierarchy?hierarchy->rng_state():
    (weighted?weighted->state():(stratified?stratified->state():sampler.state())));};
- const auto cpu_ms=[&](const Case& c){
-  double ms=0;
-  for(const auto& o:store.observations(c.id,false))
-   if(o.cpu_ns>0)ms+=static_cast<double>(o.cpu_ns)/1000000.;
-  return std::max(1.,ms);
- };
- auto add_evidence=[&](std::uint64_t i,const Case& c){
-  if(hierarchy)hierarchy->observe(static_cast<std::size_t>(i),metric(store,c,cfg,false),cpu_ms(c));
-  if(hybrid)hybrid->observe(i,metric(store,c,cfg,false),cpu_ms(c));
+ DiscoveryEvidenceViewV2 view(static_cast<std::size_t>(cfg.max_cases));
+ auto add_evidence=[&](std::uint64_t i,const Case& c,
+                       const std::vector<Observation>& committed_rows){
+  // No Store SQL queries within policy scoring: read once on replay, or use
+  // exactly the batch atomically persisted before this callback on exploration.
+  view.append_committed(c.id,committed_rows,metric_from_rows(committed_rows,cfg));
+  const auto& item=view.lookup(c.id);
+  if(hierarchy)hierarchy->observe(static_cast<std::size_t>(i),item.metric,item.observed_cpu_ms);
+  if(hybrid)hybrid->observe(i,item.metric,item.observed_cpu_ms);
  };
  auto next_valid=[&]()->std::optional<std::pair<std::uint64_t,Case>>{
   if(hybrid){
@@ -1030,11 +1034,13 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
  };
  for(const auto& d:store.scheduler_decisions()){
   auto next=next_valid();
+  const auto regenerated=next?make_case(next->second,cfg.max_bytes):Case{};
   if(!next||d.pool_index<0||static_cast<std::uint64_t>(d.pool_index)!=next->first||
-     d.next_rng_state!=rng_state()||make_case(next->second,cfg.max_bytes).id!=d.case_id)
+     d.next_rng_state!=rng_state()||regenerated.id!=d.case_id)
    throw Error("v2 immutable scheduler replay mismatch");
-  add_evidence(next->first,make_case(next->second,cfg.max_bytes));
-  account_samples(store.observations(d.case_id,false));
+  const auto committed=store.observations(d.case_id,false);
+  add_evidence(next->first,regenerated,committed);
+  account_samples(committed);
   if(cfg.max_sampled_cpu_ns)
    store.verify_v2_budget_entry(d.pool_index,d.case_id,sampled_cpu_used,cfg.max_sampled_cpu_ns);
   ++completed;
@@ -1112,7 +1118,7 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
    }
    store.exec("COMMIT");
   }catch(...){store.exec("ROLLBACK");throw;}
-  add_evidence(next->first,c);
+  add_evidence(next->first,c,obs);
   ++completed;++this_call;
   if(sampled_cpu_unknown){report(out);throw Error("v2 sampled worker CPU budget cannot account invalid/unknown timed samples; preserved");}
   if(cfg.max_sampled_cpu_ns&&sampled_cpu_used>=cfg.max_sampled_cpu_ns){
