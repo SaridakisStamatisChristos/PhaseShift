@@ -228,11 +228,16 @@ void Store::add_observation(const Case& c,const Observation& v,bool holdout){
  if(!v.order_seed.empty())s.text(14,v.order_seed);else s.null(14);
  s.done();
 }
-void Store::seal_confirmation(const std::string& id,const std::string& algorithm,int required_seed_pairs,bool scaling){
+void Store::seal_confirmation(const std::string& id,const std::string& algorithm,int required_seed_pairs,bool scaling,
+ const std::vector<std::uint64_t>& prescribed_seed_groups){
  // Every positive verdict must be backed by a frozen, verifiable population of
  // new held-out case IDs. No caller-supplied counts or statistical claims are
  // trusted here. Existing legacy v6 confirmations are not auto-attested.
  if(required_seed_pairs<20||required_seed_pairs>100)throw Error("confirmation requires at least 20 independent seed groups");
+ const std::set<std::uint64_t> prescribed(prescribed_seed_groups.begin(),prescribed_seed_groups.end());
+ if(!prescribed_seed_groups.empty()&&
+    (prescribed.size()!=prescribed_seed_groups.size()||prescribed.size()!=static_cast<std::size_t>(required_seed_pairs)))
+  throw Error("v2 confirmation has missing/duplicate prespecified seed groups");
  Statement hyp(db_,"SELECT status,axis,left_value,right_value,kind FROM hypotheses WHERE id=?");hyp.text(1,id);
  if(sqlite3_step(hyp.p)!=SQLITE_ROW)throw Error("unknown hypothesis to seal");
  const std::string status=reinterpret_cast<const char*>(sqlite3_column_text(hyp.p,0));
@@ -289,6 +294,7 @@ void Store::seal_confirmation(const std::string& id,const std::string& algorithm
     throw Error("confirmation includes an invalid primary-algorithm observation");
   const auto raw_seed=static_cast<std::uint64_t>(sqlite3_column_int64(rows.p,3));
   const std::uint64_t seed_group=scaling?raw_seed-static_cast<std::uint64_t>(value)*131ULL:raw_seed;
+  if(!prescribed.empty()&&!prescribed.count(seed_group))continue;
   Row v{cid,sample,value,side,seed_group};
   auto [it,inserted]=distinct.emplace(cid,v);
   if(!inserted && (it->second.side!=side||it->second.group!=seed_group))throw Error("inconsistent duplicate holdout sample");
@@ -309,6 +315,8 @@ void Store::seal_confirmation(const std::string& id,const std::string& algorithm
   for(const auto& side:pair)for(const auto& [size,row]:side){(void)size;accepted.push_back(row);}
  }
  if(groups<required_seed_pairs)throw Error("confirmation lacks required distinct paired holdout seeds");
+ if(!prescribed.empty()&&groups!=required_seed_pairs)
+  throw Error("v2 confirmation seed population disagrees with frozen cohort");
  if(scaling){
   std::set<std::int64_t> left_sizes,right_sizes;
   for(const auto& row:accepted)(row.side==0?left_sizes:right_sizes).insert(row.size);

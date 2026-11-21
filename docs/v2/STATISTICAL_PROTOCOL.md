@@ -35,3 +35,8 @@ Multi-change discovery now preserves up to 16 distinct frozen candidate geometri
 ## Reporting distinction
 
 For v9 campaign runs, generated summaries and reports attach `campaign_id`, `campaign_state`, `holm_adjusted_p` (only when finalized), `familywise_reject`, and `familywise_status` to participating hypotheses. Raw one-hypothesis `CONFIRMED` is **not** presented as family-wise accepted while a campaign is merely frozen or has not been registered. The raw hypothesis status is preserved for v1 compatibility; the new field is the distinct family-inference claim.
+
+
+## Confirmation cohort isolation hardening
+
+The v2 confirmed-H1..H16 seal now passes the exact immutable set of 20–100 seed-group IDs generated for that hypothesis's fixed independent holdout (distinct windows for H2..H16). SQLite's sealed evidence may not be supplied by a different candidate's held-out observations with the same boundary coordinates. Duplicate, missing or mismatched groups fail closed; oracle checks and discovery-overlap exclusion still apply. Legacy v1 seal callers without prescribed seed groups keep unchanged behavior. An adversarial test creates 20 valid but wrongly attributed pairs and requires refusal before adding the true cohort.

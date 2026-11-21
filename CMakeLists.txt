@@ -355,3 +355,8 @@ add_test(NAME calibrated_batch_v2_unit COMMAND phaseshift_measurement_v2_tests)
 configure_file(tests/run_v2_measurement.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_measurement.cmake @ONLY)
 add_test(NAME v2_calibrated_batch_worker_resume COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_measurement.cmake)
 set_tests_properties(v2_calibrated_batch_worker_resume PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+
+# Adversarial family sample isolation: H1 rows cannot seal H2 with same boundary.
+add_executable(phaseshift_confirmation_seed_v2_tests tests/confirmation_seed_v2.cpp)
+target_link_libraries(phaseshift_confirmation_seed_v2_tests PRIVATE phaseshift_core)
+add_test(NAME confirmation_prescribed_seed_isolation COMMAND phaseshift_confirmation_seed_v2_tests ${CMAKE_CURRENT_BINARY_DIR}/ctest_confirmation_seed_v2)

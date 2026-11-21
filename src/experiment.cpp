@@ -1079,6 +1079,14 @@ void confirm(const std::string& run,const std::string& id){
   hypothesis_seed_offset=(rank-1)*1000000000ULL;
  }
  const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(cfg.total_wall_s);
+ const auto prescribed_seeds=[&](bool failure){
+  std::vector<std::uint64_t> seeds;
+  if(cfg.policy_version!="v2")return seeds;
+  for(int i=0;i<cfg.confirm_blocks;++i)
+   seeds.push_back(cfg.seed+hypothesis_seed_offset+(failure?7000000ULL:1000000ULL)+
+    static_cast<std::uint64_t>(i)*(failure?101ULL:97ULL));
+  return seeds;
+ };
  if(status=="NO_CONFIRMED_BOUNDARY"){std::cout<<"No candidate to confirm\n";return;}
  if(status!="HYPOTHESIZED")throw Error("confirmation already attempted or candidate not eligible: "+status);
  /* Preserve the original candidate's frozen failure subtype/scope when
@@ -1158,7 +1166,8 @@ void confirm(const std::string& run,const std::string& id){
       " pairs expected="+std::to_string(cfg.confirm_blocks)+"; left=ok right="+subtype+
       "; categorical status, censored timing not a speedup; no finite ratio inferred"+
       "; independent baseline negative-control oracle_valid="+(all_valid?"true":"false");
-  if(std::string(verdict)=="CONFIRMED")store.seal_confirmation(id,cfg.a,cfg.confirm_blocks);
+  if(std::string(verdict)=="CONFIRMED")
+   store.seal_confirmation(id,cfg.a,cfg.confirm_blocks,false,prescribed_seeds(true));
   store.hypothesis(id,verdict,axis,left,right,0,evidence);
   report(run);std::cout<<verdict<<" "<<evidence<<"\n";return;
  }
@@ -1254,7 +1263,7 @@ void confirm(const std::string& run,const std::string& id){
          <<" veto_if_invalid=true";
   }
  }
- if(confirmed)store.seal_confirmation(id,cfg.a,cfg.confirm_blocks);
+ if(confirmed)store.seal_confirmation(id,cfg.a,cfg.confirm_blocks,false,prescribed_seeds(false));
  store.hypothesis(id,confirmed?"CONFIRMED":"NOT_CONFIRMED",axis,left,right,std::abs(delta),detail.str()+(confirmed?"":"; prespecified evidence threshold not met"));
  // Only a successfully sealed, independently confirmed fixed-sample
  // performance contrast may enter a predeclared Holm campaign.
