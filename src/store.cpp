@@ -346,7 +346,9 @@ void Store::seal_confirmation(const std::string& id,const std::string& algorithm
   for(const auto& row:accepted)(row.side==0?left_sizes:right_sizes).insert(row.size);
   if(left_sizes.size()!=2||right_sizes.size()!=2)throw Error("scaling holdout needs two novel sizes on each side");
  }
- exec("BEGIN IMMEDIATE;");
+ // SAVEPOINT preserves standalone v1 seal atomicity and supports outer v2
+ // seal + verdict + p-value transactions without nested BEGIN errors.
+ exec("SAVEPOINT confirmation_seal;");
  try{
   Statement seal(db_,"INSERT INTO confirmation_seals(hypothesis_id,primary_algorithm,seed_pairs,case_count,kind,created_at) VALUES(?,?,?,?,?,?)");
   seal.text(1,id);seal.text(2,algorithm);seal.integer(3,groups);seal.integer(4,static_cast<std::int64_t>(accepted.size()));seal.text(5,kind);seal.text(6,now_utc());seal.done();
@@ -355,8 +357,12 @@ void Store::seal_confirmation(const std::string& id,const std::string& algorithm
    link.text(1,id);link.text(2,row.id);link.integer(3,row.sample);link.integer(4,row.side);
    link.text(5,std::to_string(row.group));link.done();
   }
-  exec("COMMIT;");
- }catch(...){exec("ROLLBACK;");throw;}
+  exec("RELEASE SAVEPOINT confirmation_seal;");
+ }catch(...){
+  exec("ROLLBACK TO SAVEPOINT confirmation_seal;");
+  exec("RELEASE SAVEPOINT confirmation_seal;");
+  throw;
+ }
 }
 void Store::hypothesis(const std::string& id,const std::string& status,const std::string& axis,std::int64_t left,std::int64_t right,double effect,const std::string& detail,const std::string& kind,const std::string& frozen_params){
  static const std::map<std::string,std::set<std::string>> transitions={
