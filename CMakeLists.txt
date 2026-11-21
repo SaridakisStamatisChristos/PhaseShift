@@ -455,3 +455,7 @@ configure_file(benchmarks/v2/run_dual_cap_challenge.cmake.in
 add_test(NAME v2_dual_cap_full_cli_accounting
  COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_dual_cap_challenge.cmake)
 set_tests_properties(v2_dual_cap_full_cli_accounting PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+
+add_executable(phaseshift_cpu_usage_v2_tests tests/cpu_usage_v2.cpp)
+target_link_libraries(phaseshift_cpu_usage_v2_tests PRIVATE phaseshift_core)
+add_test(NAME v2_linux_parent_waited_worker_cpu_oracle COMMAND phaseshift_cpu_usage_v2_tests)

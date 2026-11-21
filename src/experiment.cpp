@@ -10,6 +10,7 @@
 #include "phaseshift/stratified_v2.hpp"
 #include "phaseshift/weighted_v2.hpp"
 #include "phaseshift/evidence_view_v2.hpp"
+#include "phaseshift/cpu_usage_v2.hpp"
 #include "phaseshift/scheduler_v2.hpp"
 #include "phaseshift/hybrid_v2.hpp"
 #include "phaseshift/interaction_v2.hpp"
@@ -1061,6 +1062,7 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
  bool budget_hit=false,exhausted=false;std::size_t this_call=0;
  while(completed<cfg.max_cases&&!sampled_cpu_limit&&(pause_after==0||this_call<pause_after)){
   if(std::chrono::steady_clock::now()>=deadline){budget_hit=true;break;}
+  const auto process_cpu_start=cpu_snapshot_v2();
   const auto proposal_started=std::chrono::steady_clock::now();
   auto next=next_valid();
   if(!next){exhausted=true;break;}
@@ -1078,6 +1080,7 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
   }
   const auto worker_wall_ns=std::chrono::duration_cast<std::chrono::nanoseconds>(
    std::chrono::steady_clock::now()-worker_started).count();
+  const auto process_cpu_usage=cpu_delta_v2(process_cpu_start,cpu_snapshot_v2());
   if(std::chrono::steady_clock::now()>=deadline){budget_hit=true;break;}
   account_samples(obs);
   // Descriptive, per-commit accounting. Neither clock is a parent-CPU or
@@ -1108,7 +1111,14 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
    phases.put("worker_invocation_wall_ns",static_cast<std::int64_t>(worker_wall_ns));
    phases.put("valid_timed_cpu_ns",timed_cpu);
    phases.put("timed_cpu_complete",timed_cpu_complete);
-   phases.put("accounting_model","descriptive_v2_case_boundary_v1");
+   phases.put("accounting_model","descriptive_v2_case_boundary_v2");
+   if(process_cpu_usage){
+    phases.put("parent_process_cpu_ns",process_cpu_usage->self_ns);
+    phases.put("waited_child_cpu_ns",process_cpu_usage->waited_child_ns);
+    phases.put("cpu_accounting_scope","linux_getrusage_per_case_proposal_and_worker");
+   }else{
+    phases.put("cpu_accounting_scope","unavailable");
+   }
    store.event("v2_phase_budget",phases.str());
    if(cfg.max_sampled_cpu_ns){
     Json cost;cost.put("sampled_cpu_ns",static_cast<std::int64_t>(sampled_cpu_used));
