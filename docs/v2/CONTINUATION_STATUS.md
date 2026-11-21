@@ -1,4 +1,4 @@
-# PHASESHIFT v2 — R7 continuation evidence and outstanding gates
+> **Current status (21 November 2026, PR #5):** PhaseShift v2 was merged into `main` as `8e795197b65af9ac73abff84bfaaefe29d6c92fb` (PR #4). New R7 completion work is in **draft PR #5**, not merged. The status and checklist in [R7_COMPLETION_CAMPAIGN.md](R7_COMPLETION_CAMPAIGN.md) supersede older draft/old-main statements below, which are preserved solely as historical evidence. The experimental code needs exact-SHA CI and held-out performance verification; no SOTA claim.\n\n# PHASESHIFT v2 — R7 continuation evidence and outstanding gates
 Last updated: 2026-11-21. This is an evidence/implementation status, **not** a release or SOTA certificate.
 
 ## Frozen target, compatibility and exact CI boundary
