@@ -16,7 +16,7 @@ import time
 
 
 def config(policy, seed, count, negative=False):
-    modern = policy in ("hierarchical_boundary_v2", "uniform_v2", "stratified_v2")
+    modern = policy in ("hierarchical_boundary_v2", "uniform_v2", "stratified_v2", "hybrid_mixed_v2")
     return {
         "schema_version": 1,
         "experiment_id": f"frozen-calibration-{policy}-{seed}",

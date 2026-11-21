@@ -1,0 +1,17 @@
+set(RUN "@CMAKE_CURRENT_BINARY_DIR@/dual_cap_v2_ctest")
+file(REMOVE_RECURSE "${RUN}")
+execute_process(
+ COMMAND "@Python3_EXECUTABLE@" "@CMAKE_CURRENT_SOURCE_DIR@/benchmarks/v2/dual_cap_challenge.py"
+  --binary "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" --out "${RUN}"
+  --seeds 31 --cases 4 --wall-budget-ns 9000000000
+  --cpu-budget-ns 3000000000
+ RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "real-worker dual-cap challenge failed")
+endif()
+execute_process(
+ COMMAND "@Python3_EXECUTABLE@" "@CMAKE_CURRENT_SOURCE_DIR@/tests/verify_v2_dual_cap.py"
+  --root "${RUN}" RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "independent dual-cap accounting oracle failed")
+endif()
