@@ -1,4 +1,5 @@
 #include "phaseshift/experiment.hpp"
+#include "phaseshift/campaign_v2.hpp"
 #include "phaseshift/scaling.hpp"
 #include "phaseshift/reproducer.hpp"
 #include <csignal>
@@ -19,6 +20,8 @@ Usage:
   phaseshift intervene --run RUN_DIRECTORY --out NEW_DIRECTORY [--hypothesis H1] [--pairs 9]
   phaseshift scaling --run RUN_DIRECTORY --out NEW_DIRECTORY [--seeds 3]
   phaseshift confirm --run RUN_DIRECTORY [--hypothesis H1]
+  phaseshift campaign-freeze --run RUN_DIRECTORY --manifest CAMPAIGN.json
+  phaseshift campaign-finalize --run RUN_DIRECTORY --campaign CAMPAIGN_ID
   phaseshift minimize --run RUN_DIRECTORY [--hypothesis H1]
   phaseshift minimize-case --run RUN_DIRECTORY --case CASE_ID --algorithm ALGORITHM
   phaseshift reproduce --run RUN_DIRECTORY --case CASE_ID --algorithm BUILTIN --out FILE.cpp
@@ -47,7 +50,9 @@ int main(int argc,char** argv){
     {"explore",{"--config","--out","--pause-after"}},{"resume",{"--run","--pause-after"}},
     {"ablate",{"--config","--out"}},{"intervene",{"--run","--out","--hypothesis","--pairs"}},
     {"scaling",{"--run","--out","--seeds"}},{"confirm",{"--run","--hypothesis"}},
-    {"minimize",{"--run","--hypothesis"}},{"minimize-case",{"--run","--case","--algorithm"}},
+    {"minimize",{"--run","--hypothesis"}},
+    {"campaign-freeze",{"--run","--manifest"}},
+    {"campaign-finalize",{"--run","--campaign"}},{"minimize-case",{"--run","--case","--algorithm"}},
     {"reproduce",{"--run","--case","--algorithm","--out"}},
     {"replay",{"--run","--case","--algorithm","--expect","--db"}},
     {"report",{"--run","--format"}},{"export",{"--run","--out"}},
@@ -93,6 +98,24 @@ int main(int argc,char** argv){
    ps::intervene(run,out,option("--hypothesis","H1"),count);return 0;
   }
   if(cmd=="confirm"){ps::confirm(run,option("--hypothesis","H1"));return 0;}
+  if(cmd=="campaign-freeze"){
+   const auto path=option("--manifest");
+   if(path.empty())throw ps::Error("campaign-freeze requires --manifest");
+   ps::Store s(run+"/run.sqlite");
+   const auto manifest=ps::Json::file(path);
+   ps::freeze_campaign_v2(s,manifest);
+   std::cout<<"FROZEN campaign manifest "<<manifest.s("campaign_id")<<"\n";
+   return 0;
+  }
+  if(cmd=="campaign-finalize"){
+   const auto id=option("--campaign");
+   if(id.empty())throw ps::Error("campaign-finalize requires --campaign");
+   ps::Store s(run+"/run.sqlite");
+   const auto outcome=ps::finalize_campaign_v2(s,id);
+   ps::report(run);
+   std::cout<<outcome.str()<<"\n";
+   return 0;
+  }
   if(cmd=="minimize"){ps::minimize(run,option("--hypothesis","H1"));return 0;}
   if(cmd=="minimize-case"){ps::minimize_failure_case(run,option("--case"),option("--algorithm"));return 0;}
   if(cmd=="reproduce"){ps::reproduce_case(run,option("--case"),option("--algorithm"),option("--out"));return 0;}

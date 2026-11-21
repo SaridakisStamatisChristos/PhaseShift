@@ -1,0 +1,36 @@
+{
+ "schema_version":1,
+ "experiment_id":"v2-weighted-admissible-replay",
+ "problem_family":"calibration",
+ "algorithms":["calibration"],
+ "seed":334,
+ "primary_axis":"x",
+ "axes":{
+  "negative":{"values":[false,true]},
+  "threshold":{"values":[2,3]},
+  "x":{"values":[0,1,2,3]}
+ },
+ "search":{
+  "policy_version":"v2",
+  "method":"weighted_v2",
+  "replicates":2,
+  "max_cases":12,
+  "domain_priors":{
+   "negative":{"false":9.0,"true":1.0},
+   "x":{"0":3.0,"1":1.0,"2":1.0,"3":1.0}
+  },
+  "admissible_subspaces":[
+   {"negative":[false],"x":[0,1]},
+   {"negative":[true],"x":[2,3],"threshold":[3]}
+  ]
+ },
+ "measurement":{
+  "paired_discovery_blocks":1,
+  "paired_confirm_blocks":20,
+  "warmup_iterations":0
+ },
+ "limits":{
+  "total_wall_seconds":90,
+  "max_search_queue":64
+ }
+}

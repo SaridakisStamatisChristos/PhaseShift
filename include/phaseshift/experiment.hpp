@@ -5,10 +5,15 @@ struct Config {
  std::string experiment_id="experiment",family="calibration",a="calibration",b="",method="grid",axis="x",output="";
  Case base;
  std::map<std::string,std::vector<std::string>> axes;
- std::uint64_t seed=137,max_cases=128,max_bytes=64ULL*1024*1024,max_queue=10000,max_report_bytes=10000000;
+ std::vector<std::map<std::string,std::vector<std::string>>> admissible_subspaces;
+ std::map<std::string,std::map<std::string,double>> domain_priors; // v2 weighted_v2 only
+ std::uint64_t seed=137,max_cases=128,max_bytes=64ULL*1024*1024,max_queue=10000,max_report_bytes=10000000,max_sampled_cpu_ns=0;
  int blocks=9,confirm_blocks=20,warmup=2,sample_ms=3000,rss_mb=1024,total_wall_s=600;
  double min_ratio=1.20,confirmation_confidence=0.99,fdr_q=0.05,exploration_fraction=0.20;
  int minimum_batch_ms=2;
+ std::string policy_version="v1",detector_version="boundary_v1";
+ std::string measurement_protocol_version="legacy_retained_outputs_v1";
+ int replicate_count=1;
  std::string isolation_mode="per_case";
  std::string multiple_testing="bh_fdr";
 };

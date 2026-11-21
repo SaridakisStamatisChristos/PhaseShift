@@ -1,0 +1,31 @@
+set(PAUSED "@CMAKE_CURRENT_BINARY_DIR@/v2_weighted_paused")
+set(FULL "@CMAKE_CURRENT_BINARY_DIR@/v2_weighted_full")
+file(REMOVE_RECURSE "${PAUSED}" "${FULL}")
+set(CONFIG "@CMAKE_CURRENT_SOURCE_DIR@/configs/v2/weighted_admissible.json")
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" validate
+ --config "${CONFIG}" RESULT_VARIABLE status)
+if(NOT status EQUAL 0)
+ message(FATAL_ERROR "weighted v2 config validation failed")
+endif()
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" explore
+ --config "${CONFIG}" --out "${PAUSED}" --pause-after 3
+ RESULT_VARIABLE status)
+if(NOT status EQUAL 0)
+ message(FATAL_ERROR "weighted v2 partial exploration failed")
+endif()
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" resume
+ --run "${PAUSED}" RESULT_VARIABLE status)
+if(NOT status EQUAL 0)
+ message(FATAL_ERROR "weighted v2 resume failed")
+endif()
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" explore
+ --config "${CONFIG}" --out "${FULL}" RESULT_VARIABLE status)
+if(NOT status EQUAL 0)
+ message(FATAL_ERROR "weighted v2 uninterrupted exploration failed")
+endif()
+execute_process(COMMAND "@Python3_EXECUTABLE@" "@CMAKE_CURRENT_SOURCE_DIR@/tests/verify_v2_weighted.py"
+ --resumed "${PAUSED}" --uninterrupted "${FULL}"
+ RESULT_VARIABLE status)
+if(NOT status EQUAL 0)
+ message(FATAL_ERROR "weighted v2 SQLite replay oracle failed")
+endif()

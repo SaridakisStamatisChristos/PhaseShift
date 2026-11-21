@@ -1,0 +1,25 @@
+file(REMOVE_RECURSE "@CMAKE_CURRENT_BINARY_DIR@/v2_calibrated_ctest")
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" validate
+ --config "@CMAKE_CURRENT_SOURCE_DIR@/configs/v2/calibrated_batch.json" RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "v2 calibrated config rejected")
+endif()
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" explore
+ --config "@CMAKE_CURRENT_SOURCE_DIR@/configs/v2/calibrated_batch.json"
+ --out "@CMAKE_CURRENT_BINARY_DIR@/v2_calibrated_ctest" --pause-after 2 RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "v2 calibrated first slice failed")
+endif()
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" resume
+ --run "@CMAKE_CURRENT_BINARY_DIR@/v2_calibrated_ctest" RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "v2 calibrated resume failed")
+endif()
+execute_process(COMMAND "@Python3_EXECUTABLE@"
+ "@CMAKE_CURRENT_SOURCE_DIR@/tests/verify_v2_measurement.py"
+ --run "@CMAKE_CURRENT_BINARY_DIR@/v2_calibrated_ctest"
+ --binary "@CMAKE_CURRENT_BINARY_DIR@/phaseshift"
+ --config "@CMAKE_CURRENT_SOURCE_DIR@/configs/v2/calibrated_batch.json" RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "v2 calibrated persisted protocol verification failed")
+endif()

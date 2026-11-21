@@ -1,0 +1,18 @@
+set(RUN "@CMAKE_CURRENT_BINARY_DIR@/v2_hybrid_ctest")
+file(REMOVE_RECURSE "${RUN}")
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" validate
+ --config "@CMAKE_CURRENT_SOURCE_DIR@/configs/v2/hybrid_mixed_calibration.json"
+ RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "hybrid config invalid")
+endif()
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" explore
+ --config "@CMAKE_CURRENT_SOURCE_DIR@/configs/v2/hybrid_mixed_calibration.json"
+ --out "${RUN}" --pause-after 5 RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "hybrid partial run failed")
+endif()
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" resume --run "${RUN}" RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "hybrid resume failed")
+endif()

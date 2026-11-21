@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "experiment_id": "v2-sampled-cpu-budget",
+  "problem_family": "calibration",
+  "algorithms": [
+    "calibration"
+  ],
+  "seed": 118,
+  "primary_axis": "x",
+  "axes": {
+    "x": {
+      "values": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ]
+    }
+  },
+  "fixed": {
+    "threshold": 4
+  },
+  "search": {
+    "policy_version": "v2",
+    "method": "uniform_v2",
+    "max_cases": 8
+  },
+  "measurement": {
+    "paired_discovery_blocks": 1,
+    "paired_confirm_blocks": 20,
+    "warmup_iterations": 0
+  },
+  "limits": {
+    "total_wall_seconds": 90,
+    "max_search_queue": 32,
+    "max_sampled_cpu_ns": 1
+  }
+}

@@ -1,8 +1,19 @@
 #include "phaseshift/experiment.hpp"
+#include "phaseshift/campaign_v2.hpp"
+#include "phaseshift/confirmation_seeds_v2.hpp"
 #include "phaseshift/statistics.hpp"
 #include "phaseshift/morphology.hpp"
 #include "phaseshift/minimize.hpp"
+#include "phaseshift/witness_paths_v2.hpp"
 #include "phaseshift/reproducer.hpp"
+#include "phaseshift/lazy_search.hpp"
+#include "phaseshift/stratified_v2.hpp"
+#include "phaseshift/weighted_v2.hpp"
+#include "phaseshift/scheduler_v2.hpp"
+#include "phaseshift/hybrid_v2.hpp"
+#include "phaseshift/interaction_v2.hpp"
+#include "phaseshift/boundary_v2.hpp"
+#include "phaseshift/slope_v2.hpp"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -74,8 +85,45 @@ static bool numeric_axis(const std::string& s){
  static const std::set<std::string> supported={"x","n","k","edges","vertices","value_range","unique_count","run_length","duplicate_ppm","disorder_ppm","sign_ppm","density_ppm","density","degree_skew_ppm","degree_skew","community_count","max_weight","duplicate_fraction","disorder_fraction","sign_fraction"};
  return supported.count(s)>0;
 }
+static std::int64_t axis_value(const Case& c,const std::string& axis);
 static Json config_json(const Config& c){
- Json j;j.put("schema_version",static_cast<std::int64_t>(1));j.put("experiment_id",c.experiment_id);j.put("problem_family",c.family);j.put("algorithm_a",c.a);j.put("algorithm_b",c.b);j.put("search_method",c.method);j.put("primary_axis",c.axis);j.put("seed",static_cast<std::int64_t>(c.seed));j.put("max_cases",static_cast<std::int64_t>(c.max_cases));j.put("max_case_bytes",static_cast<std::int64_t>(c.max_bytes));j.put("max_search_queue",static_cast<std::int64_t>(c.max_queue));j.put("max_report_bytes",static_cast<std::int64_t>(c.max_report_bytes));j.put("discovery_blocks",static_cast<std::int64_t>(c.blocks));j.put("confirm_blocks",static_cast<std::int64_t>(c.confirm_blocks));j.put("warmup",static_cast<std::int64_t>(c.warmup));j.put("sample_ms",static_cast<std::int64_t>(c.sample_ms));j.put("rss_mb",static_cast<std::int64_t>(c.rss_mb));j.put("total_wall_seconds",static_cast<std::int64_t>(c.total_wall_s));j.put("min_practical_ratio",c.min_ratio);j.put("confirmation_confidence",c.confirmation_confidence);j.put("fdr_q",c.fdr_q);j.put("multiple_testing",c.multiple_testing);j.put("exploration_fraction",c.exploration_fraction);j.put("minimum_batch_ms",static_cast<std::int64_t>(c.minimum_batch_ms));j.put("isolation_mode",c.isolation_mode);j.put("base_params",case_params(c.base));
+ Json j;j.put("schema_version",static_cast<std::int64_t>(1));j.put("experiment_id",c.experiment_id);j.put("problem_family",c.family);j.put("algorithm_a",c.a);j.put("algorithm_b",c.b);j.put("search_method",c.method);j.put("primary_axis",c.axis);j.put("seed",static_cast<std::int64_t>(c.seed));j.put("max_cases",static_cast<std::int64_t>(c.max_cases));j.put("max_case_bytes",static_cast<std::int64_t>(c.max_bytes));j.put("max_search_queue",static_cast<std::int64_t>(c.max_queue));j.put("max_report_bytes",static_cast<std::int64_t>(c.max_report_bytes));j.put("discovery_blocks",static_cast<std::int64_t>(c.blocks));j.put("confirm_blocks",static_cast<std::int64_t>(c.confirm_blocks));j.put("warmup",static_cast<std::int64_t>(c.warmup));j.put("sample_ms",static_cast<std::int64_t>(c.sample_ms));j.put("rss_mb",static_cast<std::int64_t>(c.rss_mb));j.put("total_wall_seconds",static_cast<std::int64_t>(c.total_wall_s));j.put("min_practical_ratio",c.min_ratio);j.put("confirmation_confidence",c.confirmation_confidence);j.put("fdr_q",c.fdr_q);j.put("multiple_testing",c.multiple_testing);j.put("exploration_fraction",c.exploration_fraction);j.put("minimum_batch_ms",static_cast<std::int64_t>(c.minimum_batch_ms));j.put("isolation_mode",c.isolation_mode);if(c.policy_version=="v2"){
+   j.put("policy_version",c.policy_version);
+   if(c.replicate_count>1||!c.admissible_subspaces.empty()||!c.domain_priors.empty()){
+     Json search;
+     if(c.replicate_count>1)search.put("replicates",static_cast<std::int64_t>(c.replicate_count));
+     if(!c.admissible_subspaces.empty()){
+      auto* array=json_object_new_array();
+      for(const auto& scope:c.admissible_subspaces){
+       Json entry;
+       for(const auto& [axis,allowed]:scope){
+        auto* values=json_object_new_array();
+        for(const auto& v:allowed)json_object_array_add(values,json_object_new_string(v.c_str()));
+        json_object_object_add(entry.p,axis.c_str(),values);
+       }
+       json_object_array_add(array,json_object_get(entry.p));
+      }
+      json_object_object_add(search.p,"admissible_subspaces",array);
+     }
+     if(!c.domain_priors.empty()){
+       Json prior_json;
+       for(const auto& [axis,prior]:c.domain_priors){
+        Json labels;
+        for(const auto& [label,weight]:prior)labels.put(label.c_str(),weight);
+        prior_json.put(axis.c_str(),std::move(labels));
+       }
+       search.put("domain_priors",std::move(prior_json));
+      }
+      j.put("search",std::move(search));
+    }
+   if(c.detector_version!="boundary_v1"){Json detection;detection.put("detector_version",c.detector_version);j.put("detection",std::move(detection));}
+   if(c.max_sampled_cpu_ns){Json limits;limits.put("max_sampled_cpu_ns",static_cast<std::int64_t>(c.max_sampled_cpu_ns));j.put("limits",std::move(limits));}
+   if(c.measurement_protocol_version!="legacy_retained_outputs_v1"){
+    Json m;m.put("protocol_version",c.measurement_protocol_version);
+    j.put("measurement",std::move(m));
+   }
+  }
+  j.put("base_params",case_params(c.base));
  Json axes;for(const auto& [name,values]:c.axes){auto* arr=json_object_new_array();for(const auto& val:values)json_object_array_add(arr,json_object_new_string(val.c_str()));json_object_object_add(axes.p,name.c_str(),arr);}j.put("axes",std::move(axes));return j;
 }
 /* Config is an experimental contract: reject unsupported keys and coercions,
@@ -95,22 +143,24 @@ static void validate_configuration_shape(const Json& j){
    if(integers.count(name)){
     if(kind!=json_type_int)throw Error(field+" must be an integer");
     const auto n=json_object_get_int64(value);
-    if(n<0 && (name=="seed"||name=="max_cases"||name=="max_case_bytes"||name=="max_worker_rss_mb"||name=="max_sample_wall_ms"||name=="max_report_bytes"||name=="max_search_queue"||name=="total_wall_seconds"||name=="schema_version"))throw Error(field+" cannot be negative");
+    if(n<0 && (name=="seed"||name=="max_cases"||name=="max_case_bytes"||name=="max_worker_rss_mb"||name=="max_sample_wall_ms"||name=="max_report_bytes"||name=="max_search_queue"||name=="total_wall_seconds"||name=="max_sampled_cpu_ns"||name=="schema_version"))throw Error(field+" cannot be negative");
     /* The runtime's integer-valued measurement/budget fields are signed 32-bit. */
-    if(name!="seed"&&name!="max_case_bytes"&&name!="max_search_queue"&&name!="max_report_bytes"&&name!="max_cases"&&n>2147483647LL)throw Error(field+" is too large");
+    if(name!="seed"&&name!="max_case_bytes"&&name!="max_search_queue"&&name!="max_report_bytes"&&name!="max_cases"&&name!="max_sampled_cpu_ns"&&n>2147483647LL)throw Error(field+" is too large");
    }else if(reals.count(name)){
     if(kind!=json_type_int&&kind!=json_type_double)throw Error(field+" must be a finite number");
     if(!std::isfinite(json_object_get_double(value)))throw Error(field+" must be finite");
    }else if(strings.count(name)){
     if(kind!=json_type_string)throw Error(field+" must be a string");
    }else if(structures.count(name)){
-    if(kind!=json_type_object&&!(name=="base_params"&&kind==json_type_string))throw Error(field+" must be an object");
+    if(kind!=json_type_object&&!(name=="base_params"&&kind==json_type_string)&&
+       !(scope=="search"&&name=="admissible_subspaces"&&kind==json_type_array))
+      throw Error(field+" must be an object or admissible subspace array");
    }else throw Error("unknown configuration parameter: "+field);
   }
  };
  static const std::set<std::string> integer_top={"schema_version","seed","max_cases","max_case_bytes","max_search_queue","max_report_bytes","discovery_blocks","confirm_blocks","warmup","sample_ms","rss_mb","total_wall_seconds","minimum_batch_ms"};
  static const std::set<std::string> real_top={"min_practical_ratio","confirmation_confidence","fdr_q","exploration_fraction"};
- static const std::set<std::string> text_top={"experiment_id","problem_family","family","objective","algorithm_a","algorithm_b","search_method","method","primary_axis","isolation_mode","multiple_testing"};
+ static const std::set<std::string> text_top={"experiment_id","problem_family","family","objective","algorithm_a","algorithm_b","search_method","method","primary_axis","isolation_mode","multiple_testing","policy_version"};
  static const std::set<std::string> obj_top={"search","measurement","detection","limits","fixed","base_params","axes"};
  /* The algorithm list is validated separately because it is an array. */
  json_object* algorithms=nullptr;
@@ -133,10 +183,10 @@ static void validate_configuration_shape(const Json& j){
  check(top.p,"config",integer_top,real_top,text_top,obj_top);
  if(auto* v=j.get("objective");v&&std::string(json_object_get_string(v))!="discover_structural_performance_boundaries")
   throw Error("unsupported objective");
- if(auto* v=j.get("search"))check(v,"search",{"max_cases"},{"exploration_fraction"},{"method"},{});
- if(auto* v=j.get("measurement"))check(v,"measurement",{"paired_discovery_blocks","paired_confirm_blocks","warmup_iterations","minimum_batch_ms"},{},{"primary_metric","isolation_mode"},{});
- if(auto* v=j.get("detection"))check(v,"detection",{},{"min_practical_ratio","confirmation_confidence","fdr_q"},{"multiple_testing"},{});
- if(auto* v=j.get("limits"))check(v,"limits",{"total_wall_seconds","max_cases","max_case_bytes","max_worker_rss_mb","max_sample_wall_ms","max_report_bytes","max_search_queue"},{},{},{});
+ if(auto* v=j.get("search"))check(v,"search",{"max_cases","replicates"},{"exploration_fraction"},{"method","policy_version"},{"admissible_subspaces","domain_priors"});
+ if(auto* v=j.get("measurement"))check(v,"measurement",{"paired_discovery_blocks","paired_confirm_blocks","warmup_iterations","minimum_batch_ms"},{},{"primary_metric","isolation_mode","protocol_version"},{});
+ if(auto* v=j.get("detection"))check(v,"detection",{},{"min_practical_ratio","confirmation_confidence","fdr_q"},{"multiple_testing","detector_version"},{});
+ if(auto* v=j.get("limits"))check(v,"limits",{"total_wall_seconds","max_cases","max_case_bytes","max_worker_rss_mb","max_sample_wall_ms","max_report_bytes","max_search_queue","max_sampled_cpu_ns"},{},{},{});
  if(auto* v=j.get("fixed"))if(json_object_get_type(v)!=json_type_object)throw Error("fixed must be an object");
  if(auto* v=j.get("base_params")){
   if(json_object_get_type(v)==json_type_string){auto parsed=Json::parse(json_object_get_string(v));if(!parsed.p||json_object_get_type(parsed.p)!=json_type_object)throw Error("base_params serialized value must be object");}
@@ -178,16 +228,20 @@ Config config_from_json(const Json& j){
  require_field_type(j,"isolation_mode",false);
  if(const auto* v=j.get("minimum_batch_ms");v&&json_object_get_type(v)!=json_type_int)
   throw Error("minimum_batch_ms must be integral");
- Config c;c.experiment_id=j.s("experiment_id","experiment");c.family=j.s("problem_family",j.s("family","calibration"));
+ Config c;c.policy_version=j.s("policy_version","v1");c.experiment_id=j.s("experiment_id","experiment");c.family=j.s("problem_family",j.s("family","calibration"));
  c.a=j.s("algorithm_a","");c.b=j.s("algorithm_b","");
  if(auto* a=j.get("algorithms")){if(json_object_get_type(a)!=json_type_array||json_object_array_length(a)<1||json_object_array_length(a)>2)throw Error("algorithms must contain one or two elements");c.a=json_object_get_string(json_object_array_get_idx(a,0));if(json_object_array_length(a)>1)c.b=json_object_get_string(json_object_array_get_idx(a,1));}
  if(c.a.empty())c.a=c.family=="calibration"?"calibration":c.family=="integer_array"?"std_sort":c.family=="topk"?"topk_heap":"dijkstra_heap";
- c.method=j.s("search_method",j.s("method","grid"));if(auto* search=j.get("search")){Json k(json_object_get(search));require_field_type(k,"exploration_fraction",true);c.method=k.s("method",c.method);c.max_cases=static_cast<std::uint64_t>(k.i("max_cases",static_cast<std::int64_t>(c.max_cases)));c.exploration_fraction=k.d("exploration_fraction",c.exploration_fraction);}
+ c.method=j.s("search_method",j.s("method","grid"));if(auto* search=j.get("search")){Json k(json_object_get(search));require_field_type(k,"exploration_fraction",true);c.method=k.s("method",c.method);c.policy_version=k.s("policy_version",c.policy_version);
+  const auto replicates=k.i("replicates",1);
+  if(replicates<1||replicates>32)throw Error("v2 replicate count must be 1..32");
+  c.replicate_count=static_cast<int>(replicates);
+  c.max_cases=static_cast<std::uint64_t>(k.i("max_cases",static_cast<std::int64_t>(c.max_cases)));c.exploration_fraction=k.d("exploration_fraction",c.exploration_fraction);}
  c.axis=j.s("primary_axis",c.family=="calibration"?"x":c.family=="graph"?"edges":"n");
  c.seed=static_cast<std::uint64_t>(j.i("seed",137));c.max_cases=static_cast<std::uint64_t>(j.i("max_cases",static_cast<std::int64_t>(c.max_cases)));c.max_bytes=static_cast<std::uint64_t>(j.i("max_case_bytes",64*1024*1024));c.max_queue=static_cast<std::uint64_t>(j.i("max_search_queue",10000));c.max_report_bytes=static_cast<std::uint64_t>(j.i("max_report_bytes",10000000));c.blocks=static_cast<int>(j.i("discovery_blocks",9));c.confirm_blocks=static_cast<int>(j.i("confirm_blocks",20));c.warmup=static_cast<int>(j.i("warmup",2));c.sample_ms=static_cast<int>(j.i("sample_ms",3000));c.rss_mb=static_cast<int>(j.i("rss_mb",1024));c.total_wall_s=static_cast<int>(j.i("total_wall_seconds",600));c.min_ratio=j.d("min_practical_ratio",1.2);c.exploration_fraction=j.d("exploration_fraction",c.exploration_fraction);c.minimum_batch_ms=static_cast<int>(j.i("minimum_batch_ms",c.minimum_batch_ms));c.isolation_mode=j.s("isolation_mode",c.isolation_mode);
  if(auto* m=j.get("measurement")){Json x(json_object_get(m));require_field_type(x,"isolation_mode",false);
   if(json_object_get_type(m)!=json_type_object)throw Error("measurement must be an object");
-  static const std::set<std::string> accepted={"paired_discovery_blocks","paired_confirm_blocks","warmup_iterations","minimum_batch_ms","primary_metric","isolation_mode"};
+  static const std::set<std::string> accepted={"paired_discovery_blocks","paired_confirm_blocks","warmup_iterations","minimum_batch_ms","primary_metric","isolation_mode","protocol_version"};
   json_object_object_foreach(m,key,value){(void)value;if(!accepted.count(key))throw Error(std::string("unsupported measurement key: ")+key);}
   if(x.get("primary_metric")){
    if(json_object_get_type(x.get("primary_metric"))!=json_type_string||x.s("primary_metric")!="wall_ns_per_operation")
@@ -195,9 +249,10 @@ Config config_from_json(const Json& j){
   }
   if(const auto* v=x.get("minimum_batch_ms");v&&json_object_get_type(v)!=json_type_int)
    throw Error("minimum_batch_ms must be integral");
-  c.blocks=static_cast<int>(x.i("paired_discovery_blocks",c.blocks));c.confirm_blocks=static_cast<int>(x.i("paired_confirm_blocks",c.confirm_blocks));c.warmup=static_cast<int>(x.i("warmup_iterations",c.warmup));c.minimum_batch_ms=static_cast<int>(x.i("minimum_batch_ms",c.minimum_batch_ms));c.isolation_mode=x.s("isolation_mode",c.isolation_mode);}
- if(auto* d=j.get("detection")){Json x(json_object_get(d));c.min_ratio=x.d("min_practical_ratio",c.min_ratio);c.confirmation_confidence=x.d("confirmation_confidence",c.confirmation_confidence);c.fdr_q=x.d("fdr_q",c.fdr_q);c.multiple_testing=x.s("multiple_testing",c.multiple_testing);}
- if(auto* l=j.get("limits")){Json x(json_object_get(l));c.total_wall_s=static_cast<int>(x.i("total_wall_seconds",c.total_wall_s));c.max_cases=static_cast<std::uint64_t>(x.i("max_cases",static_cast<std::int64_t>(c.max_cases)));c.max_bytes=static_cast<std::uint64_t>(x.i("max_case_bytes",static_cast<std::int64_t>(c.max_bytes)));c.rss_mb=static_cast<int>(x.i("max_worker_rss_mb",c.rss_mb));c.sample_ms=static_cast<int>(x.i("max_sample_wall_ms",c.sample_ms));c.max_queue=static_cast<std::uint64_t>(x.i("max_search_queue",static_cast<std::int64_t>(c.max_queue)));c.max_report_bytes=static_cast<std::uint64_t>(x.i("max_report_bytes",static_cast<std::int64_t>(c.max_report_bytes)));}
+  c.blocks=static_cast<int>(x.i("paired_discovery_blocks",c.blocks));c.confirm_blocks=static_cast<int>(x.i("paired_confirm_blocks",c.confirm_blocks));c.warmup=static_cast<int>(x.i("warmup_iterations",c.warmup));c.minimum_batch_ms=static_cast<int>(x.i("minimum_batch_ms",c.minimum_batch_ms));c.isolation_mode=x.s("isolation_mode",c.isolation_mode);
+  c.measurement_protocol_version=x.s("protocol_version",c.measurement_protocol_version);}
+ if(auto* d=j.get("detection")){Json x(json_object_get(d));c.min_ratio=x.d("min_practical_ratio",c.min_ratio);c.confirmation_confidence=x.d("confirmation_confidence",c.confirmation_confidence);c.fdr_q=x.d("fdr_q",c.fdr_q);c.multiple_testing=x.s("multiple_testing",c.multiple_testing);c.detector_version=x.s("detector_version",c.detector_version);}
+ if(auto* l=j.get("limits")){Json x(json_object_get(l));c.total_wall_s=static_cast<int>(x.i("total_wall_seconds",c.total_wall_s));c.max_cases=static_cast<std::uint64_t>(x.i("max_cases",static_cast<std::int64_t>(c.max_cases)));c.max_bytes=static_cast<std::uint64_t>(x.i("max_case_bytes",static_cast<std::int64_t>(c.max_bytes)));c.rss_mb=static_cast<int>(x.i("max_worker_rss_mb",c.rss_mb));c.sample_ms=static_cast<int>(x.i("max_sample_wall_ms",c.sample_ms));c.max_queue=static_cast<std::uint64_t>(x.i("max_search_queue",static_cast<std::int64_t>(c.max_queue)));c.max_report_bytes=static_cast<std::uint64_t>(x.i("max_report_bytes",static_cast<std::int64_t>(c.max_report_bytes)));c.max_sampled_cpu_ns=static_cast<std::uint64_t>(x.i("max_sampled_cpu_ns",0));}
  c.base.family=c.family;c.base.seed=c.seed;
  if(auto* base=j.get("base_params")){Json p=json_object_get_type(base)==json_type_string?Json::parse(json_object_get_string(base)):Json(json_object_get(base));
   if(!p.get("generator_version"))c.base.generator_version=1; /* v0.1 manifest compatibility */
@@ -212,7 +267,103 @@ Config config_from_json(const Json& j){
   }
  }
  if(c.axes.empty())c.axes[c.axis]={"0","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15"};
- if(c.method!="grid"&&c.method!="random"&&c.method!="stratified"&&c.method!="adaptive_partition")throw Error("unknown search method");
+ if(auto* search=j.get("search")){
+  json_object* scopes=nullptr;
+  if(json_object_object_get_ex(search,"admissible_subspaces",&scopes)){
+   if(!scopes||json_object_get_type(scopes)!=json_type_array||
+      json_object_array_length(scopes)==0||json_object_array_length(scopes)>256)
+    throw Error("search.admissible_subspaces must contain 1..256 objects");
+   for(std::size_t i=0;i<json_object_array_length(scopes);++i){
+    auto* item=json_object_array_get_idx(scopes,i);
+    if(!item||json_object_get_type(item)!=json_type_object||json_object_object_length(item)==0)
+     throw Error("admissible subspace must be a nonempty object");
+    std::map<std::string,std::vector<std::string>> scope;
+    json_object_object_foreach(item,key,labels){
+     if(!labels||json_object_get_type(labels)!=json_type_array||
+        json_object_array_length(labels)==0)
+      throw Error(std::string("admissible label set must be nonempty: ")+key);
+     auto& values=scope[key];
+     for(std::size_t k=0;k<json_object_array_length(labels);++k){
+      auto* value=json_object_array_get_idx(labels,k);
+      if(!value||json_object_get_type(value)==json_type_object||
+         json_object_get_type(value)==json_type_array||
+         (json_object_get_type(value)==json_type_double&&!std::isfinite(json_object_get_double(value))))
+       throw Error(std::string("invalid admissible label: ")+key);
+      values.push_back(value_string(value));
+     }
+    }
+    c.admissible_subspaces.push_back(std::move(scope));
+   }
+  }
+ }
+ // Prior maps are opt-in and versioned; unspecified labels retain weight 1.
+ if(auto* search=j.get("search")){
+  json_object* prior_object=nullptr;
+  if(json_object_object_get_ex(search,"domain_priors",&prior_object)){
+   if(!prior_object||json_object_get_type(prior_object)!=json_type_object||
+      json_object_object_length(prior_object)==0)
+    throw Error("search.domain_priors must be a nonempty object");
+   json_object_object_foreach(prior_object,axis,weights){
+    if(!weights||json_object_get_type(weights)!=json_type_object||
+       json_object_object_length(weights)==0)
+     throw Error(std::string("v2 prior axis requires nonempty weight map: ")+axis);
+    json_object_object_foreach(weights,label,weight){
+     if(!weight||(json_object_get_type(weight)!=json_type_int&&
+                  json_object_get_type(weight)!=json_type_double))
+      throw Error(std::string("v2 prior must be numeric: ")+axis+"="+label);
+     const auto value=json_object_get_double(weight);
+     if(!std::isfinite(value)||value<1.e-6||value>1.e6)
+      throw Error(std::string("v2 prior weight out of bounds: ")+axis+"="+label);
+     c.domain_priors[axis][label]=value;
+    }
+   }
+  }
+ }
+
+ if(c.policy_version=="v1"){
+  if(auto* detector=j.get("detection")){
+   Json policy(json_object_get(detector));
+   if(policy.get("detector_version"))throw Error("v1 does not accept detection.detector_version");
+  }
+  if(auto* nested=j.get("search")){
+   Json search(json_object_get(nested));
+   if(search.get("replicates"))throw Error("v1 does not accept search.replicates");
+   if(search.get("admissible_subspaces"))throw Error("v1 does not accept search.admissible_subspaces");
+   if(search.get("domain_priors"))throw Error("v1 does not accept search.domain_priors");
+  }
+  if(auto* l=j.get("limits")){Json limits(json_object_get(l));if(limits.get("max_sampled_cpu_ns"))throw Error("v1 does not accept max_sampled_cpu_ns");}
+  if(auto* m=j.get("measurement")){Json legacy(json_object_get(m));
+   if(legacy.get("protocol_version"))throw Error("v1 does not accept measurement.protocol_version");
+  }
+  if(c.method!="grid"&&c.method!="random"&&c.method!="stratified"&&c.method!="adaptive_partition")throw Error("unknown search method");
+ }else if(c.policy_version=="v2"){
+  if(c.method!="uniform_v2"&&c.method!="hierarchical_boundary_v2"&&c.method!="stratified_v2"&&c.method!="hybrid_mixed_v2"&&c.method!="weighted_v2")throw Error("unsupported v2 search method");
+  if(c.method!="weighted_v2"&&!c.domain_priors.empty())
+   throw Error("domain_priors are only valid for weighted_v2");
+  if(c.method=="weighted_v2"&&c.domain_priors.empty())
+   throw Error("weighted_v2 requires search.domain_priors");
+  if(c.measurement_protocol_version!="legacy_retained_outputs_v1"&&
+     c.measurement_protocol_version!="calibrated_batch_v2")
+   throw Error("unsupported v2 measurement protocol; kernel_only_v2 is unavailable");
+  if(c.detector_version!="boundary_v1"&&c.detector_version!="multi_change_v2"&&c.detector_version!="multi_change_pelt_v2"&&c.detector_version!="multi_slope_v2")
+   throw Error("unsupported v2 detector version");
+  if((c.detector_version=="multi_change_v2"||c.detector_version=="multi_change_pelt_v2"||c.detector_version=="multi_slope_v2")&&!numeric_axis(c.axis))
+   throw Error("multi_change_v2 requires an ordered numeric primary axis");
+  if(c.max_cases>c.max_queue)throw Error("v2 candidate budget exceeds memory bound");
+  if(c.seed>static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())-static_cast<std::uint64_t>(c.replicate_count-1))
+   throw Error("v2 replicate seeds overflow signed persistence");
+  if(c.method=="hierarchical_boundary_v2"&&(c.axes.size()!=1||!numeric_axis(c.axis)||c.replicate_count!=1||!c.admissible_subspaces.empty()))
+   throw Error("hierarchical_boundary_v2 currently requires one ordered numeric axis");
+  if((c.method=="hierarchical_boundary_v2"||c.method=="hybrid_mixed_v2")&&numeric_axis(c.axis)){
+   std::optional<std::int64_t> previous;
+   for(const auto& label:c.axes.at(c.axis)){
+    Case sample=c.base;assign(sample,c.axis,label);
+    const auto current=axis_value(sample,c.axis);
+    if(previous&&current<=*previous)throw Error("hierarchical_boundary_v2 requires strictly increasing axis values");
+    previous=current;
+   }
+  }
+ }else throw Error("unsupported search.policy_version");
  if(c.max_cases==0||c.max_cases>20000||c.max_queue==0||c.max_queue>100000||c.max_report_bytes<4096||c.max_report_bytes>1000000000||c.max_bytes<64||c.max_bytes>64ULL*1024*1024||c.blocks<1||c.blocks>100||c.confirm_blocks<1||c.confirm_blocks>100||c.warmup<0||c.warmup>100||c.sample_ms<100||c.sample_ms>60000||c.total_wall_s<1||c.total_wall_s>86400||c.rss_mb<64||c.rss_mb>65536||!std::isfinite(c.min_ratio)||c.min_ratio<1.01||c.min_ratio>100000||!std::isfinite(c.confirmation_confidence)||c.confirmation_confidence<0.90||c.confirmation_confidence>=1.0||!std::isfinite(c.fdr_q)||c.fdr_q<0.001||c.fdr_q>0.25||c.multiple_testing!="bh_fdr"||!std::isfinite(c.exploration_fraction)||c.exploration_fraction<0.0||c.exploration_fraction>1.0||c.minimum_batch_ms<1||c.minimum_batch_ms>100|| (c.isolation_mode!="per_case"&&c.isolation_mode!="per_sample"))throw Error("configuration resource/measurement bounds invalid");
  if(!c.axes.count(c.axis)){
   if(j.get("primary_axis"))throw Error("explicit primary_axis is not declared in axes: "+c.axis);
@@ -224,8 +375,10 @@ Config config_from_json(const Json& j){
  if(!c.b.empty()&&std::find(valid.begin(),valid.end(),c.b)==valid.end()&&c.b.rfind("plugin:",0)!=0)throw Error("unknown secondary algorithm for family");
  std::uint64_t product=1;
  for(const auto& [key,values]:c.axes){
-  if(values.size()>c.max_queue||product>c.max_queue/values.size())throw Error("search grid exceeds max_search_queue; split the experiment");
-  product*=values.size();
+  if(c.policy_version=="v1"){
+   if(values.size()>c.max_queue||product>c.max_queue/values.size())throw Error("search grid exceeds max_search_queue; split the experiment");
+   product*=values.size();
+  }
   std::set<std::string> unique_values;
   for(const auto& v:values){
    if(!unique_values.insert(v).second)throw Error("duplicate axis value in "+key);
@@ -239,7 +392,14 @@ Config config_from_json(const Json& j){
   if(index==dims.size()){validate_case_schema(candidate,c.max_bytes);return;}
   for(const auto& value:dims[index].second){Case next=candidate;assign(next,dims[index].first,value);visit(index+1,next);}
  };
- visit(0,c.base);
+ if(c.policy_version=="v1")visit(0,c.base);
+ else{
+   const auto ordered_axes=std::vector<LazySearchSpace::Axis>(c.axes.begin(),c.axes.end());
+   (void)AdmissibleSearchSpace(ordered_axes,c.admissible_subspaces);
+   if(c.method=="weighted_v2")
+    (void)WeightedIndexSamplerV2(ordered_axes,c.admissible_subspaces,
+      c.domain_priors,static_cast<std::uint64_t>(c.replicate_count),c.seed);
+  }
  return c;
 }
 Config parse_config(const std::string& path){return config_from_json(Json::file(path));}
@@ -550,6 +710,44 @@ static std::optional<Detection> detect(Store& store,const Config& cfg){
  }
  return overall;
 }
+// Multi-change discovery scores are exploratory only. They neither supply
+// p-values nor convert the finite-range segmentation into a proof of Big-O.
+static std::vector<Detection> detect_multi_v2(Store& store,const Config& cfg){
+ std::map<std::string,std::map<std::int64_t,std::vector<double>>> cohorts;
+ std::map<std::string,Case> representatives;
+ for(const auto& c:store.cases(false)){
+  if(const auto value=metric(store,c,cfg,false)){
+   const auto scope=scope_key(c,cfg);
+   cohorts[scope][axis_value(c,cfg.axis)].push_back(*value);
+   representatives.emplace(scope,c);
+  }
+ }
+ std::vector<Detection> found;
+ for(const auto& [scope,points]:cohorts){
+  if(points.size()<6)continue;
+  std::vector<std::int64_t> x;std::vector<double> y;
+  for(const auto& [pos,values]:points){x.push_back(pos);y.push_back(sample_median(values));}
+  std::vector<double> gradients;
+  for(std::size_t j=1;j<y.size();++j)gradients.push_back(std::abs(y[j]-y[j-1]));
+  const auto baseline=sample_median(gradients);
+  const auto penalty=std::max(1e-6,4.0*baseline*baseline*std::log(static_cast<double>(y.size())));
+  const auto fit=cfg.detector_version=="multi_change_pelt_v2"?
+   fit_multi_change_pelt_v2(y,2,3,penalty):fit_multi_change_v2(y,2,3,penalty);
+  for(const auto at:fit.changes){
+   const auto effect=std::abs(y[at]-y[at-1]);
+   std::vector<double> alternatives;
+   for(std::size_t j=1;j<y.size();++j)if(j!=at)alternatives.push_back(std::abs(y[j]-y[j-1]));
+   const auto background=sample_median(alternatives);
+   if(effect<std::log(cfg.min_ratio)||effect<2.5*background)continue;
+   found.push_back(Detection{x[at-1],x[at],effect,
+    cfg.family=="calibration"?"SYNTHETIC_CALIBRATION":"PERFORMANCE_CLIFF",
+    case_params(representatives.at(scope)),scope,""});
+  }
+ }
+ std::stable_sort(found.begin(),found.end(),[](const auto& a,const auto& b){return a.effect>b.effect;});
+ return found;
+}
+
 static std::size_t adaptive_next(Store& store,const Config& cfg,const std::vector<Case>& pool,const std::vector<bool>& chosen,std::uint64_t& random_state){
  std::vector<std::size_t> available;available.reserve(pool.size());
  for(std::size_t i=0;i<pool.size();i++)if(!chosen[i])available.push_back(i);
@@ -606,7 +804,314 @@ static std::size_t adaptive_next(Store& store,const Config& cfg,const std::vecto
  }
  return best;
 }
+// Discovery-only conditional 2x2 screen. All four nominal cells must be
+// independently sampled under every replicate seed; missing cells abstain.
+static void v2_factorial_diagnostic(Store& store,const Config& cfg){
+ if(cfg.axes.size()!=2||cfg.replicate_count<3)return;
+ auto first=cfg.axes.begin(),second=std::next(first);
+ if(first->second.size()!=2||second->second.size()!=2)return;
+ std::vector<FactorialCellV2> cells;
+ for(const auto& c:store.cases(false)){
+  auto m=metric(store,c,cfg,false);
+  std::string status="ok";
+  if(!m){
+   status="incomplete";
+   for(const auto& obs:store.observations(c.id,false))
+    if(obs.algorithm==cfg.a&&obs.status!="ok"){status=obs.status;break;}
+  }
+  cells.push_back(FactorialCellV2{axis_label(c,first->first),axis_label(c,second->first),c.seed,m,status});
+ }
+ const auto result=screen_factorial_v2(
+  {first->second[0],first->second[1]},
+  {second->second[0],second->second[1]},cells,3,std::log(cfg.min_ratio));
+ Json record;record.put("classification",result.kind);
+ record.put("effect",result.median_contrast);
+ record.put("complete_cohorts",static_cast<std::int64_t>(result.complete_cohorts));
+ record.put("incomplete_cohorts",static_cast<std::int64_t>(result.incomplete_cohorts));
+ record.put("failure_status",result.failure_status);
+ record.put("axis_a",first->first);record.put("axis_b",second->first);
+ store.event("v2_factorial_screen_discovery_only",record.str());
+}
+
+// This detector is deliberately exploratory: a slope break is not a jump,
+// does not license v1 two-side confirmation, and has no p-value. Retain the
+// raw model and all selected cuts without manufacturing an HYPOTHESIZED claim.
+static void v2_slope_diagnostic(Store& store,const Config& cfg){
+ std::map<std::string,std::map<std::int64_t,std::vector<double>>> cohorts;
+ for(const auto& c:store.cases(false))
+  if(const auto value=metric(store,c,cfg,false))
+   cohorts[scope_key(c,cfg)][axis_value(c,cfg.axis)].push_back(*value);
+ for(const auto& [scope,points]:cohorts){
+  if(points.size()<6||points.size()>512)continue;
+  std::vector<std::int64_t> x;std::vector<double> y;
+  for(const auto& [coordinate,values]:points){
+   x.push_back(coordinate);y.push_back(sample_median(values));
+  }
+  std::vector<double> differences;
+  for(std::size_t i=1;i<y.size();++i){
+   const auto derivative=std::abs(
+    (static_cast<long double>(y[i])-static_cast<long double>(y[i-1]))/
+    (static_cast<long double>(x[i])-static_cast<long double>(x[i-1])));
+   if(!std::isfinite(derivative)||
+      derivative>static_cast<long double>(std::numeric_limits<double>::max()))
+    throw Error("v2 slope discovery derivative out of range");
+   differences.push_back(static_cast<double>(derivative));
+  }
+  const auto noise=sample_median(differences);
+  const auto penalty=std::max(1e-8,noise*noise*
+   std::log(static_cast<double>(y.size())));
+  const auto fit=fit_multi_slope_v2(x,y,3,3,penalty);
+  Json entry;entry.put("model_version","multi_slope_v2");
+  entry.put("scope",scope);
+  entry.put("sample_count",static_cast<std::int64_t>(y.size()));
+  entry.put("changes",static_cast<std::int64_t>(fit.changes.size()));
+  entry.put("residual_sse",fit.residual_sse);
+  entry.put("penalized_sse",fit.penalized_sse);
+  entry.put("confirmatory_significance",false);
+  auto* cuts=json_object_new_array();
+  for(const auto at:fit.changes){
+   Json cut;cut.put("left",x[at-1]);cut.put("right",x[at]);
+   json_object_array_add(cuts,cut.p);cut.p=nullptr;
+  }
+  json_object_object_add(entry.p,"cut_intervals",cuts);
+  store.event("v2_slope_model_discovery_only",entry.str());
+ }
+}
+
+// V2 uniform baseline: virtual candidate indices, no Cartesian materialization.
+// Case IDs and RNG are checked against the committed decision transcript.
+static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& store,std::size_t pause_after){
+ const AdmissibleSearchSpace space(std::vector<LazySearchSpace::Axis>(cfg.axes.begin(),cfg.axes.end()),cfg.admissible_subspaces);
+ const auto replicas=static_cast<std::uint64_t>(cfg.replicate_count);
+ if(space.cardinality()>static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())/replicas)
+  throw Error("CARDINALITY_OVERFLOW: v2 coordinate/replicate universe");
+ const auto virtual_count=space.cardinality()*replicas;
+ SparsePermutation sampler(virtual_count,cfg.seed^0xb7d2f937c4abULL);
+ std::optional<StratifiedIndexSamplerV2> stratified;
+ std::optional<WeightedIndexSamplerV2> weighted;
+ if(cfg.method=="weighted_v2")
+  weighted.emplace(std::vector<LazySearchSpace::Axis>(cfg.axes.begin(),cfg.axes.end()),
+    cfg.admissible_subspaces,cfg.domain_priors,replicas,cfg.seed^0x47c11bf25eb49a0dULL);
+ if(cfg.method=="stratified_v2")
+  stratified.emplace(std::vector<LazySearchSpace::Axis>(cfg.axes.begin(),cfg.axes.end()),
+    cfg.admissible_subspaces,cfg.axis,replicas,cfg.seed^0xb4ad19f14acULL);
+ std::optional<HybridMixedPolicyV2> hybrid;
+ if(cfg.method=="hybrid_mixed_v2")
+  hybrid.emplace(std::vector<LazySearchSpace::Axis>(cfg.axes.begin(),cfg.axes.end()),
+   cfg.admissible_subspaces,cfg.axis,replicas,cfg.seed^0x827d391bULL,
+   cfg.exploration_fraction,numeric_axis(cfg.axis));
+ std::optional<HierarchicalPolicyV2> hierarchy;
+ if(cfg.method=="hierarchical_boundary_v2")
+  hierarchy.emplace(static_cast<std::size_t>(space.cardinality()),cfg.seed^0xd9af2e13ULL,cfg.exploration_fraction);
+ const auto rng_state=[&](){return hybrid?hybrid->rng_state():
+  (hierarchy?hierarchy->rng_state():
+   (weighted?weighted->state():(stratified?stratified->state():sampler.state())));};
+ const auto cpu_ms=[&](const Case& c){
+  double ms=0;
+  for(const auto& o:store.observations(c.id,false))
+   if(o.cpu_ns>0)ms+=static_cast<double>(o.cpu_ns)/1000000.;
+  return std::max(1.,ms);
+ };
+ auto add_evidence=[&](std::uint64_t i,const Case& c){
+  if(hierarchy)hierarchy->observe(static_cast<std::size_t>(i),metric(store,c,cfg,false),cpu_ms(c));
+  if(hybrid)hybrid->observe(i,metric(store,c,cfg,false),cpu_ms(c));
+ };
+ auto next_valid=[&]()->std::optional<std::pair<std::uint64_t,Case>>{
+  if(hybrid){
+   for(std::size_t attempts=0;attempts<10000;++attempts){
+    const auto index=hybrid->next();
+    if(!index)return std::nullopt;
+    Case c=cfg.base;c.seed=cfg.seed+(*index%replicas);
+    for(const auto& [axis,value]:space.at(*index/replicas))assign(c,axis,value);
+    try{validate_case_schema(c,cfg.max_bytes);}
+    catch(const Error&){hybrid->reject(*index);continue;}
+    return std::pair<std::uint64_t,Case>{*index,std::move(c)};
+   }
+   throw Error("v2 hybrid exceeded deterministic invalid-proposal cap");
+  }
+  if(hierarchy){
+   const auto pos=hierarchy->next();if(!pos)return std::nullopt;
+   Case c=cfg.base;c.seed=cfg.seed;
+   for(const auto& [axis,value]:space.at(*pos))assign(c,axis,value);
+   validate_case_schema(c,cfg.max_bytes);
+   return std::pair<std::uint64_t,Case>{static_cast<std::uint64_t>(*pos),std::move(c)};
+  }
+  for(std::size_t attempts=0;attempts<10000&&
+      (weighted?weighted->has_next():(stratified?stratified->has_next():sampler.has_next()));++attempts){
+   auto index=weighted?weighted->next():(stratified?stratified->next():sampler.next());Case c=cfg.base;c.seed=cfg.seed+(index%replicas);
+   for(const auto& [axis,value]:space.at(index/replicas))assign(c,axis,value);
+   try{validate_case_schema(c,cfg.max_bytes);}catch(const Error&){continue;}
+   return std::pair<std::uint64_t,Case>{index,std::move(c)};
+  }
+  if(weighted?weighted->has_next():(stratified?stratified->has_next():sampler.has_next()))
+   throw Error("v2 exceeded deterministic invalid-proposal cap");
+  return std::nullopt;
+ };
+ std::size_t completed=0;
+ std::uint64_t sampled_cpu_used=0;
+ bool sampled_cpu_unknown=false;
+ const auto account_samples=[&](const std::vector<Observation>& observations){
+  if(!cfg.max_sampled_cpu_ns)return;
+  for(const auto& o:observations){
+   if(o.status!="ok"||o.cpu_ns<0){sampled_cpu_unknown=true;continue;}
+   const auto charge=static_cast<std::uint64_t>(o.cpu_ns);
+   if(charge>static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())-sampled_cpu_used)
+    throw Error("v2 sampled worker CPU budget accounting overflow");
+   sampled_cpu_used+=charge;
+  }
+ };
+ for(const auto& d:store.scheduler_decisions()){
+  auto next=next_valid();
+  if(!next||d.pool_index<0||static_cast<std::uint64_t>(d.pool_index)!=next->first||
+     d.next_rng_state!=rng_state()||make_case(next->second,cfg.max_bytes).id!=d.case_id)
+   throw Error("v2 immutable scheduler replay mismatch");
+  add_evidence(next->first,make_case(next->second,cfg.max_bytes));
+  account_samples(store.observations(d.case_id,false));
+  if(cfg.max_sampled_cpu_ns)
+   store.verify_v2_budget_entry(d.pool_index,d.case_id,sampled_cpu_used,cfg.max_sampled_cpu_ns);
+  ++completed;
+ }
+ if(completed>cfg.max_cases)throw Error("v2 persisted decisions exceed case budget");
+ if(sampled_cpu_unknown)throw Error("v2 sampled worker CPU budget is unaccountable: incomplete or invalid timed observations preserved");
+ bool sampled_cpu_limit=cfg.max_sampled_cpu_ns>0&&sampled_cpu_used>=cfg.max_sampled_cpu_ns;
+ // A finalized budget-capped experiment is terminal across subsequent resumes.
+ if(sampled_cpu_limit){
+  sqlite3_stmt* stmt=nullptr;
+  if(sqlite3_prepare_v2(store.raw(),"SELECT 1 FROM events WHERE event='search_complete' LIMIT 1",-1,&stmt,nullptr)!=SQLITE_OK)
+   throw Error("cannot inspect v2 budget-complete evidence");
+  const bool already_completed=sqlite3_step(stmt)==SQLITE_ROW;
+  sqlite3_finalize(stmt);
+  if(already_completed){report(out);return;}
+ }
+ const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(cfg.total_wall_s);
+ bool budget_hit=false,exhausted=false;std::size_t this_call=0;
+ while(completed<cfg.max_cases&&!sampled_cpu_limit&&(pause_after==0||this_call<pause_after)){
+  if(std::chrono::steady_clock::now()>=deadline){budget_hit=true;break;}
+  const auto proposal_started=std::chrono::steady_clock::now();
+  auto next=next_valid();
+  if(!next){exhausted=true;break;}
+  const auto proposal_wall_ns=std::chrono::duration_cast<std::chrono::nanoseconds>(
+   std::chrono::steady_clock::now()-proposal_started).count();
+  auto c=make_case(next->second,cfg.max_bytes);std::vector<Observation> obs;
+  const auto worker_started=std::chrono::steady_clock::now();
+  try{
+   obs=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},
+    cfg.blocks,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,
+    cfg.isolation_mode=="per_sample",deadline,cfg.measurement_protocol_version);
+  }catch(const Error& e){
+   if(std::string(e.what()).find("total_wall_seconds budget exhausted")!=std::string::npos){budget_hit=true;break;}
+   throw;
+  }
+  const auto worker_wall_ns=std::chrono::duration_cast<std::chrono::nanoseconds>(
+   std::chrono::steady_clock::now()-worker_started).count();
+  if(std::chrono::steady_clock::now()>=deadline){budget_hit=true;break;}
+  account_samples(obs);
+  // Descriptive, per-commit accounting. Neither clock is a parent-CPU or
+  // complete process-tree CPU measurement; every retained worker failure
+  // must be labeled rather than treated as zero-cost evidence.
+  std::int64_t timed_cpu=0;
+  bool timed_cpu_complete=true;
+  for(const auto& o:obs){
+   if(o.status!="ok"||o.cpu_ns<0||
+      o.cpu_ns>std::numeric_limits<std::int64_t>::max()-timed_cpu){
+    timed_cpu_complete=false;continue;
+   }
+   timed_cpu+=o.cpu_ns;
+  }
+  store.exec("BEGIN IMMEDIATE");
+  try{
+   for(const auto& o:obs)store.add_observation(c,o,false);
+   store.record_decision(static_cast<std::size_t>(next->first),c.id,rng_state());
+   if(cfg.max_sampled_cpu_ns)
+    store.record_v2_budget_entry(c.id,sampled_cpu_used,cfg.max_sampled_cpu_ns,!sampled_cpu_unknown);
+   if(hierarchy)store.event("v2_acquisition",std::to_string(next->first)+";origin="+hierarchy->origin());
+   if(hybrid)store.event("v2_acquisition",std::to_string(next->first)+";origin="+hybrid->origin());
+   if(stratified)store.event("v2_acquisition",std::to_string(next->first)+";origin=stratified_primary_axis");
+   if(weighted)store.event("v2_acquisition",std::to_string(next->first)+";origin=weighted_domain_prior");
+   Json phases;
+   phases.put("virtual_index",static_cast<std::int64_t>(next->first));
+   phases.put("proposal_wall_ns",static_cast<std::int64_t>(proposal_wall_ns));
+   phases.put("worker_invocation_wall_ns",static_cast<std::int64_t>(worker_wall_ns));
+   phases.put("valid_timed_cpu_ns",timed_cpu);
+   phases.put("timed_cpu_complete",timed_cpu_complete);
+   phases.put("accounting_model","descriptive_v2_case_boundary_v1");
+   store.event("v2_phase_budget",phases.str());
+   if(cfg.max_sampled_cpu_ns){
+    Json cost;cost.put("sampled_cpu_ns",static_cast<std::int64_t>(sampled_cpu_used));
+    cost.put("limit_ns",static_cast<std::int64_t>(cfg.max_sampled_cpu_ns));
+    cost.put("accounting_complete",!sampled_cpu_unknown);
+    store.event("v2_sampled_cpu_budget_ledger",cost.str());
+   }
+   store.exec("COMMIT");
+  }catch(...){store.exec("ROLLBACK");throw;}
+  add_evidence(next->first,c);
+  ++completed;++this_call;
+  if(sampled_cpu_unknown){report(out);throw Error("v2 sampled worker CPU budget cannot account invalid/unknown timed samples; preserved");}
+  if(cfg.max_sampled_cpu_ns&&sampled_cpu_used>=cfg.max_sampled_cpu_ns){
+   sampled_cpu_limit=true;break;
+  }
+ }
+ if(completed==cfg.max_cases||exhausted||sampled_cpu_limit){
+  v2_factorial_diagnostic(store,cfg);
+  if(cfg.detector_version=="multi_slope_v2")v2_slope_diagnostic(store,cfg);
+  std::optional<Detection> selected=detect(store,cfg);
+  std::vector<Detection> ranked_multi;
+  if(cfg.detector_version=="multi_change_v2"||cfg.detector_version=="multi_change_pelt_v2"){
+   ranked_multi=detect_multi_v2(store,cfg);
+   std::size_t rank=0;
+   for(const auto& c:ranked_multi){
+    Json evidence;evidence.put("rank",static_cast<std::int64_t>(++rank));
+    evidence.put("left",c.left);evidence.put("right",c.right);
+    evidence.put("effect",c.effect);evidence.put("scope",c.scope);
+    evidence.put("model_version",cfg.detector_version);
+    store.event("v2_multiple_change_discovery_only",evidence.str());
+   }
+   if(!ranked_multi.empty()&&(!selected||
+      (selected->kind!="CORRECTNESS_BOUNDARY"&&
+       selected->kind!="MEMORY_OR_RESOURCE_BOUNDARY"&&
+       selected->kind!="PERFORMANCE_CROSSOVER"&&
+       ranked_multi.front().effect>=selected->effect)))
+    selected=ranked_multi.front();
+  }
+  if(auto d=selected){
+   store.hypothesis("H1","OBSERVED",cfg.axis,d->left,d->right,d->effect,
+    "Exploratory v2 candidate, not independently confirmed",d->kind,d->frozen_params);
+   store.hypothesis("H1","HYPOTHESIZED",cfg.axis,d->left,d->right,d->effect,
+    "V2 discovery; frozen independent holdout required",d->kind,d->frozen_params);
+   // Up to 15 further distinct geometric boundaries remain HYPOTHESIZED,
+   // never automatically confirmed. All must be predeclared together before
+   // holdout in a family manifest; same-geometry scopes cannot currently
+   // claim independent conditional effects.
+   std::set<std::pair<std::int64_t,std::int64_t>> geometry;
+   geometry.emplace(d->left,d->right);
+   std::size_t next_id=2;
+   for(const auto& candidate:ranked_multi){
+    if(next_id>16)break;
+    if(!geometry.emplace(candidate.left,candidate.right).second)continue;
+    const auto id="H"+std::to_string(next_id++);
+    store.hypothesis(id,"OBSERVED",cfg.axis,candidate.left,candidate.right,
+      candidate.effect,"Exploratory ranked multi-change candidate; untested",
+      candidate.kind,candidate.frozen_params);
+    store.hypothesis(id,"HYPOTHESIZED",cfg.axis,candidate.left,candidate.right,
+      candidate.effect,"Frozen discovery rank; independent holdout and campaign multiplicity required",
+      candidate.kind,candidate.frozen_params);
+   }
+  }else store.hypothesis("H1","NO_CONFIRMED_BOUNDARY",cfg.axis,0,0,0,
+    "No convincing isolated structural discontinuity under declared thresholds");
+  if(sampled_cpu_limit)store.event("v2_sampled_cpu_limit_reached",
+   std::to_string(sampled_cpu_used)+";limit="+std::to_string(cfg.max_sampled_cpu_ns));
+  store.event("search_complete",std::to_string(completed));
+ }else{
+  store.event("search_paused",std::to_string(completed));
+  if(budget_hit)store.event("wall_budget_exhausted",std::to_string(cfg.total_wall_s));
+ }
+ std::cout<<"V2 explored "<<completed<<" from virtual "<<virtual_count<<" coordinate/replicate candidates; "<<store.summary().str()<<"\n";
+ report(out);
+ if(budget_hit)throw Error("total_wall_seconds budget exhausted; completed cases preserved; resume the partial run");
+}
+
 static void execute_schedule(const Config& cfg,const std::string& out,Store& store,std::size_t pause_after){
+ if(cfg.policy_version=="v2"){execute_lazy_v2(cfg,out,store,pause_after);return;}
  auto choices=scheduled(cfg);std::vector<bool> chosen(choices.size(),false);
  const bool feedback=cfg.method=="adaptive_partition";
  auto completed=std::size_t{0};std::uint64_t rng=cfg.seed^0xf39b247bf04aULL;
@@ -629,7 +1134,7 @@ static void execute_schedule(const Config& cfg,const std::string& out,Store& sto
   auto c=make_case(choices[index],cfg.max_bytes);
   std::vector<Observation> obs;
   try{
-   obs=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},cfg.blocks,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",hard_deadline);
+   obs=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},cfg.blocks,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",hard_deadline,cfg.measurement_protocol_version);
   }catch(const Error& error){
    if(std::string(error.what()).find("total_wall_seconds budget exhausted")!=std::string::npos){budget_hit=true;break;}
    throw;
@@ -658,16 +1163,30 @@ static void execute_schedule(const Config& cfg,const std::string& out,Store& sto
 }
 void explore(const Config& cfg,const std::string& out,std::size_t pause_after){
  if(fs::exists(out+"/run.sqlite"))throw Error("output run already exists (will not overwrite evidence)");
- fs::create_directories(out);Store s(out+"/run.sqlite");s.experiment(config_json(cfg).str(),environment());
+ fs::create_directories(out);Store s(out+"/run.sqlite");if(cfg.policy_version=="v2")s.upgrade_v2_schema();s.experiment(config_json(cfg).str(),environment());
  execute_schedule(cfg,out,s,pause_after);
 }
 void resume(const std::string& run,std::size_t pause_after){
  if(!fs::exists(run+"/run.sqlite"))throw Error("run database missing for resume");
- Store s(run+"/run.sqlite");const auto cfg=config_from_json(Json::parse(s.config()));
+ Store s(run+"/run.sqlite");const auto cfg=config_from_json(Json::parse(s.config()));if(cfg.policy_version=="v2")s.upgrade_v2_schema();
  sqlite3_stmt* st=nullptr;
  if(sqlite3_prepare_v2(s.raw(),"SELECT COUNT(*) FROM hypotheses",-1,&st,nullptr)!=SQLITE_OK)throw Error("hypothesis lookup failed");
  auto rc=sqlite3_step(st);const auto done=rc==SQLITE_ROW?sqlite3_column_int64(st,0):0;sqlite3_finalize(st);
- if(done)throw Error("experiment has finalized hypothesis; resume would overwrite evidence");
+ if(done){
+  // Narrow opt-in exception: a fully sealed sampled-CPU-budget stop is
+  // idempotently resumable as a no-op, never as a new discovery write.
+  if(cfg.policy_version=="v2"&&cfg.max_sampled_cpu_ns>0){
+   sqlite3_stmt* check=nullptr;
+   if(sqlite3_prepare_v2(s.raw(),
+     "SELECT COUNT(DISTINCT event) FROM events WHERE event IN ('v2_sampled_cpu_limit_reached','search_complete')",
+     -1,&check,nullptr)!=SQLITE_OK)throw Error("budget finalization evidence query failed");
+   const auto step=sqlite3_step(check);
+   const bool terminal=step==SQLITE_ROW&&sqlite3_column_int(check,0)==2;
+   sqlite3_finalize(check);
+   if(terminal){execute_lazy_v2(cfg,run,s,0);return;}
+  }
+  throw Error("experiment has finalized hypothesis; resume would overwrite evidence");
+ }
  execute_schedule(cfg,run,s,pause_after);
 }
 static std::tuple<std::string,std::string,std::int64_t,std::int64_t> read_hypothesis(Store& s,const std::string& id){
@@ -696,9 +1215,62 @@ void confirm(const std::string& run,const std::string& id){
  Store store(run+"/run.sqlite");const auto cfg=config_from_json(Json::parse(store.config()));
  auto [status,axis,left,right]=read_hypothesis(store,id);
  const auto frozen=frozen_case(store,cfg,id);
+ // Distinct hypothesis IDs must never share a fixed holdout seed stream.
+ // Keep H1 bitwise compatible; all v2 H2..H16 use disjoint 1e9-wide windows
+ // for primary, failure-status and negative-control seed cohorts.
+ std::uint64_t hypothesis_seed_offset=0;
+ if(cfg.policy_version=="v2"&&id!="H1"){
+  if(id.size()<2||id[0]!='H')throw Error("v2 hypothesis must be H1..H16");
+  std::size_t parsed=0;std::uint64_t rank=0;
+  try{rank=std::stoull(id.substr(1),&parsed);}
+  catch(const std::exception&){throw Error("unsupported v2 hypothesis identity");}
+  if(parsed!=id.size()-1||rank<2||rank>16)
+   throw Error("v2 hypothesis rank out of predeclared bounds");
+  hypothesis_seed_offset=(rank-1)*1000000000ULL;
+ }
+ // Reject unsafe negative-control and paired holdout seeds without mutating
+ // a frozen hypothesis or retaining an incomplete overflowed population.
+ if(cfg.policy_version=="v2")
+  validate_v2_confirmation_seed_space(cfg.seed,
+   hypothesis_seed_offset/1000000000ULL+1ULL,cfg.confirm_blocks);
  const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(cfg.total_wall_s);
+ const auto prescribed_seeds=[&](bool failure){
+  std::vector<std::uint64_t> seeds;
+  if(cfg.policy_version!="v2")return seeds;
+  for(int i=0;i<cfg.confirm_blocks;++i)
+   seeds.push_back(cfg.seed+hypothesis_seed_offset+(failure?7000000ULL:1000000ULL)+
+    static_cast<std::uint64_t>(i)*(failure?101ULL:97ULL));
+  return seeds;
+ };
  if(status=="NO_CONFIRMED_BOUNDARY"){std::cout<<"No candidate to confirm\n";return;}
  if(status!="HYPOTHESIZED")throw Error("confirmation already attempted or candidate not eligible: "+status);
+ if(cfg.policy_version=="v2"){
+  sqlite3_stmt* members=nullptr;
+  if(sqlite3_prepare_v2(store.raw(),
+   "SELECT COUNT(*) FROM hypotheses WHERE status!='NO_CONFIRMED_BOUNDARY'",-1,&members,nullptr)!=SQLITE_OK)
+   throw Error("cannot inspect v2 frozen candidate family");
+  const auto state=sqlite3_step(members);
+  const auto candidates=state==SQLITE_ROW?sqlite3_column_int64(members,0):0;
+  sqlite3_finalize(members);
+  if(state!=SQLITE_ROW)throw Error("cannot count v2 frozen candidate family");
+  if(candidates>1||id!="H1"){
+   // A multiple-candidate confirmation is invalid unless its
+   // predeclared, immutable Holm family is frozen before holdout.
+   sqlite3_stmt* family=nullptr;
+   if(sqlite3_prepare_v2(store.raw(),
+    "SELECT c.state FROM campaign_members_v2 m JOIN campaigns_v2 c"
+    " ON c.campaign_id=m.campaign_id WHERE m.hypothesis_id=?",-1,&family,nullptr)!=SQLITE_OK){
+    // SQLite v8 doesn't have campaign tables: fail closed.
+    throw Error("v2 multi-hypothesis confirmation requires frozen campaign");
+   }
+   sqlite3_bind_text(family,1,id.c_str(),-1,SQLITE_TRANSIENT);
+   const auto row=sqlite3_step(family);
+   const bool campaign_is_frozen=row==SQLITE_ROW&&
+     std::string(reinterpret_cast<const char*>(sqlite3_column_text(family,0)))=="FROZEN";
+   sqlite3_finalize(family);
+   if(!campaign_is_frozen)throw Error("v2 multi-hypothesis confirmation requires frozen campaign membership");
+  }
+ }
  /* Preserve the original candidate's frozen failure subtype/scope when
     entering TESTED: failure confirmations parse that exact evidence. */
  sqlite3_stmt* detail_stmt=nullptr;
@@ -732,14 +1304,14 @@ void confirm(const std::string& run,const std::string& id){
   std::set<std::string> prior;for(const auto& c:store.cases(false))prior.insert(c.id);
   bool all_valid=true;int completed_pairs=0;
   for(int i=0;i<cfg.confirm_blocks&&all_valid;i++){
-   const auto seed=cfg.seed+7000000ULL+static_cast<std::uint64_t>(i)*101ULL;
+   const auto seed=cfg.seed+hypothesis_seed_offset+7000000ULL+static_cast<std::uint64_t>(i)*101ULL;
    for(int side=0;side<2;side++){
     if(std::chrono::steady_clock::now()>=deadline)throw Error("total_wall_seconds budget exhausted during confirmation");
     Case c=frozen;assign(c,axis,frozen_axis_value(cfg,side==0?left:right));
     c.seed=seed;c=make_case(c,cfg.max_bytes);
     if(prior.count(c.id)){all_valid=false;break;}
     auto observations=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:
-       std::vector<std::string>{cfg.a,cfg.b},1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline);
+       std::vector<std::string>{cfg.a,cfg.b},1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline,cfg.measurement_protocol_version);
     int count=0;
     for(const auto& observation:observations){
      store.add_observation(c,observation,true);
@@ -758,12 +1330,12 @@ void confirm(const std::string& run,const std::string& id){
   if(all_valid){
    Case control=frozen;
    assign(control,axis,frozen_axis_value(cfg,left));
-   control.seed=cfg.seed+30000000ULL;control=make_case(control,cfg.max_bytes);
+   control.seed=cfg.seed+hypothesis_seed_offset+30000000ULL;control=make_case(control,cfg.max_bytes);
    if(prior.count(control.id))all_valid=false;
    else{
     const auto control_rows=measure(control,cfg.b.empty()?std::vector<std::string>{cfg.a}:
       std::vector<std::string>{cfg.a,cfg.b},1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,
-      cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline);
+      cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline,cfg.measurement_protocol_version);
     for(const auto& row:control_rows){
      store.add_observation(control,row,true);
      if(row.status!="ok")all_valid=false;
@@ -776,8 +1348,14 @@ void confirm(const std::string& run,const std::string& id){
       " pairs expected="+std::to_string(cfg.confirm_blocks)+"; left=ok right="+subtype+
       "; categorical status, censored timing not a speedup; no finite ratio inferred"+
       "; independent baseline negative-control oracle_valid="+(all_valid?"true":"false");
-  if(std::string(verdict)=="CONFIRMED")store.seal_confirmation(id,cfg.a,cfg.confirm_blocks);
-  store.hypothesis(id,verdict,axis,left,right,0,evidence);
+  // The seal and final status commit as one SQLite transaction.
+  store.exec("BEGIN IMMEDIATE");
+  try{
+   if(std::string(verdict)=="CONFIRMED")
+    store.seal_confirmation(id,cfg.a,cfg.confirm_blocks,false,prescribed_seeds(true));
+   store.hypothesis(id,verdict,axis,left,right,0,evidence);
+   store.exec("COMMIT");
+  }catch(...){store.exec("ROLLBACK");throw;}
   report(run);std::cout<<verdict<<" "<<evidence<<"\n";return;
  }
  std::array<std::vector<double>,2> side_estimates;
@@ -785,14 +1363,14 @@ void confirm(const std::string& run,const std::string& id){
  std::set<std::string> discovery_ids;for(const auto& c:store.cases(false))discovery_ids.insert(c.id);
  auto reject=[&](const std::string& why){store.hypothesis(id,"NOT_CONFIRMED",axis,left,right,0,why);report(run);};
  for(int i=0;i<cfg.confirm_blocks;i++){
-  const auto seed=cfg.seed+1000000ULL+static_cast<std::uint64_t>(i)*97ULL;
+  const auto seed=cfg.seed+hypothesis_seed_offset+1000000ULL+static_cast<std::uint64_t>(i)*97ULL;
   std::array<double,2> estimates{};
   for(int order=0;order<2;order++){
    const auto side=static_cast<std::size_t>((i+order)%2);
    if(std::chrono::steady_clock::now()>=deadline)throw Error("total_wall_seconds budget exhausted during confirmation");
    Case c=frozen;assign(c,axis,frozen_axis_value(cfg,side==0?left:right));c.seed=seed;c=make_case(c,cfg.max_bytes);
    if(discovery_ids.count(c.id)){reject("Held-out input overlaps discovery: confirmation invalid");return;}
-   auto obs=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline);
+   auto obs=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline,cfg.measurement_protocol_version);
    for(const auto& o:obs)store.add_observation(c,o,true);
    auto result=metric(store,c,cfg,true);
    if(!result){reject("Insufficient holdout measurement or correctness/worker failure");return;}
@@ -805,6 +1383,7 @@ void confirm(const std::string& run,const std::string& id){
  const auto threshold=std::log(cfg.min_ratio);
  std::ostringstream detail;detail<<std::setprecision(8);
  bool confirmed=false;
+ std::optional<double> campaign_p_value;
  if(cfg.family=="calibration"){
   confirmed=std::abs(delta)>=threshold;
   detail<<"Independent seed-separated deterministic operation-count holdout; pairs="<<cfg.confirm_blocks<<". NOT a timing/algorithm discovery.";
@@ -812,7 +1391,8 @@ void confirm(const std::string& run,const std::string& id){
   const auto interval=paired_case_bootstrap(paired_differences,cfg.seed^0x5b86d2a7c9e3ULL,cfg.confirmation_confidence);
   const auto ci_l=case_bootstrap(side_estimates[0],cfg.seed^0x7ac6314fe29ULL,cfg.confirmation_confidence);
   const auto ci_r=case_bootstrap(side_estimates[1],cfg.seed^0x87f3e195c1eULL,cfg.confirmation_confidence);
-  const auto p=paired_sign_flip_p(paired_differences,cfg.seed^0xb3970a42e86ULL);
+  const auto p=paired_sign_flip_p(paired_differences,cfg.seed^0xb3970a42e86ULL^hypothesis_seed_offset);
+  if(cfg.policy_version=="v2")campaign_p_value=p;
   /* One preselected hypothesis per discovery, one isolated single-use
      confirmation: BH for a family of size one is identical to p<=q.
      A 99% CI further constrains the practical effect. */
@@ -855,12 +1435,12 @@ void confirm(const std::string& run,const std::string& id){
   Case c=frozen;
   if(has_distant)assign(c,axis,selected);
   else selected=axis_label(frozen,axis); // no third point exists in this design
-  c.seed=cfg.seed+30000000ULL;c=make_case(c,cfg.max_bytes);
+  c.seed=cfg.seed+hypothesis_seed_offset+30000000ULL;c=make_case(c,cfg.max_bytes);
   if(discovery_ids.count(c.id)){
    confirmed=false;detail<<"; negative-control invalid: discovery overlap";
   }else{
    const auto observations=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},
-     1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline);
+     1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline,cfg.measurement_protocol_version);
    for(const auto& o:observations)store.add_observation(c,o,true);
    const auto valid=metric(store,c,cfg,true).has_value();
    if(!valid)confirmed=false;
@@ -870,8 +1450,16 @@ void confirm(const std::string& run,const std::string& id){
          <<" veto_if_invalid=true";
   }
  }
- if(confirmed)store.seal_confirmation(id,cfg.a,cfg.confirm_blocks);
- store.hypothesis(id,confirmed?"CONFIRMED":"NOT_CONFIRMED",axis,left,right,std::abs(delta),detail.str()+(confirmed?"":"; prespecified evidence threshold not met"));
+ // Keep sealed positive status and family p-value indivisible. A failed SQL
+ // attestation may preserve raw holdout evidence but not a positive verdict.
+ store.exec("BEGIN IMMEDIATE");
+ try{
+  if(confirmed)store.seal_confirmation(id,cfg.a,cfg.confirm_blocks,false,prescribed_seeds(false));
+  store.hypothesis(id,confirmed?"CONFIRMED":"NOT_CONFIRMED",axis,left,right,std::abs(delta),detail.str()+(confirmed?"":"; prespecified evidence threshold not met"));
+  if(confirmed&&campaign_p_value)
+   record_campaign_signflip_v2(store,id,*campaign_p_value,cfg.confirm_blocks);
+  store.exec("COMMIT");
+ }catch(...){store.exec("ROLLBACK");throw;}
  report(run);std::cout<<store.summary().str()<<"\n";
  }catch(const Error& error){
   if(std::string(error.what()).find("total_wall_seconds budget exhausted")!=std::string::npos){
@@ -956,8 +1544,10 @@ void ablate(const Config& cfg,const std::string& out){
 static void minimize_performance(const std::string& run,const std::string& id,
                                  Store& source,const Config& cfg,
                                  const std::string& axis,std::int64_t left,std::int64_t right){
- if(fs::exists(run+"/minimization.sqlite")||fs::exists(run+"/witness.json"))
+ const auto artifacts=witness_output_root(run,id,cfg.policy_version).string();
+ if(fs::exists(artifacts+"/minimization.sqlite")||fs::exists(artifacts+"/witness.json"))
   throw Error("minimization evidence already exists; refusing to overwrite");
+ fs::create_directories(artifacts);
  const auto base=frozen_case(source,cfg,id);
  if(!numeric_axis(axis)||left>=right)throw Error("performance minimization requires a frozen numeric boundary");
  Case initial=base;assign(initial,axis,formatted_axis_value(axis,right));
@@ -984,7 +1574,7 @@ static void minimize_performance(const std::string& run,const std::string& id,
  if(sqlite3_step(statement)!=SQLITE_ROW){sqlite3_finalize(statement);throw Error("hypothesis unavailable to minimizer");}
  const auto kind=std::string(reinterpret_cast<const char*>(sqlite3_column_text(statement,0)));
  sqlite3_finalize(statement);
- Store evidence(run+"/minimization.sqlite");evidence.experiment(config_json(cfg).str(),environment());
+ Store evidence(artifacts+"/minimization.sqlite");evidence.experiment(config_json(cfg).str(),environment());
  evidence.event("frozen_witness_predicate", "id="+id+" kind="+kind+" axis="+axis+" left="+std::to_string(left)+" right="+std::to_string(right)+" effect_direction="+std::to_string(expected_direction));
  const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(std::min(180,cfg.total_wall_s));
  const int samples=std::max(20,cfg.confirm_blocks);
@@ -1006,7 +1596,7 @@ static void minimize_performance(const std::string& run,const std::string& id,
     c.seed=base_seed+static_cast<std::uint64_t>(block)*97ULL;
     try{c=make_case(c,cfg.max_bytes);}catch(const Error&){return false;}
     auto observations=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},
-                              1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline);
+                              1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline,cfg.measurement_protocol_version);
     for(const auto& o:observations)evidence.add_observation(c,o,true);
     const auto m=metric(evidence,c,cfg,true);
     if(!m){evidence.event("minimization_invalid",stage+" worker or oracle invalid case="+c.id);return false;}
@@ -1065,7 +1655,7 @@ static void minimize_performance(const std::string& run,const std::string& id,
  record.put("input_sha256",sha256(smallest.bytes));record.put("parameters",Json::parse(case_params(smallest)));
  record.put("evaluations",static_cast<std::int64_t>(attempts));record.put("valid_experiments",static_cast<std::int64_t>(accepted));
  record.put("holdout_case_pairs_per_evaluation",static_cast<std::int64_t>(samples));
- record.put("minimization_evidence","minimization.sqlite");
+ record.put("minimization_evidence",witness_evidence_relative(id,cfg.policy_version));
  auto* path=json_object_new_array();
  if(initially_valid)for(const auto& step:result.trace){Json item;item.put("case_id",step.case_id);
   item.put("input_bytes",static_cast<std::int64_t>(step.input_bytes));item.put("action",step.action);
@@ -1073,8 +1663,8 @@ static void minimize_performance(const std::string& run,const std::string& id,
  json_object_object_add(record.p,"shrink_trace",path);
  source.add_case(smallest);source.witness(id,smallest.id,status,record.str());
  source.hypothesis(id,status,axis,left,right,0, "Performance witness "+std::string(status)+"; independent minimization evidence in minimization.sqlite; raw observation and null outcomes retained");
- write_file(run+"/witness.json",record.str());write_file(run+"/witness.hex",hex_encode(smallest.bytes)+"\n");
- if(cfg.a.rfind("plugin:",0)!=0)write_file(run+"/witness.cpp",standalone_reproducer(smallest,cfg.a));
+ write_file(artifacts+"/witness.json",record.str());write_file(artifacts+"/witness.hex",hex_encode(smallest.bytes)+"\n");
+ if(cfg.a.rfind("plugin:",0)!=0)write_file(artifacts+"/witness.cpp",standalone_reproducer(smallest,cfg.a));
  report(run);
  std::cout<<"Performance witness "<<status<<" case="<<smallest.id<<" evaluated="<<attempts<<"\n";
 }
@@ -1085,8 +1675,10 @@ static void minimize_performance(const std::string& run,const std::string& id,
    ever inferred from the numeric indices used to identify the two labels. */
 static void minimize_categorical(const std::string& run,const std::string& id,Store& source,
                                  const Config& cfg,std::int64_t left,std::int64_t right){
- if(fs::exists(run+"/minimization.sqlite")||fs::exists(run+"/witness.json"))
+ const auto artifacts=witness_output_root(run,id,cfg.policy_version).string();
+ if(fs::exists(artifacts+"/minimization.sqlite")||fs::exists(artifacts+"/witness.json"))
   throw Error("categorical minimization evidence already exists; refusing to overwrite");
+ fs::create_directories(artifacts);
  sqlite3_stmt* raw=nullptr;
  if(sqlite3_prepare_v2(source.raw(),"SELECT kind FROM hypotheses WHERE id=?",-1,&raw,nullptr)!=SQLITE_OK)
   throw Error("categorical minimization kind lookup failed");
@@ -1123,7 +1715,7 @@ static void minimize_categorical(const std::string& run,const std::string& id,St
  const double expected_shift=failure?0.0:sample_median(observed_right)-sample_median(observed_left);
  if(!failure&&std::abs(expected_shift)<std::log(cfg.min_ratio))throw Error("categorical discovery contrast is not practically significant");
  const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(std::min(120,cfg.total_wall_s));
- Store evidence(run+"/minimization.sqlite");evidence.experiment(source.config(),environment());
+ Store evidence(artifacts+"/minimization.sqlite");evidence.experiment(source.config(),environment());
  Case initial=frozen;assign(initial,cfg.axis,categorical_value(cfg,right));initial.seed=cfg.seed+50000000ULL;
  initial=make_case(initial,cfg.max_bytes);
  std::size_t attempts=0,successful=0;
@@ -1140,7 +1732,7 @@ static void minimize_categorical(const std::string& run,const std::string& id,St
     c=make_case(c,cfg.max_bytes);
     const auto names=cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b};
     const auto obs=measure(c,names,1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,
-      cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline);
+      cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline,cfg.measurement_protocol_version);
     bool admissible=obs.size()==(cfg.b.empty()?1U:4U);
     bool seen_primary=false;
     for(const auto& row:obs){
@@ -1203,7 +1795,7 @@ static void minimize_categorical(const std::string& run,const std::string& id,St
  record.put("evaluations",static_cast<std::int64_t>(attempts));
  record.put("preserved_evaluations",static_cast<std::int64_t>(successful));
  record.put("fresh_seed_pairs_per_evaluation",static_cast<std::int64_t>(20));
- record.put("minimization_evidence","minimization.sqlite");
+ record.put("minimization_evidence",witness_evidence_relative(id,cfg.policy_version));
  auto* steps=json_object_new_array();for(const auto& step:reduced.trace){
   Json v;v.put("case_id",step.case_id);v.put("action",step.action);
   v.put("input_bytes",static_cast<std::int64_t>(step.input_bytes));
@@ -1215,12 +1807,14 @@ static void minimize_categorical(const std::string& run,const std::string& id,St
  source.hypothesis(id,verdict,cfg.axis,left,right,std::abs(expected_shift),
    "Unordered-category pair witness "+std::string(verdict)+
    "; labels retained; independent evidence in minimization.sqlite",kind,case_params(frozen));
- write_file(run+"/witness.json",record.str());write_file(run+"/witness.hex",hex_encode(smallest.bytes)+"\n");
+ write_file(artifacts+"/witness.json",record.str());write_file(artifacts+"/witness.hex",hex_encode(smallest.bytes)+"\n");
  report(run);
  std::cout<<"Categorical pair witness "<<verdict<<" hypothesis="<<id
           <<" fresh_pair_evaluations="<<attempts<<"\n";
 }
 
+static void minimize_failure_case_to(const std::string& run,
+ const std::string& case_id,const std::string& algorithm,const std::string& artifacts);
 void minimize(const std::string& run,const std::string& id){
  Store s(run+"/run.sqlite");auto cfg=config_from_json(Json::parse(s.config()));auto [status,axis,left,right]=read_hypothesis(s,id);
  if(status!="CONFIRMED")throw Error("only confirmed hypotheses can be minimized");
@@ -1246,8 +1840,10 @@ void minimize(const std::string& run,const std::string& id){
    }
    if(!original)throw Error("confirmed failure has no persisted failing case");
    if(subtype=="wrong_answer"&&kind=="CORRECTNESS_BOUNDARY"){
-    minimize_failure_case(run,original->id,cfg.a);
-    const auto record=Json::file(run+"/witness.json");
+    const auto artifacts=witness_output_root(run,id,cfg.policy_version).string();
+    fs::create_directories(artifacts);
+    minimize_failure_case_to(run,original->id,cfg.a,artifacts);
+    const auto record=Json::file(artifacts+"/witness.json");
     const auto verdict=record.s("status");
     s.witness(id,record.s("case_id"),verdict,record.str());
     s.hypothesis(id,verdict,axis,left,right,0,"Freshly replayed wrong-answer witness and shrink trace; earlier independent confirmation retained");
@@ -1255,11 +1851,14 @@ void minimize(const std::string& run,const std::string& id){
    }
    /* Crash/timeout/OOM witnesses require exact failure-mode preservation.
       Never turn censored failures into synthetic large timing values. */
-   if(fs::exists(run+"/witness.json"))throw Error("witness artifacts already exist");
+   const auto artifacts=witness_output_root(run,id,cfg.policy_version).string();
+   if(fs::exists(artifacts+"/witness.json")||fs::exists(artifacts+"/witness.hex"))
+    throw Error("witness artifacts already exist");
+   fs::create_directories(artifacts);
    const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(std::min(120,cfg.total_wall_s));
    auto predicate=[&](const Case& input)->bool{
     if(std::chrono::steady_clock::now()>deadline)throw Error("failure shrink time budget exhausted");
-    const auto obs=measure(input,{cfg.a},1,0,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline);
+    const auto obs=measure(input,{cfg.a},1,0,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline,cfg.measurement_protocol_version);
     return obs.size()==1&&obs[0].status==subtype;
    };
    ShrinkResult shrunk;shrunk.original=*original;shrunk.smallest=*original;
@@ -1287,7 +1886,7 @@ void minimize(const std::string& run,const std::string& id){
    json_object_object_add(record.p,"shrink_trace",trace);
    s.add_case(shrunk.smallest);s.witness(id,shrunk.smallest.id,verdict,record.str());
    s.hypothesis(id,verdict,axis,left,right,0,"Exact "+subtype+" failure witness "+verdict+"; censored, not ranked as timing");
-   write_file(run+"/witness.json",record.str());write_file(run+"/witness.hex",hex_encode(shrunk.smallest.bytes)+"\n");
+   write_file(artifacts+"/witness.json",record.str());write_file(artifacts+"/witness.hex",hex_encode(shrunk.smallest.bytes)+"\n");
    report(run);return;
   }
   minimize_performance(run,id,s,cfg,axis,left,right);return;
@@ -1299,9 +1898,14 @@ void minimize(const std::string& run,const std::string& id){
     minimal witness on the declared grid is x=threshold. */
  auto left_w=static_cast<std::uint64_t>(left+10);
  if(right!=cfg.base.threshold||left>=right||left_w==w)throw Error("candidate not an exact minimal synthetic boundary");
+ const auto artifacts=witness_output_root(run,id,cfg.policy_version);
+ if(fs::exists(artifacts/"witness.cpp")||fs::exists(artifacts/"witness.hex"))
+  throw Error("synthetic witness artifacts already exist; refusing to overwrite");
+ fs::create_directories(artifacts);
  s.add_case(c);s.witness(id,c.id,"MINIMIZED_CONFIRMED","Parameter minimization: threshold equals smallest value on high-work side; oracle revalidated");
  std::ostringstream o;o<<"#include <cstdint>\n#include <cassert>\nint main() { constexpr std::int64_t x="<<right<<", threshold="<<c.threshold<<"; const auto work=x<threshold?x+10:x+10000; assert(x==threshold && work=="<<w<<"); }\n";
- write_file(run+"/witness.cpp",o.str());write_file(run+"/witness.hex",hex_encode(c.bytes)+"\n");
+ write_file((artifacts/"witness.cpp").string(),o.str());
+ write_file((artifacts/"witness.hex").string(),hex_encode(c.bytes)+"\n");
  s.hypothesis(id,"MINIMIZED_CONFIRMED",axis,left,right,static_cast<double>(w),"Exact synthetic threshold witness, reproducible input and standalone C++ assertion");report(run);
  std::cout<<"Minimal fixture witness: x="<<right<<" case="<<c.id<<"\n";
 }
@@ -1343,7 +1947,8 @@ static void require_replay_identity(Store& store,const std::string& algorithm,co
  if(recorded->version!="external-abi-v1;sha256="+sha256_file(path))
   throw Error("ARTIFACT_MISMATCH: native-plugin file SHA-256 differs from persisted run: "+path);
 }
-void minimize_failure_case(const std::string& run,const std::string& case_id,const std::string& algorithm){
+static void minimize_failure_case_to(const std::string& run,const std::string& case_id,const std::string& algorithm,
+ const std::string& artifacts){
  if(algorithm.empty())throw Error("minimize-case requires an explicit algorithm");
  Store store(run+"/run.sqlite");const auto cfg=config_from_json(Json::parse(store.config()));
  const auto origin=locate_case(store,case_id);
@@ -1351,12 +1956,12 @@ void minimize_failure_case(const std::string& run,const std::string& case_id,con
  for(const auto& o:store.observations(origin.id,false))
   if(o.algorithm==algorithm&&(o.status=="wrong_answer"||o.status=="signaled"||o.status=="crashed"))observed=true;
  if(!observed)throw Error("cannot shrink unrecorded or successful correctness case");
- if(fs::exists(run+"/witness.json")||fs::exists(run+"/witness.hex"))throw Error("witness artifacts already exist; refusing to overwrite");
+ if(fs::exists(artifacts+"/witness.json")||fs::exists(artifacts+"/witness.hex"))throw Error("witness artifacts already exist; refusing to overwrite");
  const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(std::min(cfg.total_wall_s,120));
  auto predicate=[&](const Case& candidate){
   if(std::chrono::steady_clock::now()>deadline)throw Error("witness minimization wall budget exhausted");
   /* Worker validation includes oracle comparison before collecting timing. */
-  const auto result=measure(candidate,{algorithm},1,0,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline);
+  const auto result=measure(candidate,{algorithm},1,0,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline,cfg.measurement_protocol_version);
   return result.size()==1&&result[0].status=="wrong_answer";
  };
  /* A crash is NOT automatically a wrong answer: only repeatable semantic
@@ -1383,10 +1988,13 @@ void minimize_failure_case(const std::string& run,const std::string& case_id,con
  record.put("replay_command","phaseshift replay --run <RUN> --case "+result.smallest.id+" --algorithm <PLUGIN> --expect wrong_answer");
  store.add_case(result.smallest);
  store.event("witness_correctness",record.str());
- write_file(run+"/witness.json",record.str());write_file(run+"/witness.hex",hex_encode(result.smallest.bytes)+"\n");
+ write_file(artifacts+"/witness.json",record.str());write_file(artifacts+"/witness.hex",hex_encode(result.smallest.bytes)+"\n");
  report(run);
  std::cout<<"Correctness witness "<<verdict<<" case="<<result.smallest.id<<" original="<<origin.bytes.size()
           <<" bytes minimal="<<result.smallest.bytes.size()<<" bytes\n";
+}
+void minimize_failure_case(const std::string& run,const std::string& case_id,const std::string& algorithm){
+ minimize_failure_case_to(run,case_id,algorithm,run);
 }
 void replay_expected_failure(const std::string& run,const std::string& case_id,const std::string& algorithm,const std::string& expected_status,const std::string& db){
  static const std::set<std::string> accepted={"wrong_answer","timeout","out_of_memory","crashed","signaled"};
@@ -1446,7 +2054,9 @@ void report(const std::string& run,const std::string& formats){
     }
    }
  }
- Json report;report.put("schema_version",static_cast<std::int64_t>(1));report.put("experiment_id",cfg.experiment_id);report.put("family",cfg.family);report.put("algorithm_a",cfg.a);report.put("algorithm_b",cfg.b);report.put("environment",Json::parse(s.environment()));report.put("summary",std::move(summary));
+ Json report;report.put("schema_version",static_cast<std::int64_t>(1));report.put("experiment_id",cfg.experiment_id);
+ if(cfg.policy_version=="v2")report.put("measurement_protocol_version",cfg.measurement_protocol_version);
+ report.put("family",cfg.family);report.put("algorithm_a",cfg.a);report.put("algorithm_b",cfg.b);report.put("environment",Json::parse(s.environment()));report.put("summary",std::move(summary));
  auto* raw=json_object_new_array();std::ostringstream csv;csv<<"case_id,family,axis_value,holdout,algorithm,status,batch_ns,batch_iterations,work_units,block,cpu_ns,peak_rss_bytes,order_position,order_seed,output_digest,detail\n";
  std::uint64_t raw_size=0;bool truncated=false;
  const auto export_limit=cfg.max_report_bytes/2;
@@ -1495,24 +2105,80 @@ void report(const std::string& run,const std::string& formats){
   s.artifact(filename,sha256_file(run+"/"+filename),"experiment-report");
  }
 }
+// Bundle schema 1 remains byte-compatible with legacy flat evidence.
+// Schema 2 adds only witnessed, bounded H2..H16 nested artifact paths.
+static bool valid_v2_bundle_witness_id(const std::string& id){
+ for(int rank=2;rank<=16;++rank)
+  if(id=="H"+std::to_string(rank))return true;
+ return false;
+}
+static bool valid_bundle_member(const std::string& name,int schema){
+ if(name.empty()||name=="."||name==".."||name=="SHA256.json"||
+    name.front()=='/'||name.find('\\')!=std::string::npos||
+    name.find("//")!=std::string::npos)return false;
+ const auto first=name.find('/');
+ if(first==std::string::npos)return true;
+ if(schema!=2||name.substr(0,first)!="witnesses")return false;
+ const auto second=name.find('/',first+1);
+ if(second==std::string::npos||name.find('/',second+1)!=std::string::npos)
+  return false;
+ const auto id=name.substr(first+1,second-first-1);
+ const auto leaf=name.substr(second+1);
+ return valid_v2_bundle_witness_id(id)&&
+  (leaf=="witness.cpp"||leaf=="witness.hex"||
+   leaf=="witness.json"||leaf=="minimization.sqlite");
+}
 void verify_bundle(const std::string& bundle){
  const auto path=fs::path(bundle);
- if(!fs::is_directory(path)||!fs::is_regular_file(path/"SHA256.json"))throw Error("bundle directory/manifest missing");
+ if(!fs::is_directory(path)||!fs::is_regular_file(path/"SHA256.json"))
+  throw Error("bundle directory/manifest missing");
  const auto manifest=Json::file((path/"SHA256.json").string());
- if(manifest.i("bundle_schema")!=1)throw Error("unsupported bundle schema");
- const auto* files=manifest.get("files");if(!files||json_object_get_type(files)!=json_type_object)throw Error("invalid bundle file index");
+ const auto schema=static_cast<int>(manifest.i("bundle_schema"));
+ if(schema!=1&&schema!=2)throw Error("unsupported bundle schema");
+ const auto* files=manifest.get("files");
+ if(!files||json_object_get_type(files)!=json_type_object)
+  throw Error("invalid bundle file index");
  std::set<std::string> expected;
  json_object_object_foreach(files,key,value){
   const auto name=std::string(key);
-  if(name.empty()||name=="SHA256.json"||name.find('/')!=std::string::npos||name.find('\\')!=std::string::npos||name=="."||name==".."||json_object_get_type(value)!=json_type_string)throw Error("unsafe bundle file path/hash");
+  if(!valid_bundle_member(name,schema)||json_object_get_type(value)!=json_type_string)
+   throw Error("unsafe bundle file path/hash");
   const auto member=path/name;
-  if(!fs::is_regular_file(member)||fs::is_symlink(member))throw Error("bundle missing/nonregular file: "+name);
-  if(sha256_file(member.string())!=json_object_get_string(value))throw Error("bundle file digest mismatch: "+name);
+  if(name.find('/')!=std::string::npos){
+   const auto id=name.substr(10,name.find('/',10)-10);
+   if(fs::is_symlink(path/"witnesses")||
+      fs::is_symlink(path/"witnesses"/id))
+    throw Error("symlinked bundle witness directory");
+  }
+  if(!fs::is_regular_file(member)||fs::is_symlink(member))
+   throw Error("bundle missing/nonregular file: "+name);
+  if(sha256_file(member.string())!=json_object_get_string(value))
+   throw Error("bundle file digest mismatch: "+name);
   expected.insert(name);
  }
- for(const auto& must:{"run.sqlite","report.json","report.md","samples.csv","README.md"})if(!expected.count(must))throw Error("bundle missing required member: "+std::string(must));
- for(const auto& file:fs::directory_iterator(path)){
-  const auto name=file.path().filename().string();if(!file.is_regular_file()||(name!="SHA256.json"&&!expected.count(name)))throw Error("unexpected/unindexed bundle member: "+name);
+ for(const auto& must:{"run.sqlite","report.json","report.md","samples.csv","README.md"})
+  if(!expected.count(must))
+   throw Error("bundle missing required member: "+std::string(must));
+ if(schema==1){
+  for(const auto& file:fs::directory_iterator(path)){
+   const auto name=file.path().filename().string();
+   if(!file.is_regular_file()||file.is_symlink()||
+      (name!="SHA256.json"&&!expected.count(name)))
+    throw Error("unexpected/unindexed bundle member: "+name);
+  }
+ }else{
+  for(const auto& file:fs::recursive_directory_iterator(path)){
+   const auto relative=file.path().lexically_relative(path).generic_string();
+   if(file.is_symlink())throw Error("symlink in bundle evidence: "+relative);
+   if(file.is_directory()){
+    if(relative!="witnesses"&&
+       (relative.rfind("witnesses/",0)!=0||
+        !valid_v2_bundle_witness_id(relative.substr(10))))
+     throw Error("unexpected bundle evidence directory: "+relative);
+   }else if(!file.is_regular_file()||
+      (relative!="SHA256.json"&&!expected.count(relative)))
+    throw Error("unexpected/unindexed bundle member: "+relative);
+  }
  }
  Store store((path/"run.sqlite").string(),true);
  const auto conf=store.config();
@@ -1534,6 +2200,54 @@ void verify_bundle(const std::string& bundle){
   if(sha256(hex_decode(cleaned))!=witness.s("input_sha256"))throw Error("witness input digest mismatch");
   if(witness.s("category")=="PERFORMANCE_WITNESS"&&!expected.count("minimization.sqlite"))throw Error("performance witness lacks independently recorded minimization data");
  }
+ if(schema==2){
+  if(Json::parse(conf).s("policy_version","v1")!="v2")
+   throw Error("nested evidence bundle requires v2 policy");
+  sqlite3_stmt* raw=nullptr;
+  if(sqlite3_prepare_v2(store.raw(),
+    "SELECT DISTINCT hypothesis_id FROM witnesses WHERE hypothesis_id!='H1'",
+    -1,&raw,nullptr)!=SQLITE_OK)
+   throw Error("cannot inspect bundle hypothesis witnesses");
+  std::unique_ptr<sqlite3_stmt,decltype(&sqlite3_finalize)> statement(raw,&sqlite3_finalize);
+  while(sqlite3_step(statement.get())==SQLITE_ROW){
+   const auto id=std::string(reinterpret_cast<const char*>(
+    sqlite3_column_text(statement.get(),0)));
+   if(!valid_v2_bundle_witness_id(id))
+    throw Error("unsupported nested witness identity");
+   const auto prefix="witnesses/"+id+"/";
+   if(!expected.count(prefix+"witness.hex"))
+    throw Error("v2 witness artifact absent from bundle: "+id);
+   auto encoded=read_file((path/(prefix+"witness.hex")).string());
+   while(!encoded.empty()&&(encoded.back()=='\n'||encoded.back()=='\r'))
+    encoded.pop_back();
+   const auto digest=sha256(hex_decode(encoded));
+   sqlite3_stmt* match=nullptr;
+   if(sqlite3_prepare_v2(store.raw(),
+     "SELECT 1 FROM witnesses w JOIN cases c ON w.case_id=c.case_id "
+     "WHERE w.hypothesis_id=? AND c.input_sha256=? LIMIT 1",
+     -1,&match,nullptr)!=SQLITE_OK)
+    throw Error("v2 bundle witness linkage query failed");
+   sqlite3_bind_text(match,1,id.c_str(),-1,SQLITE_TRANSIENT);
+   sqlite3_bind_text(match,2,digest.c_str(),-1,SQLITE_TRANSIENT);
+   const bool linked=sqlite3_step(match)==SQLITE_ROW;
+   sqlite3_finalize(match);
+   if(!linked)throw Error("v2 bundle witness not linked to sealed raw case: "+id);
+   if(expected.count(prefix+"witness.json")){
+    const auto details=Json::file((path/(prefix+"witness.json")).string());
+    if(details.s("input_sha256")!=digest)
+     throw Error("v2 witness metadata/bytes mismatch: "+id);
+    if(details.s("category")=="PERFORMANCE_WITNESS"&&
+       !expected.count(prefix+"minimization.sqlite"))
+     throw Error("v2 performance witness lacks independent minimization DB");
+   }
+   if(expected.count(prefix+"minimization.sqlite")){
+    Store minimized((path/(prefix+"minimization.sqlite")).string(),true);
+    if(minimized.config()!=conf)
+     throw Error("v2 minimized evidence config mismatch");
+    for(const auto& c:minimized.cases(true)){(void)c;}
+   }
+  }
+ }
  std::cout<<"VERIFIED BUNDLE: "<<bundle<<" members="<<expected.size()<<" cases="<<store.summary().i("cases")<<"\n";
 }
 void export_run(const std::string& run,const std::string& out){
@@ -1553,9 +2267,23 @@ void export_run(const std::string& run,const std::string& out){
   if(fs::exists(run+"/witness.cpp"))fs::copy_file(run+"/witness.cpp",out+"/witness.cpp");
   if(fs::exists(run+"/witness.hex"))fs::copy_file(run+"/witness.hex",out+"/witness.hex");
   if(fs::exists(run+"/witness.json"))fs::copy_file(run+"/witness.json",out+"/witness.json");
+  if(fs::exists(run+"/witnesses")){
+   if(!fs::is_directory(run+"/witnesses")||fs::is_symlink(run+"/witnesses"))
+    throw Error("unsafe v2 witness export root");
+   for(const auto& entry:fs::recursive_directory_iterator(run+"/witnesses"))
+    if(entry.is_symlink()||(!entry.is_directory()&&!entry.is_regular_file()))
+     throw Error("unsafe nonregular v2 witness export member");
+   fs::copy(run+"/witnesses",out+"/witnesses",fs::copy_options::recursive);
+  }
   write_file(out+"/README.md","# PHASESHIFT portable evidence bundle\nUse `phaseshift verify-bundle --bundle .` before importing. All member SHA-256 digests are in SHA256.json; case inputs are independently regenerated and validated.\n");
-  Json manifest;manifest.put("bundle_schema",static_cast<std::int64_t>(1));Json files;
-  for(const auto& f:fs::directory_iterator(out))if(f.is_regular_file())files.put(f.path().filename().string().c_str(),sha256_file(f.path().string()));
+  Json manifest;
+  manifest.put("bundle_schema",static_cast<std::int64_t>(
+   fs::exists(out+"/witnesses")?2:1));
+  Json files;
+  for(const auto& f:fs::recursive_directory_iterator(out))
+   if(f.is_regular_file())
+    files.put(f.path().lexically_relative(out).generic_string().c_str(),
+      sha256_file(f.path().string()));
   manifest.put("files",std::move(files));write_file(out+"/SHA256.json",manifest.str());
   verify_bundle(out);
  }catch(...){fs::remove_all(out);throw;}
@@ -1566,7 +2294,11 @@ void import_bundle(const std::string& bundle,const std::string& out){
  if(fs::exists(out))throw Error("import destination already exists; refusing overwrite");
  fs::create_directories(out);
  try{
-  for(const auto& file:fs::directory_iterator(bundle))fs::copy_file(file.path(),fs::path(out)/file.path().filename());
+  for(const auto& file:fs::directory_iterator(bundle)){
+   const auto target=fs::path(out)/file.path().filename();
+   if(file.is_directory())fs::copy(file.path(),target,fs::copy_options::recursive);
+   else fs::copy_file(file.path(),target);
+  }
   verify_bundle(out);
  }catch(...){fs::remove_all(out);throw;}
  std::cout<<"Imported verified evidence into "<<out<<"\n";
@@ -1607,7 +2339,7 @@ void intervene(const std::string& source,const std::string& out,const std::strin
    std::vector<Observation> observations;
    try{
     observations=measure(generated[static_cast<std::size_t>(side)],algorithms,
-     1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline);
+     1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline,cfg.measurement_protocol_version);
    }catch(const Error& error){
     if(std::string(error.what()).find("total_wall_seconds budget exhausted")!=std::string::npos){
      budget_exhausted=true;break;

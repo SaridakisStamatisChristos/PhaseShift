@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "experiment_id": "calibrated-v2-protocol-smoke",
+  "problem_family": "calibration",
+  "algorithms": [
+    "calibration"
+  ],
+  "seed": 141,
+  "primary_axis": "x",
+  "axes": {
+    "x": {
+      "values": [
+        0,
+        1,
+        2,
+        3
+      ]
+    }
+  },
+  "fixed": {
+    "threshold": 2
+  },
+  "search": {
+    "policy_version": "v2",
+    "method": "uniform_v2",
+    "max_cases": 4
+  },
+  "measurement": {
+    "protocol_version": "calibrated_batch_v2",
+    "minimum_batch_ms": 1,
+    "paired_discovery_blocks": 1,
+    "paired_confirm_blocks": 20,
+    "warmup_iterations": 0
+  },
+  "limits": {
+    "total_wall_seconds": 90,
+    "max_search_queue": 32
+  }
+}

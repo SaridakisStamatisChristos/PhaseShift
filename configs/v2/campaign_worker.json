@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "campaign_id": "real-worker-campaign",
+  "members": [
+    "H1",
+    "H2"
+  ],
+  "alpha": 0.05,
+  "confirm_seed_pairs": 20,
+  "test": "paired_sign_flip_v1"
+}

@@ -1,0 +1,10 @@
+set(RUN "@CMAKE_CURRENT_BINARY_DIR@/v2_sampled_cpu_challenge_ctest")
+file(REMOVE_RECURSE "${RUN}")
+execute_process(COMMAND "@Python3_EXECUTABLE@"
+ "@CMAKE_CURRENT_SOURCE_DIR@/benchmarks/v2/sampled_cpu_challenge.py"
+ --binary "@CMAKE_CURRENT_BINARY_DIR@/phaseshift"
+ --out "${RUN}" --seeds 31 --cases 8 --sampled-cpu-ns 2500000
+ RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "v2 sampled-worker CPU ceiling real-worker challenge failed")
+endif()

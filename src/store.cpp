@@ -1,4 +1,5 @@
 #include "phaseshift/store.hpp"
+#include "phaseshift/measurement_drift_v2.hpp"
 #include "phaseshift/morphology.hpp"
 #include <filesystem>
 #include <algorithm>
@@ -11,6 +12,7 @@
 #include <sstream>
 #include <array>
 #include <cstdint>
+#include <limits>
 namespace ps {
 static void check(int rc,sqlite3* db,const std::string& what){if(rc!=SQLITE_OK&&rc!=SQLITE_DONE&&rc!=SQLITE_ROW)throw Error(what+": "+sqlite3_errmsg(db));}
 struct Statement {
@@ -39,7 +41,16 @@ Store::Store(const std::string& path,bool readonly){
  }
  check(sqlite3_open_v2(readonly?uri.c_str():path.c_str(),&db_,readonly?SQLITE_OPEN_READONLY|SQLITE_OPEN_URI:SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE,nullptr),db_,"SQL open");
  if(!readonly)exec("PRAGMA foreign_keys=ON;PRAGMA journal_mode=WAL;PRAGMA busy_timeout=5000;");
- auto old=sqlite3_get_autocommit(db_);(void)old;Statement st(db_,"PRAGMA user_version");auto rc=sqlite3_step(st.p);check(rc,db_,"schema version");auto version=sqlite3_column_int(st.p,0);if(version>7|| (readonly&&version!=6&&version!=7))throw Error("unsupported database schema version");
+ auto old=sqlite3_get_autocommit(db_);(void)old;
+ int version=-1;
+ {Statement st(db_,"PRAGMA user_version");auto rc=sqlite3_step(st.p);check(rc,db_,"schema version");
+  version=sqlite3_column_int(st.p,0);}
+ if(version>9||(readonly&&version!=6&&version!=7&&version!=8&&version!=9)){
+  // A constructor that throws never runs Store::~Store; release the handle
+  // after the version query statement has finalized (also under LeakSanitizer).
+  sqlite3_close(db_);db_=nullptr;
+  throw Error("unsupported database schema version");
+ }
  if(version==0&&!readonly){exec(R"SQL(
  BEGIN;
  CREATE TABLE IF NOT EXISTS experiments(id INTEGER PRIMARY KEY CHECK(id=1),config TEXT NOT NULL,config_hash TEXT NOT NULL,environment TEXT NOT NULL,created_at TEXT NOT NULL);
@@ -124,6 +135,71 @@ Store::Store(const std::string& path,bool readonly){
  COMMIT;
  )SQL");}
 }
+void Store::upgrade_v2_schema(){
+ Statement version(db_,"PRAGMA user_version");
+ if(sqlite3_step(version.p)!=SQLITE_ROW)throw Error("cannot read v2 schema version");
+ const auto current=sqlite3_column_int(version.p,0);
+ if(current==8||current==9)return;
+ if(current!=7)throw Error("v2 schema migration requires current v7 evidence");
+ // DDL and version bit flip form one transaction; old records are never rewritten.
+ exec(R"SQL(
+ BEGIN IMMEDIATE;
+ CREATE TABLE IF NOT EXISTS policy_versions(
+   id TEXT PRIMARY KEY,storage_schema INTEGER NOT NULL CHECK(storage_schema=8),
+   registered_at TEXT NOT NULL);
+ INSERT OR IGNORE INTO policy_versions(id,storage_schema,registered_at)
+  VALUES('v2',8,datetime('now'));
+ CREATE TABLE IF NOT EXISTS budget_ledger(
+   decision_seq INTEGER PRIMARY KEY REFERENCES scheduler_decisions(seq),
+   case_id TEXT NOT NULL REFERENCES cases(case_id),
+   max_sampled_cpu_ns INTEGER NOT NULL CHECK(max_sampled_cpu_ns>0),
+   cumulative_sampled_cpu_ns INTEGER NOT NULL CHECK(cumulative_sampled_cpu_ns>=0),
+   accounting_complete INTEGER NOT NULL CHECK(accounting_complete IN (0,1)),
+   recorded_at TEXT NOT NULL);
+ CREATE INDEX IF NOT EXISTS idx_v2_budget_ledger_case ON budget_ledger(case_id);
+ PRAGMA user_version=8;
+ COMMIT;
+ )SQL");
+}
+void Store::record_v2_budget_entry(const std::string& case_id,
+ std::uint64_t cumulative_sampled_cpu_ns,std::uint64_t max_sampled_cpu_ns,bool accounting_complete){
+ if(max_sampled_cpu_ns==0||
+    max_sampled_cpu_ns>static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())||
+    cumulative_sampled_cpu_ns>static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
+  throw Error("out-of-range v2 persisted CPU budget");
+ // Called in the SAME transaction as add_observation and record_decision.
+ // The SELECT cannot silently create evidence for another CaseID.
+ Statement stmt(db_,"INSERT INTO budget_ledger(decision_seq,case_id,max_sampled_cpu_ns,"
+   "cumulative_sampled_cpu_ns,accounting_complete,recorded_at)"
+   " SELECT seq,case_id,?,?,?,? FROM scheduler_decisions"
+   " WHERE case_id=? ORDER BY seq DESC LIMIT 1");
+ stmt.integer(1,static_cast<std::int64_t>(max_sampled_cpu_ns));
+ stmt.integer(2,static_cast<std::int64_t>(cumulative_sampled_cpu_ns));
+ stmt.integer(3,accounting_complete?1:0);stmt.text(4,now_utc());stmt.text(5,case_id);
+ stmt.done();
+ if(sqlite3_changes(db_)!=1)throw Error("unlinked v2 CPU budget decision");
+}
+void Store::verify_v2_budget_entry(std::int64_t pool_index,const std::string& case_id,
+ std::uint64_t expected_cpu,std::uint64_t expected_limit){
+ if(pool_index<0||expected_cpu>static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())||
+    expected_limit==0||expected_limit>static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
+  throw Error("invalid v2 budget replay bound");
+ Statement q(db_,R"SQL(
+ SELECT b.case_id,b.cumulative_sampled_cpu_ns,b.max_sampled_cpu_ns,b.accounting_complete
+ FROM scheduler_decisions d JOIN budget_ledger b ON b.decision_seq=d.seq
+ WHERE d.pool_index=? AND d.case_id=?
+ )SQL");
+ q.integer(1,pool_index);q.text(2,case_id);
+ const auto rc=sqlite3_step(q.p);
+ if(rc!=SQLITE_ROW||sqlite3_column_type(q.p,0)!=SQLITE_TEXT||
+    case_id!=reinterpret_cast<const char*>(sqlite3_column_text(q.p,0))||
+    sqlite3_column_int64(q.p,1)!=static_cast<std::int64_t>(expected_cpu)||
+    sqlite3_column_int64(q.p,2)!=static_cast<std::int64_t>(expected_limit)||
+    sqlite3_column_int(q.p,3)!=1)
+  throw Error("v2 CPU budget ledger disagrees with immutable sample/decision transcript");
+ if(sqlite3_step(q.p)!=SQLITE_DONE)
+  throw Error("duplicate v2 budget rows for one scheduler decision");
+}
 Store::~Store(){if(db_)sqlite3_close(db_);}
 void Store::exec(const std::string& sql){char* err=nullptr;int rc=sqlite3_exec(db_,sql.c_str(),nullptr,nullptr,&err);if(rc!=SQLITE_OK){std::string msg=err?err:"unknown sqlite error";sqlite3_free(err);throw Error("SQL: "+msg);}}
 void Store::experiment(const std::string& config,const std::string& env){
@@ -160,18 +236,30 @@ void Store::add_observation(const Case& c,const Observation& v,bool holdout){
  if(v.status=="ok")s.integer(4,v.ns);else s.null(4);
  if(v.status=="ok")s.integer(5,v.batch);else s.null(5);
  if(v.status=="ok")s.integer(6,v.work);else s.null(6);
- s.integer(7,v.block);s.integer(8,holdout?1:0);s.text(9,v.digest);s.text(10,v.detail);
+ s.integer(7,v.block);s.integer(8,holdout?1:0);s.text(9,v.digest);
+ std::string detail=v.detail;
+ if(v.measurement_protocol_version=="calibrated_batch_v2"){
+  detail+=";measurement_protocol_version=calibrated_batch_v2";
+  detail+=";pilot_ns="+std::to_string(v.pilot_ns);
+  detail+=";pilot_iterations="+std::to_string(v.pilot_iterations);
+ }
+ s.text(10,detail);
  if(v.status=="ok"&&v.cpu_ns>=0)s.integer(11,v.cpu_ns);else s.null(11);
  if(v.peak_rss_bytes>=0)s.integer(12,v.peak_rss_bytes);else s.null(12);
  if(v.order_position>=0)s.integer(13,v.order_position);else s.null(13);
  if(!v.order_seed.empty())s.text(14,v.order_seed);else s.null(14);
  s.done();
 }
-void Store::seal_confirmation(const std::string& id,const std::string& algorithm,int required_seed_pairs,bool scaling){
+void Store::seal_confirmation(const std::string& id,const std::string& algorithm,int required_seed_pairs,bool scaling,
+ const std::vector<std::uint64_t>& prescribed_seed_groups){
  // Every positive verdict must be backed by a frozen, verifiable population of
  // new held-out case IDs. No caller-supplied counts or statistical claims are
  // trusted here. Existing legacy v6 confirmations are not auto-attested.
  if(required_seed_pairs<20||required_seed_pairs>100)throw Error("confirmation requires at least 20 independent seed groups");
+ const std::set<std::uint64_t> prescribed(prescribed_seed_groups.begin(),prescribed_seed_groups.end());
+ if(!prescribed_seed_groups.empty()&&
+    (prescribed.size()!=prescribed_seed_groups.size()||prescribed.size()!=static_cast<std::size_t>(required_seed_pairs)))
+  throw Error("v2 confirmation has missing/duplicate prespecified seed groups");
  Statement hyp(db_,"SELECT status,axis,left_value,right_value,kind FROM hypotheses WHERE id=?");hyp.text(1,id);
  if(sqlite3_step(hyp.p)!=SQLITE_ROW)throw Error("unknown hypothesis to seal");
  const std::string status=reinterpret_cast<const char*>(sqlite3_column_text(hyp.p,0));
@@ -223,11 +311,15 @@ void Store::seal_confirmation(const std::string& id,const std::string& algorithm
   if(scaling){if(value<=left)side=0;else if(value>=right)side=1;}
   else{if(value==left)side=0;else if(value==right)side=1;}
   if(side<0)continue; // Prespecified remote-axis negative controls are not evidence pairs.
+  const auto raw_seed=static_cast<std::uint64_t>(sqlite3_column_int64(rows.p,3));
+  const std::uint64_t seed_group=scaling?raw_seed-static_cast<std::uint64_t>(value)*131ULL:raw_seed;
+  // Unrelated hypotheses can have failed/censored holdouts at the same
+  // geometry; they are not members of this prespecified seed family and
+  // cannot veto or support the current confirmation.
+  if(!prescribed.empty()&&!prescribed.count(seed_group))continue;
   const std::string observed=reinterpret_cast<const char*>(sqlite3_column_text(rows.p,4));
   if((!is_failure&&observed!="ok")||(is_failure&&side==0&&observed!="ok")||(is_failure&&side==1&&observed=="ok"))
     throw Error("confirmation includes an invalid primary-algorithm observation");
-  const auto raw_seed=static_cast<std::uint64_t>(sqlite3_column_int64(rows.p,3));
-  const std::uint64_t seed_group=scaling?raw_seed-static_cast<std::uint64_t>(value)*131ULL:raw_seed;
   Row v{cid,sample,value,side,seed_group};
   auto [it,inserted]=distinct.emplace(cid,v);
   if(!inserted && (it->second.side!=side||it->second.group!=seed_group))throw Error("inconsistent duplicate holdout sample");
@@ -248,12 +340,16 @@ void Store::seal_confirmation(const std::string& id,const std::string& algorithm
   for(const auto& side:pair)for(const auto& [size,row]:side){(void)size;accepted.push_back(row);}
  }
  if(groups<required_seed_pairs)throw Error("confirmation lacks required distinct paired holdout seeds");
+ if(!prescribed.empty()&&groups!=required_seed_pairs)
+  throw Error("v2 confirmation seed population disagrees with frozen cohort");
  if(scaling){
   std::set<std::int64_t> left_sizes,right_sizes;
   for(const auto& row:accepted)(row.side==0?left_sizes:right_sizes).insert(row.size);
   if(left_sizes.size()!=2||right_sizes.size()!=2)throw Error("scaling holdout needs two novel sizes on each side");
  }
- exec("BEGIN IMMEDIATE;");
+ // SAVEPOINT preserves standalone v1 seal atomicity and supports outer v2
+ // seal + verdict + p-value transactions without nested BEGIN errors.
+ exec("SAVEPOINT confirmation_seal;");
  try{
   Statement seal(db_,"INSERT INTO confirmation_seals(hypothesis_id,primary_algorithm,seed_pairs,case_count,kind,created_at) VALUES(?,?,?,?,?,?)");
   seal.text(1,id);seal.text(2,algorithm);seal.integer(3,groups);seal.integer(4,static_cast<std::int64_t>(accepted.size()));seal.text(5,kind);seal.text(6,now_utc());seal.done();
@@ -262,8 +358,12 @@ void Store::seal_confirmation(const std::string& id,const std::string& algorithm
    link.text(1,id);link.text(2,row.id);link.integer(3,row.sample);link.integer(4,row.side);
    link.text(5,std::to_string(row.group));link.done();
   }
-  exec("COMMIT;");
- }catch(...){exec("ROLLBACK;");throw;}
+  exec("RELEASE SAVEPOINT confirmation_seal;");
+ }catch(...){
+  exec("ROLLBACK TO SAVEPOINT confirmation_seal;");
+  exec("RELEASE SAVEPOINT confirmation_seal;");
+  throw;
+ }
 }
 void Store::hypothesis(const std::string& id,const std::string& status,const std::string& axis,std::int64_t left,std::int64_t right,double effect,const std::string& detail,const std::string& kind,const std::string& frozen_params){
  static const std::map<std::string,std::set<std::string>> transitions={
@@ -376,7 +476,9 @@ std::string Store::environment(){Statement s(db_,"SELECT environment FROM experi
 Json Store::summary(){
  Json report;auto* rows=json_object_new_array();Statement st(db_,"SELECT id,status,axis,left_value,right_value,effect,detail,kind,frozen_params FROM hypotheses ORDER BY id");
  Statement schema(db_,"PRAGMA user_version");if(sqlite3_step(schema.p)!=SQLITE_ROW)throw Error("cannot read evidence schema");
- const bool links_supported=sqlite3_column_int(schema.p,0)>=7;
+ const auto current_schema=sqlite3_column_int(schema.p,0);
+ const bool links_supported=current_schema>=7;
+ const bool campaign_supported=current_schema>=9;
  while(sqlite3_step(st.p)==SQLITE_ROW){auto str=[&](int i){auto* t=sqlite3_column_text(st.p,i);return std::string(t?reinterpret_cast<const char*>(t):"");};
   const auto recorded_status=str(1);
   const bool positive=recorded_status=="CONFIRMED"||recorded_status=="MINIMIZED_CONFIRMED";
@@ -387,12 +489,83 @@ Json Store::summary(){
   Json x;x.put("id",str(0));x.put("status",positive&&!attested?"UNVERIFIED_LEGACY_CONFIRMATION":recorded_status);
   if(positive&&!attested)x.put("raw_status",recorded_status);
   x.put("confirmation_evidence_applicable",positive);
-  x.put("confirmation_evidence_attested",attested);x.put("axis",str(2));x.put("left",static_cast<std::int64_t>(sqlite3_column_int64(st.p,3)));x.put("right",static_cast<std::int64_t>(sqlite3_column_int64(st.p,4)));x.put("effect",sqlite3_column_double(st.p,5));x.put("detail",str(6));x.put("kind",str(7));x.put("frozen_params",str(8));json_object_array_add(rows,x.p);x.p=nullptr;}
+  x.put("confirmation_evidence_attested",attested);x.put("axis",str(2));x.put("left",static_cast<std::int64_t>(sqlite3_column_int64(st.p,3)));x.put("right",static_cast<std::int64_t>(sqlite3_column_int64(st.p,4)));x.put("effect",sqlite3_column_double(st.p,5));x.put("detail",str(6));x.put("kind",str(7));x.put("frozen_params",str(8));
+  if(campaign_supported){
+   Statement membership(db_,"SELECT c.campaign_id,c.state,o.holm_adjusted_p,o.familywise_reject"
+     " FROM campaign_members_v2 m JOIN campaigns_v2 c ON c.campaign_id=m.campaign_id"
+     " LEFT JOIN campaign_outcomes_v2 o ON o.hypothesis_id=m.hypothesis_id"
+     " WHERE m.hypothesis_id=?");
+   membership.text(1,str(0));
+   if(sqlite3_step(membership.p)==SQLITE_ROW){
+    const auto* campaign_id=sqlite3_column_text(membership.p,0);
+    const auto* family_state=sqlite3_column_text(membership.p,1);
+    const std::string cid=reinterpret_cast<const char*>(campaign_id);
+    const std::string state=reinterpret_cast<const char*>(family_state);
+    x.put("campaign_id",cid);x.put("campaign_state",state);
+    if(state=="FINALIZED"&&sqlite3_column_type(membership.p,2)!=SQLITE_NULL){
+     const bool familywise=positive&&attested&&sqlite3_column_int(membership.p,3)==1;
+     x.put("holm_adjusted_p",sqlite3_column_double(membership.p,2));
+     x.put("familywise_reject",familywise);
+     x.put("familywise_status",familywise?"FAMILYWISE_SEALED":"NOT_FAMILYWISE_CONFIRMED");
+    }else{
+     x.put("familywise_reject",false);
+     x.put("familywise_status","PENDING_FAMILY_FINALIZATION");
+    }
+   }else if(positive){
+    x.put("familywise_reject",false);
+    x.put("familywise_status","UNREGISTERED_SINGLE_HYPOTHESIS");
+   }
+  }
+  json_object_array_add(rows,x.p);x.p=nullptr;}
  json_object_object_add(report.p,"hypotheses",rows);
  auto count=[&](const char* q){Statement s(db_,q);if(sqlite3_step(s.p)!=SQLITE_ROW)throw Error("summary query error");return static_cast<std::int64_t>(sqlite3_column_int64(s.p,0));};
  report.put("cases",count("SELECT COUNT(*) FROM cases"));report.put("samples",count("SELECT COUNT(*) FROM samples"));report.put("invalid_samples",count("SELECT COUNT(*) FROM samples WHERE status != 'ok'"));
  report.put("aggregates",count("SELECT COUNT(*) FROM aggregates"));report.put("environment_records",count("SELECT COUNT(*) FROM environments"));
  report.put("algorithm_records",count("SELECT COUNT(*) FROM algorithms"));report.put("generator_records",count("SELECT COUNT(*) FROM generators"));
+ if(campaign_supported){
+  report.put("registered_campaigns",count("SELECT COUNT(*) FROM campaigns_v2"));
+  report.put("familywise_positive_members",count("SELECT COUNT(*) FROM campaign_outcomes_v2 WHERE familywise_reject=1"));
+ }
+ if(current_schema>=8){
+  // Database-side grouping; bounded in-memory state of one case/algorithm.
+  Statement observations(db_,"SELECT case_id,algorithm,block,ns,batch FROM samples"
+   " WHERE holdout=0 AND status='ok' AND ns>0 AND batch>0"
+   " ORDER BY case_id,algorithm,block");
+  std::size_t scored=0,flagged=0,invalid=0;
+  double max_drift=0;
+  std::vector<std::pair<int,double>> sample_blocks;
+  std::string previous;
+  auto flush=[&](){
+   if(sample_blocks.empty())return;
+   auto result=block_drift_v2(sample_blocks);
+   if(result.eligible){
+    ++scored;if(result.flagged)++flagged;
+    max_drift=std::max(max_drift,std::abs(result.log_ratio));
+   }else if(sample_blocks.size()>=6)++invalid;
+   sample_blocks.clear();
+  };
+  while(sqlite3_step(observations.p)==SQLITE_ROW){
+   const auto* cid=sqlite3_column_text(observations.p,0);
+   const auto* algo=sqlite3_column_text(observations.p,1);
+   if(!cid||!algo)throw Error("invalid drift provenance");
+   auto key=std::string(reinterpret_cast<const char*>(cid))+
+    ":"+std::to_string(sqlite3_column_bytes(observations.p,0))+
+    ":"+std::string(reinterpret_cast<const char*>(algo));
+   if(!previous.empty()&&previous!=key)flush();
+   previous=std::move(key);
+   sample_blocks.emplace_back(sqlite3_column_int(observations.p,2),
+    static_cast<double>(sqlite3_column_int64(observations.p,3))/
+    static_cast<double>(sqlite3_column_int64(observations.p,4)));
+  }
+  flush();
+  Json drift;drift.put("scored_case_algorithm_groups",static_cast<std::int64_t>(scored));
+  drift.put("heuristic_flagged_groups",static_cast<std::int64_t>(flagged));
+  drift.put("invalid_or_duplicate_groups",static_cast<std::int64_t>(invalid));
+  drift.put("max_absolute_early_late_log_ratio",max_drift);
+  drift.put("relative_heuristic_threshold",0.20);
+  drift.put("statistical_claim","none, descriptive only, no false-positive calibration");
+  json_object_object_add(report.p,"block_drift_v2",drift.p);drift.p=nullptr;
+ }
  return report;
 }
 }

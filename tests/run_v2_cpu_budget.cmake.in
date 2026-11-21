@@ -1,0 +1,15 @@
+set(RUN "@CMAKE_CURRENT_BINARY_DIR@/v2_cpu_budget_ctest")
+file(REMOVE_RECURSE "@CMAKE_CURRENT_BINARY_DIR@/v2_cpu_budget_ctest")
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" explore
+ --config "@CMAKE_CURRENT_SOURCE_DIR@/configs/v2/sampled_cpu_budget.json"
+ --out "@CMAKE_CURRENT_BINARY_DIR@/v2_cpu_budget_ctest" RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "v2 sampled CPU budget exploration failed")
+endif()
+execute_process(COMMAND "@Python3_EXECUTABLE@" "@CMAKE_CURRENT_SOURCE_DIR@/tests/verify_v2_cpu_budget.py"
+ --run "@CMAKE_CURRENT_BINARY_DIR@/v2_cpu_budget_ctest"
+ --binary "@CMAKE_CURRENT_BINARY_DIR@/phaseshift"
+ --config "@CMAKE_CURRENT_SOURCE_DIR@/configs/v2/sampled_cpu_budget.json" RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "v2 sampled CPU budget evidence check failed")
+endif()

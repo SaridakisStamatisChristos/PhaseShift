@@ -1,0 +1,34 @@
+set(RUN "@CMAKE_CURRENT_BINARY_DIR@/v2_campaign_worker_ctest")
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift_campaign_worker_fixture" "${RUN}" RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "real-worker campaign fixture creation failed")
+endif()
+# Reject unfrozen multiple-hypothesis confirmation BEFORE adding any
+# holdout rows; the same real-worker fixture succeeds after family freeze.
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" confirm
+ --run "${RUN}" --hypothesis H1 RESULT_VARIABLE rc ERROR_VARIABLE diagnostic)
+if(rc EQUAL 0 OR NOT diagnostic MATCHES "requires frozen campaign")
+ message(FATAL_ERROR "unfrozen multi-H1 confirmation was not refused")
+endif()
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" campaign-freeze
+ --run "${RUN}" --manifest "@CMAKE_CURRENT_SOURCE_DIR@/configs/v2/campaign_worker.json" RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "real-worker campaign freeze failed")
+endif()
+foreach(hyp IN ITEMS H1 H2)
+ execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" confirm
+  --run "${RUN}" --hypothesis "${hyp}" RESULT_VARIABLE rc)
+ if(NOT rc EQUAL 0)
+  message(FATAL_ERROR "real-worker campaign confirmation failed for ${hyp}")
+ endif()
+endforeach()
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" campaign-finalize
+ --run "${RUN}" --campaign real-worker-campaign RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "real-worker Holm campaign finalization failed")
+endif()
+execute_process(COMMAND "@Python3_EXECUTABLE@"
+ "@CMAKE_CURRENT_SOURCE_DIR@/tests/verify_v2_campaign_worker.py" --run "${RUN}" RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "real-worker fixed-family SQL evidence audit failed")
+endif()

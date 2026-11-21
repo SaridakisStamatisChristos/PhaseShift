@@ -166,7 +166,7 @@ void scaling_study(const std::string& source,const std::string& out,int seed_cou
   }
   c=make_case(c,cfg.max_bytes);
   const auto names=cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b};
-  const auto obs=measure(c,names,3,1,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",hard_deadline);
+  const auto obs=measure(c,names,3,1,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",hard_deadline,cfg.measurement_protocol_version);
   // Timing evidence is all-or-nothing at the seed/case boundary: a wrong
   // answer in any required block invalidates every comparison from that case.
   // In A/B mode the ABBA order produces TWO samples per algorithm per block.
@@ -249,7 +249,7 @@ void scaling_study(const std::string& source,const std::string& out,int seed_cou
     }
     c=make_case(c,cfg.max_bytes);
     if(discovery_ids.count(c.id)){samples_valid=false;break;}
-    const auto rows=measure(c,names,1,1,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",hard_deadline);
+    const auto rows=measure(c,names,1,1,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",hard_deadline,cfg.measurement_protocol_version);
     std::vector<double> timings;
     bool cohort_valid=rows.size()==(names.size()==2?4U:1U);
     std::map<std::string,int> counts;

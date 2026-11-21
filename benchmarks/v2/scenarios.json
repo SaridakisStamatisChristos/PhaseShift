@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "document_id": "PHASESHIFT-V2-IMPLEMENTATION-001",
+  "baseline_main_sha": "93b47590c7e44eaf062d97995e9c5cd33274a7a2",
+  "benchmark_families": [
+    "synthetic_single_cliff",
+    "synthetic_multi_cliff",
+    "smooth_null",
+    "categorical",
+    "rare_interaction",
+    "correctness_status",
+    "sorting",
+    "topk",
+    "graph"
+  ],
+  "metrics": [
+    "confirmed_boundaries",
+    "localization_error",
+    "wall_time",
+    "worker_cpu",
+    "false_positives",
+    "peak_rss"
+  ],
+  "status": "FROZEN SCENARIO INVENTORY ONLY; full protocol and held-out runs not yet executed"
+}

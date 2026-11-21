@@ -8,7 +8,7 @@ find_package(OpenSSL REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(JSONC REQUIRED IMPORTED_TARGET json-c)
 option(PHASESHIFT_SANITIZE "Build with AddressSanitizer and UBSan" OFF)
-add_library(phaseshift_core STATIC src/core.cpp src/algorithms.cpp src/morphology.cpp src/statistics.cpp src/scaling.cpp src/minimize.cpp src/reproducer.cpp src/runner.cpp src/store.cpp src/experiment.cpp)
+add_library(phaseshift_core STATIC src/core.cpp src/algorithms.cpp src/morphology.cpp src/statistics.cpp src/scaling.cpp src/minimize.cpp src/reproducer.cpp src/runner.cpp src/store.cpp src/experiment.cpp src/boundary_v2.cpp src/interaction_v2.cpp src/campaign_v2.cpp)
 target_include_directories(phaseshift_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 # Record actual compilation profile and checkout provenance for every run.
 set(PHASESHIFT_EFFECTIVE_FLAGS "${CMAKE_CXX_FLAGS}")
@@ -241,3 +241,196 @@ add_test(NAME fresh_audit_regressions
  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/fresh_audit_regressions.py
  --repo ${CMAKE_CURRENT_SOURCE_DIR} --binary $<TARGET_FILE:phaseshift>)
 set_tests_properties(fresh_audit_regressions PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+
+# Independent opt-in v2 lazy-space falsification suite.
+add_executable(phaseshift_lazy_search_v2_tests tests/lazy_search_v2.cpp)
+target_link_libraries(phaseshift_lazy_search_v2_tests PRIVATE phaseshift_core)
+add_test(NAME lazy_search_v2 COMMAND phaseshift_lazy_search_v2_tests)
+
+configure_file(tests/run_v2_lazy.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_lazy.cmake @ONLY)
+add_test(NAME lazy_search_v2_cli COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_lazy.cmake)
+set_tests_properties(lazy_search_v2_cli PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+
+add_executable(phaseshift_boundary_v2_tests tests/boundary_v2.cpp)
+target_link_libraries(phaseshift_boundary_v2_tests PRIVATE phaseshift_core)
+add_test(NAME multi_change_v2_oracle COMMAND phaseshift_boundary_v2_tests)
+
+add_executable(phaseshift_scheduler_v2_tests tests/scheduler_v2.cpp)
+target_link_libraries(phaseshift_scheduler_v2_tests PRIVATE phaseshift_core)
+add_test(NAME hierarchical_policy_v2 COMMAND phaseshift_scheduler_v2_tests)
+configure_file(tests/run_v2_hierarchical.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_hierarchical.cmake @ONLY)
+add_test(NAME hierarchical_policy_v2_cli COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_hierarchical.cmake)
+set_tests_properties(hierarchical_policy_v2_cli PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+
+# Small frozen calibration comparison through actual CLI/worker/SQLite. It never
+# enforces a positive result; failed discoveries remain benchmark evidence.
+configure_file(benchmarks/v2/run_equal_case_budget.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/v2_equal_budget.cmake @ONLY)
+add_test(NAME v2_frozen_equal_case_budget_smoke COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/v2_equal_budget.cmake)
+set_tests_properties(v2_frozen_equal_case_budget_smoke PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
+
+configure_file(tests/run_v2_replicates.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_replicates.cmake @ONLY)
+add_test(NAME v2_replicated_seeds_resume COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_replicates.cmake)
+set_tests_properties(v2_replicated_seeds_resume PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+
+add_executable(phaseshift_interaction_v2_tests tests/interaction_v2.cpp)
+target_link_libraries(phaseshift_interaction_v2_tests PRIVATE phaseshift_core)
+add_test(NAME factorial_interaction_v2 COMMAND phaseshift_interaction_v2_tests)
+
+configure_file(tests/run_v2_factorial.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_factorial.cmake @ONLY)
+add_test(NAME v2_conditional_factorial_discovery COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_factorial.cmake)
+set_tests_properties(v2_conditional_factorial_discovery PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+
+configure_file(tests/run_v2_multi.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_multi.cmake @ONLY)
+add_test(NAME v2_multi_change_worker_smoke COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_multi.cmake)
+set_tests_properties(v2_multi_change_worker_smoke PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+
+# Exact opt-in structural feasible-union oracle and resumed SQLite evidence.
+add_executable(phaseshift_admissible_v2_tests tests/conditional_subspaces_v2.cpp)
+target_link_libraries(phaseshift_admissible_v2_tests PRIVATE phaseshift_core)
+add_test(NAME admissible_subspace_v2_oracle COMMAND phaseshift_admissible_v2_tests)
+configure_file(tests/run_v2_admissible.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_admissible.cmake @ONLY)
+add_test(NAME v2_admissible_subspaces_resume COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_admissible.cmake)
+set_tests_properties(v2_admissible_subspaces_resume PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+
+# Distinct opt-in v2 per-axis stratification with exactly-once sparse draws.
+add_executable(phaseshift_stratified_v2_tests tests/stratified_v2.cpp)
+target_link_libraries(phaseshift_stratified_v2_tests PRIVATE phaseshift_core)
+add_test(NAME stratified_v2_oracle COMMAND phaseshift_stratified_v2_tests)
+configure_file(tests/run_v2_stratified.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_stratified.cmake @ONLY)
+add_test(NAME v2_stratified_resume COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_stratified.cmake)
+set_tests_properties(v2_stratified_resume PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+
+# Independent exhaustive score oracle for pruned changepoint candidate generation.
+add_executable(phaseshift_pelt_v2_tests tests/pelt_v2.cpp)
+target_link_libraries(phaseshift_pelt_v2_tests PRIVATE phaseshift_core)
+add_test(NAME pelt_v2_differential COMMAND phaseshift_pelt_v2_tests)
+set_tests_properties(pelt_v2_differential PROPERTIES TIMEOUT 90)
+
+# PELT opt-in CLI/worker/SQLite smoke, under same oracle and H1 gates.
+configure_file(tests/run_v2_pelt.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_pelt.cmake @ONLY)
+add_test(NAME v2_pelt_worker_smoke COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_pelt.cmake)
+set_tests_properties(v2_pelt_worker_smoke PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+
+# Predeclared four-policy real-worker cliff and constant-null calibration.
+configure_file(benchmarks/v2/run_policy_challenge.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/v2_policy_challenge.cmake @ONLY)
+add_test(NAME v2_four_policy_cliff_null_challenge COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/v2_policy_challenge.cmake)
+set_tests_properties(v2_four_policy_cliff_null_challenge PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
+
+# Timed-region CPU budget: per-case bound with replay-stable terminal state.
+configure_file(tests/run_v2_cpu_budget.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_cpu_budget.cmake @ONLY)
+add_test(NAME v2_sampled_cpu_budget_resume COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_cpu_budget.cmake)
+set_tests_properties(v2_sampled_cpu_budget_resume PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+
+# Explicit opt-in v7->v8 migration; legacy v1 v7 left bitwise untouched.
+add_executable(phaseshift_v2_schema_migration_tests tests/v2_schema_migration.cpp)
+target_link_libraries(phaseshift_v2_schema_migration_tests PRIVATE phaseshift_core)
+add_test(NAME v2_schema8_non_destructive_migration COMMAND phaseshift_v2_schema_migration_tests ${CMAKE_CURRENT_BINARY_DIR}/ctest_v2_schema_migration)
+
+# M7 fixed predeclared multi-hypothesis Holm family, stored in opt-in schema v9.
+add_executable(phaseshift_campaign_v2_tests tests/campaign_v2.cpp)
+target_link_libraries(phaseshift_campaign_v2_tests PRIVATE phaseshift_core)
+add_test(NAME campaign_v2_frozen_holm COMMAND phaseshift_campaign_v2_tests ${CMAKE_CURRENT_BINARY_DIR}/ctest_campaign_v2)
+set_tests_properties(campaign_v2_frozen_holm PROPERTIES TIMEOUT 25)
+
+# Real CLI gateway through registry, with duplicate and premature-finalize rejection.
+add_executable(phaseshift_campaign_cli_fixture tests/campaign_cli_fixture.cpp)
+target_link_libraries(phaseshift_campaign_cli_fixture PRIVATE phaseshift_core)
+configure_file(tests/run_v2_campaign_cli.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_campaign_cli.cmake @ONLY)
+add_test(NAME v2_campaign_cli_lifecycle COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_campaign_cli.cmake)
+set_tests_properties(v2_campaign_cli_lifecycle PROPERTIES TIMEOUT 35 RUN_SERIAL TRUE)
+
+# Fixed-family two-hypothesis full CPU-worker/independent-holdout campaign.
+add_executable(phaseshift_campaign_worker_fixture tests/campaign_worker_fixture.cpp)
+target_link_libraries(phaseshift_campaign_worker_fixture PRIVATE phaseshift_core)
+configure_file(tests/run_v2_campaign_worker.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_campaign_worker.cmake @ONLY)
+add_test(NAME v2_campaign_two_real_worker_hypotheses COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_campaign_worker.cmake)
+set_tests_properties(v2_campaign_two_real_worker_hypotheses PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+
+# M6 independent worker-v2 pilot and original v1 oracle comparison.
+add_executable(phaseshift_measurement_v2_tests tests/measurement_v2.cpp)
+target_link_libraries(phaseshift_measurement_v2_tests PRIVATE phaseshift_core)
+add_test(NAME calibrated_batch_v2_unit COMMAND phaseshift_measurement_v2_tests)
+
+# V2 opt-in calibrated pilot through real worker, immutable config and SQLite.
+configure_file(tests/run_v2_measurement.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_measurement.cmake @ONLY)
+add_test(NAME v2_calibrated_batch_worker_resume COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_measurement.cmake)
+set_tests_properties(v2_calibrated_batch_worker_resume PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+
+# Adversarial family sample isolation: H1 rows cannot seal H2 with same boundary.
+add_executable(phaseshift_confirmation_seed_v2_tests tests/confirmation_seed_v2.cpp)
+target_link_libraries(phaseshift_confirmation_seed_v2_tests PRIVATE phaseshift_core)
+add_test(NAME confirmation_prescribed_seed_isolation COMMAND phaseshift_confirmation_seed_v2_tests ${CMAKE_CURRENT_BINARY_DIR}/ctest_confirmation_seed_v2)
+
+# M7 null stress campaign with correct discrete marginal p-values and dependence.
+add_executable(phaseshift_fwer_null_tests tests/fwer_correlated_null.cpp)
+target_link_libraries(phaseshift_fwer_null_tests PRIVATE phaseshift_core)
+add_test(NAME v2_correlated_null_holm_smoke COMMAND phaseshift_fwer_null_tests)
+set_tests_properties(v2_correlated_null_holm_smoke PROPERTIES TIMEOUT 25)
+
+# M9 failpoint injection around sample, decision and budget commit boundary.
+add_executable(phaseshift_v2_atomicity_tests tests/v2_atomicity.cpp)
+target_link_libraries(phaseshift_v2_atomicity_tests PRIVATE phaseshift_core)
+add_test(NAME v2_atomic_case_decision_budget_recovery COMMAND phaseshift_v2_atomicity_tests ${CMAKE_CURRENT_BINARY_DIR}/ctest_v2_atomic)
+set_tests_properties(v2_atomic_case_decision_budget_recovery PROPERTIES TIMEOUT 30)
+
+add_executable(phaseshift_hybrid_v2_tests tests/hybrid_v2.cpp)
+target_link_libraries(phaseshift_hybrid_v2_tests PRIVATE phaseshift_core)
+add_test(NAME hybrid_mixed_v2_unit COMMAND phaseshift_hybrid_v2_tests)
+configure_file(tests/run_v2_hybrid.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_hybrid.cmake @ONLY)
+add_test(NAME hybrid_mixed_v2_replay COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_hybrid.cmake)
+set_tests_properties(hybrid_mixed_v2_replay PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+
+add_executable(phaseshift_witness_paths_v2_tests tests/witness_paths_v2.cpp)
+target_link_libraries(phaseshift_witness_paths_v2_tests PRIVATE phaseshift_core)
+add_test(NAME v2_named_witness_path_isolation COMMAND phaseshift_witness_paths_v2_tests)
+
+# Linux-only real OS kill (SIGKILL), WAL recovery, retry and replay budget checks.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+ add_executable(phaseshift_v2_os_crash_tests tests/v2_os_crash.cpp)
+ target_link_libraries(phaseshift_v2_os_crash_tests PRIVATE phaseshift_core)
+ add_test(NAME v2_sigkill_transaction_recovery
+  COMMAND phaseshift_v2_os_crash_tests ${CMAKE_CURRENT_BINARY_DIR}/ctest_v2_os_kill)
+ set_tests_properties(v2_sigkill_transaction_recovery PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
+endif()
+
+add_executable(phaseshift_confirmation_seed_bounds_v2_tests tests/confirmation_seed_bounds_v2.cpp)
+target_link_libraries(phaseshift_confirmation_seed_bounds_v2_tests PRIVATE phaseshift_core)
+add_test(NAME v2_confirmation_seed_window_overflow COMMAND phaseshift_confirmation_seed_bounds_v2_tests)
+
+add_executable(phaseshift_multi_slope_v2_tests tests/slope_v2.cpp)
+target_link_libraries(phaseshift_multi_slope_v2_tests PRIVATE phaseshift_core)
+add_test(NAME v2_piecewise_linear_slope_oracle COMMAND phaseshift_multi_slope_v2_tests)
+configure_file(tests/run_v2_slope.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_slope.cmake @ONLY)
+add_test(NAME v2_slope_discovery_only_worker COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_slope.cmake)
+set_tests_properties(v2_slope_discovery_only_worker PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+
+configure_file(benchmarks/v2/run_sampled_cpu_challenge.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/v2_sampled_cpu_challenge.cmake @ONLY)
+add_test(NAME v2_sampled_worker_cpu_four_policy_challenge
+ COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/v2_sampled_cpu_challenge.cmake)
+set_tests_properties(v2_sampled_worker_cpu_four_policy_challenge PROPERTIES TIMEOUT 150 RUN_SERIAL TRUE)
+
+add_executable(phaseshift_v2_multi_witness_tests tests/v2_multi_witness.cpp)
+target_link_libraries(phaseshift_v2_multi_witness_tests PRIVATE phaseshift_core)
+add_test(NAME v2_real_minimize_multi_hypothesis_artifact_isolation
+ COMMAND phaseshift_v2_multi_witness_tests ${CMAKE_CURRENT_BINARY_DIR}/ctest_v2_multi_witness)
+set_tests_properties(v2_real_minimize_multi_hypothesis_artifact_isolation PROPERTIES TIMEOUT 70 RUN_SERIAL TRUE)
+
+add_executable(phaseshift_block_drift_v2_tests tests/measurement_drift_v2.cpp)
+target_link_libraries(phaseshift_block_drift_v2_tests PRIVATE phaseshift_core)
+add_test(NAME v2_descriptive_block_drift_oracle COMMAND phaseshift_block_drift_v2_tests)
+
+# Weighted v2 prior policy: lazy admissible subspaces, no-replacement
+# property oracle, immutable selection and SQLite replay in a real worker run.
+add_executable(phaseshift_weighted_v2_tests tests/weighted_v2.cpp)
+target_link_libraries(phaseshift_weighted_v2_tests PRIVATE phaseshift_core)
+add_test(NAME weighted_v2_no_replacement_oracle COMMAND phaseshift_weighted_v2_tests)
+configure_file(tests/run_v2_weighted.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_weighted.cmake @ONLY)
+add_test(NAME weighted_v2_resume_admissible
+ COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_weighted.cmake)
+set_tests_properties(weighted_v2_resume_admissible PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
+
+add_test(NAME weighted_v2_invalid_config_contract
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/verify_v2_weighted_invalid.py
+ --binary ${CMAKE_CURRENT_BINARY_DIR}/phaseshift
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/weighted_admissible.json)
+set_tests_properties(weighted_v2_invalid_config_contract PROPERTIES TIMEOUT 90)

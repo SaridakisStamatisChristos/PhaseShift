@@ -1,0 +1,20 @@
+set(RUN "@CMAKE_CURRENT_BINARY_DIR@/v2_campaign_cli_ctest")
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift_campaign_cli_fixture" "${RUN}" RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "v2 CLI campaign fixture generation failed")
+endif()
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" campaign-freeze
+ --run "${RUN}" --manifest "@CMAKE_CURRENT_SOURCE_DIR@/configs/v2/campaign_two_hypotheses.json" RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "v2 campaign CLI freeze failed")
+endif()
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" campaign-freeze
+ --run "${RUN}" --manifest "@CMAKE_CURRENT_SOURCE_DIR@/configs/v2/campaign_two_hypotheses.json" RESULT_VARIABLE rc)
+if(rc EQUAL 0)
+ message(FATAL_ERROR "v2 campaign CLI accepted duplicate re-freeze")
+endif()
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" campaign-finalize
+ --run "${RUN}" --campaign cli-frozen RESULT_VARIABLE rc)
+if(rc EQUAL 0)
+ message(FATAL_ERROR "v2 campaign CLI finalized untested family")
+endif()

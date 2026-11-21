@@ -1,0 +1,10 @@
+# Ephemeral CTest scratch only: rerun the identical scenario without touching
+# the immutable externally retained benchmark or prior committed evidence.
+set(RUN "@CMAKE_CURRENT_BINARY_DIR@/v2_frozen_equal_case_budget")
+file(REMOVE_RECURSE "${RUN}")
+execute_process(COMMAND "@Python3_EXECUTABLE@" "@CMAKE_CURRENT_SOURCE_DIR@/benchmarks/v2/equal_budget.py"
+ --binary "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" --out "${RUN}"
+ --seeds 31 --cases 12 RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "frozen v2 equal-case-budget CLI comparison runner failed")
+endif()

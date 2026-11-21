@@ -28,5 +28,13 @@ llvm-profdata merge -sparse "${profiles[@]}" -o "$build/merged.profdata"
 llvm-cov export "$build/phaseshift_tests" \
   -instr-profile="$build/merged.profdata" \
   -object="$build/phaseshift" -object="$build/phaseshift_worker" \
+  -object="$build/phaseshift_boundary_v2_tests" -object="$build/phaseshift_interaction_v2_tests" \
+  -object="$build/phaseshift_pelt_v2_tests" -object="$build/phaseshift_campaign_v2_tests" \
+  -object="$build/phaseshift_hybrid_v2_tests" \
+  -object="$build/phaseshift_multi_slope_v2_tests" \
+  -object="$build/phaseshift_confirmation_seed_bounds_v2_tests" \
+  -object="$build/phaseshift_v2_multi_witness_tests" \
+  -object="$build/phaseshift_witness_paths_v2_tests" \
+  -object="$build/phaseshift_block_drift_v2_tests" \
   > "$build/coverage.json"
 python3 "$root/scripts/coverage_gate.py" --root "$root" --min-line "$min_line" --input "$build/coverage.json"
