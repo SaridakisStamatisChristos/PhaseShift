@@ -117,7 +117,9 @@ class ConditionalPairPortfolio {
   }
   // Uniform-without-replacement global screening, bounded to prevent
   // unbounded rejection in a near-exhausted/degenerate conditional universe.
-  for(std::size_t attempt=0;attempt<256&&global_.has_next();++attempt) {
+  for(std::size_t attempt=0;
+      attempt<256&&contexts_.size()<max_contexts_&&global_.has_next();
+      ++attempt) {
    if(auto c=explore_at(space_.at(global_.next())))return c;
   }
   for(std::size_t id=0;id<contexts_.size();++id)
