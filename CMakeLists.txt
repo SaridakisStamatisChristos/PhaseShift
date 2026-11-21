@@ -428,3 +428,9 @@ configure_file(tests/run_v2_weighted.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2
 add_test(NAME weighted_v2_resume_admissible
  COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_weighted.cmake)
 set_tests_properties(weighted_v2_resume_admissible PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
+
+add_test(NAME weighted_v2_invalid_config_contract
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/verify_v2_weighted_invalid.py
+ --binary ${CMAKE_CURRENT_BINARY_DIR}/phaseshift
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/weighted_admissible.json)
+set_tests_properties(weighted_v2_invalid_config_contract PROPERTIES TIMEOUT 90)
