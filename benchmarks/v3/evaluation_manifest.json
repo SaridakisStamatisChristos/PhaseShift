@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "fixtures": [
+    "single_cliff",
+    "constant_null"
+  ],
+  "policies": [
+    "adaptive_partition",
+    "cliff_bracket_v2",
+    "hybrid_mixed_v2",
+    "stratified_v2"
+  ],
+  "ground_truth": {
+    "single_cliff": 24,
+    "constant_null": null
+  },
+  "cases": 32,
+  "cpu_budget_ns": 5000000000,
+  "wall_budget_ns": 15000000000,
+  "sota_claim": false,
+  "suite": "evaluation",
+  "seeds": [
+    3001,
+    3002,
+    3003,
+    3004,
+    3005,
+    3006,
+    3007,
+    3008,
+    3009,
+    3010,
+    3011,
+    3012,
+    3013,
+    3014,
+    3015,
+    3016,
+    3017,
+    3018,
+    3019,
+    3020
+  ]
+}
