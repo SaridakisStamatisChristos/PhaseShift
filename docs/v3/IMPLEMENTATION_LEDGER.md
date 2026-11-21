@@ -26,9 +26,9 @@
 | Milestone | Scope | State | Evidence |
 |---|---|---|---|
 | V3-00 | Live baseline, historical provenance | PARTIAL | Exact main/tree/3 push workflows matched; old fixtures not independently rerun |
-| V3-01 | Fair consumed-resource benchmark and falsification | OPEN | Must run CLI, independently validate complete outcomes and reject cap gaming |
-| V3-02 | Orchestrator extraction and typed control-plane | OPEN | v1/v2 golden replay mandatory |
-| V3-03 | Fresh matched-seed adaptive discovery replication | OPEN | Real worker & holdout leakage tests mandatory |
+| V3-01 | Fair consumed-resource benchmark and falsification | PARTIAL | Real CLI diagnostic, 20-seed separate manifests, strict SQLite/raw-log verifier and Release CTest written; broader landscapes/full heldout/CI evidence pending |
+| V3-02 | Orchestrator extraction and typed control-plane | PARTIAL | Typed v3 keys, committed-only discovery snapshot, RAM budget ledger implemented; experiment.cpp extraction and golden adapters still outstanding |
+| V3-03 | Fresh matched-seed adaptive discovery replication | PARTIAL | Deterministic paired discovery planner supports distinct structural keys; worker scheduling, persistence, replay and frozen holdout integration outstanding |
 | V3-04 | Legal cell / axis portfolio | OPEN | Exhaustive tiny-domain and huge virtual-space memory checks |
 | V3-05 | Predictive cost/uncertainty acquisition | OPEN | Frozen development-only calibration |
 | V3-06 | Optional surrogate challenger | NOT_REQUIRED_YET | Killable research branch; only promote if its evidence wins |
@@ -39,3 +39,13 @@
 | V3-11 | Release/SOTA verdict | OPEN | Exact-SHA all gates and owner merge approval |
 
 No code file or benchmark number is self-certifying. States mean VERIFIED only after observed execution on the exact revision; PARTIAL/OPEN otherwise. 
+
+## Recorded v3 branch checkpoints (pending exact-head CI verification)
+
+- `0b02559`: V3-00 baseline identity/three historical push-workflow states and R7 ledgers.
+- `d347524`: V3-01 consumed-budget runner, disjoint manifests, independent scorecard and falsification unit tests.
+- `4d4e02b`: V3-01 CTest real CLI and raw SQLite diagnostic added.
+- `4250e55`: V3-02 typed keys, budget/admission, committed evidence; V3-03 pure deterministic paired-planning contract.
+- `e9d4df2`: repair Release-build testing blind spot by replacing C++ `assert` with unconditional CHECK.
+
+All listed test/evidence outcomes remain **UNVERIFIED** until the exact branch head passes independent CI; a previous commit's green checks cannot be transferred automatically. No claims of measured v3 superiority, complete V3-03, or release readiness.
