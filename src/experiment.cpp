@@ -3,6 +3,7 @@
 #include "phaseshift/statistics.hpp"
 #include "phaseshift/morphology.hpp"
 #include "phaseshift/minimize.hpp"
+#include "phaseshift/witness_paths_v2.hpp"
 #include "phaseshift/reproducer.hpp"
 #include "phaseshift/lazy_search.hpp"
 #include "phaseshift/stratified_v2.hpp"
@@ -1411,8 +1412,10 @@ void ablate(const Config& cfg,const std::string& out){
 static void minimize_performance(const std::string& run,const std::string& id,
                                  Store& source,const Config& cfg,
                                  const std::string& axis,std::int64_t left,std::int64_t right){
- if(fs::exists(run+"/minimization.sqlite")||fs::exists(run+"/witness.json"))
+ const auto artifacts=witness_output_root(run,id,cfg.policy_version).string();
+ if(fs::exists(artifacts+"/minimization.sqlite")||fs::exists(artifacts+"/witness.json"))
   throw Error("minimization evidence already exists; refusing to overwrite");
+ fs::create_directories(artifacts);
  const auto base=frozen_case(source,cfg,id);
  if(!numeric_axis(axis)||left>=right)throw Error("performance minimization requires a frozen numeric boundary");
  Case initial=base;assign(initial,axis,formatted_axis_value(axis,right));
@@ -1439,7 +1442,7 @@ static void minimize_performance(const std::string& run,const std::string& id,
  if(sqlite3_step(statement)!=SQLITE_ROW){sqlite3_finalize(statement);throw Error("hypothesis unavailable to minimizer");}
  const auto kind=std::string(reinterpret_cast<const char*>(sqlite3_column_text(statement,0)));
  sqlite3_finalize(statement);
- Store evidence(run+"/minimization.sqlite");evidence.experiment(config_json(cfg).str(),environment());
+ Store evidence(artifacts+"/minimization.sqlite");evidence.experiment(config_json(cfg).str(),environment());
  evidence.event("frozen_witness_predicate", "id="+id+" kind="+kind+" axis="+axis+" left="+std::to_string(left)+" right="+std::to_string(right)+" effect_direction="+std::to_string(expected_direction));
  const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(std::min(180,cfg.total_wall_s));
  const int samples=std::max(20,cfg.confirm_blocks);
@@ -1520,7 +1523,7 @@ static void minimize_performance(const std::string& run,const std::string& id,
  record.put("input_sha256",sha256(smallest.bytes));record.put("parameters",Json::parse(case_params(smallest)));
  record.put("evaluations",static_cast<std::int64_t>(attempts));record.put("valid_experiments",static_cast<std::int64_t>(accepted));
  record.put("holdout_case_pairs_per_evaluation",static_cast<std::int64_t>(samples));
- record.put("minimization_evidence","minimization.sqlite");
+ record.put("minimization_evidence",witness_evidence_relative(id,cfg.policy_version));
  auto* path=json_object_new_array();
  if(initially_valid)for(const auto& step:result.trace){Json item;item.put("case_id",step.case_id);
   item.put("input_bytes",static_cast<std::int64_t>(step.input_bytes));item.put("action",step.action);
@@ -1528,8 +1531,8 @@ static void minimize_performance(const std::string& run,const std::string& id,
  json_object_object_add(record.p,"shrink_trace",path);
  source.add_case(smallest);source.witness(id,smallest.id,status,record.str());
  source.hypothesis(id,status,axis,left,right,0, "Performance witness "+std::string(status)+"; independent minimization evidence in minimization.sqlite; raw observation and null outcomes retained");
- write_file(run+"/witness.json",record.str());write_file(run+"/witness.hex",hex_encode(smallest.bytes)+"\n");
- if(cfg.a.rfind("plugin:",0)!=0)write_file(run+"/witness.cpp",standalone_reproducer(smallest,cfg.a));
+ write_file(artifacts+"/witness.json",record.str());write_file(artifacts+"/witness.hex",hex_encode(smallest.bytes)+"\n");
+ if(cfg.a.rfind("plugin:",0)!=0)write_file(artifacts+"/witness.cpp",standalone_reproducer(smallest,cfg.a));
  report(run);
  std::cout<<"Performance witness "<<status<<" case="<<smallest.id<<" evaluated="<<attempts<<"\n";
 }
@@ -1540,8 +1543,10 @@ static void minimize_performance(const std::string& run,const std::string& id,
    ever inferred from the numeric indices used to identify the two labels. */
 static void minimize_categorical(const std::string& run,const std::string& id,Store& source,
                                  const Config& cfg,std::int64_t left,std::int64_t right){
- if(fs::exists(run+"/minimization.sqlite")||fs::exists(run+"/witness.json"))
+ const auto artifacts=witness_output_root(run,id,cfg.policy_version).string();
+ if(fs::exists(artifacts+"/minimization.sqlite")||fs::exists(artifacts+"/witness.json"))
   throw Error("categorical minimization evidence already exists; refusing to overwrite");
+ fs::create_directories(artifacts);
  sqlite3_stmt* raw=nullptr;
  if(sqlite3_prepare_v2(source.raw(),"SELECT kind FROM hypotheses WHERE id=?",-1,&raw,nullptr)!=SQLITE_OK)
   throw Error("categorical minimization kind lookup failed");
@@ -1578,7 +1583,7 @@ static void minimize_categorical(const std::string& run,const std::string& id,St
  const double expected_shift=failure?0.0:sample_median(observed_right)-sample_median(observed_left);
  if(!failure&&std::abs(expected_shift)<std::log(cfg.min_ratio))throw Error("categorical discovery contrast is not practically significant");
  const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(std::min(120,cfg.total_wall_s));
- Store evidence(run+"/minimization.sqlite");evidence.experiment(source.config(),environment());
+ Store evidence(artifacts+"/minimization.sqlite");evidence.experiment(source.config(),environment());
  Case initial=frozen;assign(initial,cfg.axis,categorical_value(cfg,right));initial.seed=cfg.seed+50000000ULL;
  initial=make_case(initial,cfg.max_bytes);
  std::size_t attempts=0,successful=0;
@@ -1658,7 +1663,7 @@ static void minimize_categorical(const std::string& run,const std::string& id,St
  record.put("evaluations",static_cast<std::int64_t>(attempts));
  record.put("preserved_evaluations",static_cast<std::int64_t>(successful));
  record.put("fresh_seed_pairs_per_evaluation",static_cast<std::int64_t>(20));
- record.put("minimization_evidence","minimization.sqlite");
+ record.put("minimization_evidence",witness_evidence_relative(id,cfg.policy_version));
  auto* steps=json_object_new_array();for(const auto& step:reduced.trace){
   Json v;v.put("case_id",step.case_id);v.put("action",step.action);
   v.put("input_bytes",static_cast<std::int64_t>(step.input_bytes));
@@ -1670,12 +1675,14 @@ static void minimize_categorical(const std::string& run,const std::string& id,St
  source.hypothesis(id,verdict,cfg.axis,left,right,std::abs(expected_shift),
    "Unordered-category pair witness "+std::string(verdict)+
    "; labels retained; independent evidence in minimization.sqlite",kind,case_params(frozen));
- write_file(run+"/witness.json",record.str());write_file(run+"/witness.hex",hex_encode(smallest.bytes)+"\n");
+ write_file(artifacts+"/witness.json",record.str());write_file(artifacts+"/witness.hex",hex_encode(smallest.bytes)+"\n");
  report(run);
  std::cout<<"Categorical pair witness "<<verdict<<" hypothesis="<<id
           <<" fresh_pair_evaluations="<<attempts<<"\n";
 }
 
+static void minimize_failure_case_to(const std::string& run,
+ const std::string& case_id,const std::string& algorithm,const std::string& artifacts);
 void minimize(const std::string& run,const std::string& id){
  Store s(run+"/run.sqlite");auto cfg=config_from_json(Json::parse(s.config()));auto [status,axis,left,right]=read_hypothesis(s,id);
  if(status!="CONFIRMED")throw Error("only confirmed hypotheses can be minimized");
@@ -1701,8 +1708,10 @@ void minimize(const std::string& run,const std::string& id){
    }
    if(!original)throw Error("confirmed failure has no persisted failing case");
    if(subtype=="wrong_answer"&&kind=="CORRECTNESS_BOUNDARY"){
-    minimize_failure_case(run,original->id,cfg.a);
-    const auto record=Json::file(run+"/witness.json");
+    const auto artifacts=witness_output_root(run,id,cfg.policy_version).string();
+    fs::create_directories(artifacts);
+    minimize_failure_case_to(run,original->id,cfg.a,artifacts);
+    const auto record=Json::file(artifacts+"/witness.json");
     const auto verdict=record.s("status");
     s.witness(id,record.s("case_id"),verdict,record.str());
     s.hypothesis(id,verdict,axis,left,right,0,"Freshly replayed wrong-answer witness and shrink trace; earlier independent confirmation retained");
@@ -1742,7 +1751,7 @@ void minimize(const std::string& run,const std::string& id){
    json_object_object_add(record.p,"shrink_trace",trace);
    s.add_case(shrunk.smallest);s.witness(id,shrunk.smallest.id,verdict,record.str());
    s.hypothesis(id,verdict,axis,left,right,0,"Exact "+subtype+" failure witness "+verdict+"; censored, not ranked as timing");
-   write_file(run+"/witness.json",record.str());write_file(run+"/witness.hex",hex_encode(shrunk.smallest.bytes)+"\n");
+   write_file(artifacts+"/witness.json",record.str());write_file(artifacts+"/witness.hex",hex_encode(shrunk.smallest.bytes)+"\n");
    report(run);return;
   }
   minimize_performance(run,id,s,cfg,axis,left,right);return;
@@ -1798,7 +1807,8 @@ static void require_replay_identity(Store& store,const std::string& algorithm,co
  if(recorded->version!="external-abi-v1;sha256="+sha256_file(path))
   throw Error("ARTIFACT_MISMATCH: native-plugin file SHA-256 differs from persisted run: "+path);
 }
-void minimize_failure_case(const std::string& run,const std::string& case_id,const std::string& algorithm){
+static void minimize_failure_case_to(const std::string& run,const std::string& case_id,const std::string& algorithm,
+ const std::string& artifacts){
  if(algorithm.empty())throw Error("minimize-case requires an explicit algorithm");
  Store store(run+"/run.sqlite");const auto cfg=config_from_json(Json::parse(store.config()));
  const auto origin=locate_case(store,case_id);
@@ -1806,7 +1816,7 @@ void minimize_failure_case(const std::string& run,const std::string& case_id,con
  for(const auto& o:store.observations(origin.id,false))
   if(o.algorithm==algorithm&&(o.status=="wrong_answer"||o.status=="signaled"||o.status=="crashed"))observed=true;
  if(!observed)throw Error("cannot shrink unrecorded or successful correctness case");
- if(fs::exists(run+"/witness.json")||fs::exists(run+"/witness.hex"))throw Error("witness artifacts already exist; refusing to overwrite");
+ if(fs::exists(artifacts+"/witness.json")||fs::exists(artifacts+"/witness.hex"))throw Error("witness artifacts already exist; refusing to overwrite");
  const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(std::min(cfg.total_wall_s,120));
  auto predicate=[&](const Case& candidate){
   if(std::chrono::steady_clock::now()>deadline)throw Error("witness minimization wall budget exhausted");
@@ -1838,10 +1848,13 @@ void minimize_failure_case(const std::string& run,const std::string& case_id,con
  record.put("replay_command","phaseshift replay --run <RUN> --case "+result.smallest.id+" --algorithm <PLUGIN> --expect wrong_answer");
  store.add_case(result.smallest);
  store.event("witness_correctness",record.str());
- write_file(run+"/witness.json",record.str());write_file(run+"/witness.hex",hex_encode(result.smallest.bytes)+"\n");
+ write_file(artifacts+"/witness.json",record.str());write_file(artifacts+"/witness.hex",hex_encode(result.smallest.bytes)+"\n");
  report(run);
  std::cout<<"Correctness witness "<<verdict<<" case="<<result.smallest.id<<" original="<<origin.bytes.size()
           <<" bytes minimal="<<result.smallest.bytes.size()<<" bytes\n";
+}
+void minimize_failure_case(const std::string& run,const std::string& case_id,const std::string& algorithm){
+ minimize_failure_case_to(run,case_id,algorithm,run);
 }
 void replay_expected_failure(const std::string& run,const std::string& case_id,const std::string& algorithm,const std::string& expected_status,const std::string& db){
  static const std::set<std::string> accepted={"wrong_answer","timeout","out_of_memory","crashed","signaled"};

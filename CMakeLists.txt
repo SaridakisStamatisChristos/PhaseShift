@@ -379,3 +379,7 @@ add_test(NAME hybrid_mixed_v2_unit COMMAND phaseshift_hybrid_v2_tests)
 configure_file(tests/run_v2_hybrid.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_hybrid.cmake @ONLY)
 add_test(NAME hybrid_mixed_v2_replay COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_hybrid.cmake)
 set_tests_properties(hybrid_mixed_v2_replay PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+
+add_executable(phaseshift_witness_paths_v2_tests tests/witness_paths_v2.cpp)
+target_link_libraries(phaseshift_witness_paths_v2_tests PRIVATE phaseshift_core)
+add_test(NAME v2_named_witness_path_isolation COMMAND phaseshift_witness_paths_v2_tests)
