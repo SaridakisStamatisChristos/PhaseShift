@@ -65,3 +65,12 @@ The script records both positive and negative results, failures, raw case/sample
 - **F-v2-004 / witness scope:** `cea1667` introduced H2 path isolation but referenced a branch-local `artifacts` before declaration. Both compilers rejected the code; `dc7d197` repairs the declaration and path check. Latest exact-SHA validation pending.
 - **F-v2-005 / seed arithmetic:** Signed SQLite persistence could overflow for large seed values and H2..H16 disjoint windows. `6017d6e` checks the entire fixed holdout+negative-control envelope before persisting TESTED state. Independent upper-bound/disjointness tests added.
 - **F-v2-006 / slope oracle ambiguity:** Two equivalent piecewise-linear cuts in the original synthetic fixture made an exact boundary-index assertion underdetermined. Replaced with a unique cut and promoted actual-axis difference calculation to long double to avoid signed subtraction overflow. CI pending.
+
+## Further continuation after the initial status snapshot
+
+- `f68f158`: integrated H1/H2 minimization fixture exercises two independently sealed hypotheses and verifies H1's legacy witness filenames coexist with `witnesses/H2/` artifacts. This tests actual minimization, not family-wise evidence.
+- `adbdcb6`: streamed per-case/algorithm early-versus-late block drift diagnostics into v2 report summaries. Groups need at least six valid distinct blocks; the 20% relative flag is a **descriptive heuristic**, never a p-value or reason to declare a performance win. Raw evidence is unchanged.
+- `a1b4f39`: adversarial CI repair for strict GCC/Clang rejection of an implicit long-double-to-double slope derivative; range check and explicit cast before telemetry publication. Earlier slope commits failed compilation, so do not accept their CI.
+- `2e827e9`: PR and main continue running GCC/Clang and sanitizers; duplicate feature-branch push workflows removed from the triggers to reduce future queue pressure. No weakened test or coverage gate.
+
+**Verification:** all five workflows green at `94ddf55`; later current head exact-SHA CI still pending at this document revision. Do not merge PR #4 or publish SOTA claims without current-head validation, independent held-out outcomes, full CPU/wall fairness, and external matched comparators.

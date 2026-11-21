@@ -12,3 +12,7 @@ Unknown versions, including kernel_only_v2, fail closed. Status failures, timeou
 ## Opt-in configuration and persisted identification
 
 Use `measurement.protocol_version` with value `calibrated_batch_v2` only inside an explicitly v2 search configuration. Absent this value, both v1 and v2 retain the historical legacy protocol. The frozen experiment manifest records the measurement version and generated report JSON exposes it. Each v2 calibrated sample's raw SQLite `detail` field also contains its protocol, measured pilot wall time and pilot iteration count, including failed samples when available. Independent CLI tests validate the new protocol, resume consistency and rejection of unsupported/kernel-only modes.
+
+## V2 report-only drift observation
+
+V2 report summaries optionally contain `block_drift_v2`, computed by streaming persisted `samples` grouped by exact case ID and algorithm. Each group requires at least six distinct valid measurement blocks; the first and last third of blocks are compared by median per-operation `ns/batch`. A >=20% early/late change increments a **heuristic descriptive flag**, not a statistical hypothesis rejection, corrected p-value, causal attribution, or automatic invalidation. Duplicate or invalid groups abstain. This is a basic drift instrument; population calibration, cross-run precision comparison, CPU-frequency/thermal controls and the M6 scientific verdict remain outstanding.
