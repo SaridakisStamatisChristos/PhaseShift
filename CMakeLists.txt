@@ -552,3 +552,10 @@ target_link_libraries(phaseshift_v3_selector_characterization PRIVATE phaseshift
 add_test(NAME v3_legacy_policy_extraction_characterization
  COMMAND phaseshift_v3_selector_characterization)
 set_tests_properties(v3_legacy_policy_extraction_characterization PROPERTIES TIMEOUT 30)
+
+# V3-04 guarded ordered-axis legal-space challenger and billion-index oracle.
+add_executable(phaseshift_v3_axis_slice_tests tests/v3/axis_slice.cpp)
+target_link_libraries(phaseshift_v3_axis_slice_tests PRIVATE phaseshift_core)
+add_test(NAME v3_axis_slice_exhaustive_legal_and_large_sparse
+ COMMAND phaseshift_v3_axis_slice_tests)
+set_tests_properties(v3_axis_slice_exhaustive_legal_and_large_sparse PROPERTIES TIMEOUT 60)
