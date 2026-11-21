@@ -1,4 +1,5 @@
 #include "phaseshift/experiment.hpp"
+#include "phaseshift/campaign_v2.hpp"
 #include "phaseshift/statistics.hpp"
 #include "phaseshift/morphology.hpp"
 #include "phaseshift/minimize.hpp"
@@ -1034,6 +1035,19 @@ void confirm(const std::string& run,const std::string& id){
  Store store(run+"/run.sqlite");const auto cfg=config_from_json(Json::parse(store.config()));
  auto [status,axis,left,right]=read_hypothesis(store,id);
  const auto frozen=frozen_case(store,cfg,id);
+ // Distinct hypothesis IDs must never share a fixed holdout seed stream.
+ // Keep H1 bitwise compatible; all v2 H2..H16 use disjoint 1e9-wide windows
+ // for primary, failure-status and negative-control seed cohorts.
+ std::uint64_t hypothesis_seed_offset=0;
+ if(cfg.policy_version=="v2"&&id!="H1"){
+  if(id.size()<2||id[0]!='H')throw Error("v2 hypothesis must be H1..H16");
+  std::size_t parsed=0;std::uint64_t rank=0;
+  try{rank=std::stoull(id.substr(1),&parsed);}
+  catch(const std::exception&){throw Error("unsupported v2 hypothesis identity");}
+  if(parsed!=id.size()-1||rank<2||rank>16)
+   throw Error("v2 hypothesis rank out of predeclared bounds");
+  hypothesis_seed_offset=(rank-1)*1000000000ULL;
+ }
  const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(cfg.total_wall_s);
  if(status=="NO_CONFIRMED_BOUNDARY"){std::cout<<"No candidate to confirm\n";return;}
  if(status!="HYPOTHESIZED")throw Error("confirmation already attempted or candidate not eligible: "+status);
@@ -1070,7 +1084,7 @@ void confirm(const std::string& run,const std::string& id){
   std::set<std::string> prior;for(const auto& c:store.cases(false))prior.insert(c.id);
   bool all_valid=true;int completed_pairs=0;
   for(int i=0;i<cfg.confirm_blocks&&all_valid;i++){
-   const auto seed=cfg.seed+7000000ULL+static_cast<std::uint64_t>(i)*101ULL;
+   const auto seed=cfg.seed+hypothesis_seed_offset+7000000ULL+static_cast<std::uint64_t>(i)*101ULL;
    for(int side=0;side<2;side++){
     if(std::chrono::steady_clock::now()>=deadline)throw Error("total_wall_seconds budget exhausted during confirmation");
     Case c=frozen;assign(c,axis,frozen_axis_value(cfg,side==0?left:right));
@@ -1096,7 +1110,7 @@ void confirm(const std::string& run,const std::string& id){
   if(all_valid){
    Case control=frozen;
    assign(control,axis,frozen_axis_value(cfg,left));
-   control.seed=cfg.seed+30000000ULL;control=make_case(control,cfg.max_bytes);
+   control.seed=cfg.seed+hypothesis_seed_offset+30000000ULL;control=make_case(control,cfg.max_bytes);
    if(prior.count(control.id))all_valid=false;
    else{
     const auto control_rows=measure(control,cfg.b.empty()?std::vector<std::string>{cfg.a}:
@@ -1123,7 +1137,7 @@ void confirm(const std::string& run,const std::string& id){
  std::set<std::string> discovery_ids;for(const auto& c:store.cases(false))discovery_ids.insert(c.id);
  auto reject=[&](const std::string& why){store.hypothesis(id,"NOT_CONFIRMED",axis,left,right,0,why);report(run);};
  for(int i=0;i<cfg.confirm_blocks;i++){
-  const auto seed=cfg.seed+1000000ULL+static_cast<std::uint64_t>(i)*97ULL;
+  const auto seed=cfg.seed+hypothesis_seed_offset+1000000ULL+static_cast<std::uint64_t>(i)*97ULL;
   std::array<double,2> estimates{};
   for(int order=0;order<2;order++){
    const auto side=static_cast<std::size_t>((i+order)%2);
@@ -1143,6 +1157,7 @@ void confirm(const std::string& run,const std::string& id){
  const auto threshold=std::log(cfg.min_ratio);
  std::ostringstream detail;detail<<std::setprecision(8);
  bool confirmed=false;
+ std::optional<double> campaign_p_value;
  if(cfg.family=="calibration"){
   confirmed=std::abs(delta)>=threshold;
   detail<<"Independent seed-separated deterministic operation-count holdout; pairs="<<cfg.confirm_blocks<<". NOT a timing/algorithm discovery.";
@@ -1150,7 +1165,8 @@ void confirm(const std::string& run,const std::string& id){
   const auto interval=paired_case_bootstrap(paired_differences,cfg.seed^0x5b86d2a7c9e3ULL,cfg.confirmation_confidence);
   const auto ci_l=case_bootstrap(side_estimates[0],cfg.seed^0x7ac6314fe29ULL,cfg.confirmation_confidence);
   const auto ci_r=case_bootstrap(side_estimates[1],cfg.seed^0x87f3e195c1eULL,cfg.confirmation_confidence);
-  const auto p=paired_sign_flip_p(paired_differences,cfg.seed^0xb3970a42e86ULL);
+  const auto p=paired_sign_flip_p(paired_differences,cfg.seed^0xb3970a42e86ULL^hypothesis_seed_offset);
+  if(cfg.policy_version=="v2")campaign_p_value=p;
   /* One preselected hypothesis per discovery, one isolated single-use
      confirmation: BH for a family of size one is identical to p<=q.
      A 99% CI further constrains the practical effect. */
@@ -1193,7 +1209,7 @@ void confirm(const std::string& run,const std::string& id){
   Case c=frozen;
   if(has_distant)assign(c,axis,selected);
   else selected=axis_label(frozen,axis); // no third point exists in this design
-  c.seed=cfg.seed+30000000ULL;c=make_case(c,cfg.max_bytes);
+  c.seed=cfg.seed+hypothesis_seed_offset+30000000ULL;c=make_case(c,cfg.max_bytes);
   if(discovery_ids.count(c.id)){
    confirmed=false;detail<<"; negative-control invalid: discovery overlap";
   }else{
@@ -1210,6 +1226,10 @@ void confirm(const std::string& run,const std::string& id){
  }
  if(confirmed)store.seal_confirmation(id,cfg.a,cfg.confirm_blocks);
  store.hypothesis(id,confirmed?"CONFIRMED":"NOT_CONFIRMED",axis,left,right,std::abs(delta),detail.str()+(confirmed?"":"; prespecified evidence threshold not met"));
+ // Only a successfully sealed, independently confirmed fixed-sample
+ // performance contrast may enter a predeclared Holm campaign.
+ if(confirmed&&campaign_p_value)
+  record_campaign_signflip_v2(store,id,*campaign_p_value,cfg.confirm_blocks);
  report(run);std::cout<<store.summary().str()<<"\n";
  }catch(const Error& error){
   if(std::string(error.what()).find("total_wall_seconds budget exhausted")!=std::string::npos){

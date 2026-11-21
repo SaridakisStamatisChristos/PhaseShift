@@ -331,3 +331,10 @@ add_executable(phaseshift_campaign_v2_tests tests/campaign_v2.cpp)
 target_link_libraries(phaseshift_campaign_v2_tests PRIVATE phaseshift_core)
 add_test(NAME campaign_v2_frozen_holm COMMAND phaseshift_campaign_v2_tests ${CMAKE_CURRENT_BINARY_DIR}/ctest_campaign_v2)
 set_tests_properties(campaign_v2_frozen_holm PROPERTIES TIMEOUT 25)
+
+# Real CLI gateway through registry, with duplicate and premature-finalize rejection.
+add_executable(phaseshift_campaign_cli_fixture tests/campaign_cli_fixture.cpp)
+target_link_libraries(phaseshift_campaign_cli_fixture PRIVATE phaseshift_core)
+configure_file(tests/run_v2_campaign_cli.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_campaign_cli.cmake @ONLY)
+add_test(NAME v2_campaign_cli_lifecycle COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_campaign_cli.cmake)
+set_tests_properties(v2_campaign_cli_lifecycle PROPERTIES TIMEOUT 35 RUN_SERIAL TRUE)

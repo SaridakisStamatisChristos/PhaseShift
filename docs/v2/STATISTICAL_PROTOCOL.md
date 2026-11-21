@@ -15,3 +15,17 @@ Multi-change and interaction scores are **discovery ranking heuristics**, not fr
 Positive members require an existing independent `confirmation_seals` row with complete linked evidence and a one-time internally recorded, strictly positive sign-flip p-value. Negative/incomplete members contribute conservatively `p=1` and never become family-wise positives. Finalization stores a single immutable Holm adjusted result vector with every member (including nonfindings) and prevents rerun/re-freeze. No optional stopping or missing-evidence promotion.
 
 **Scope limit:** The v2 discovery and CLI still need multi-H1 candidate routing and the p-value recorder wired into `confirm`. This commit establishes only the evidence registry, schema migration and falsification tests; it does **not** grant family-wise confidence to older unregistered confirmations. Synthetic unit p-values check arithmetic and schema policy, not real-world FWER calibration.
+
+## CLI workflow (research only)
+
+Run `phaseshift explore --config ... --out RUN` to finalize discovery, and freeze the family **before any** `confirm` execution:
+
+```bash
+phaseshift campaign-freeze --run RUN --manifest campaign.json
+phaseshift confirm --run RUN --hypothesis H1
+phaseshift campaign-finalize --run RUN --campaign C1
+```
+
+The manifest must contain `schema_version:1`, `campaign_id`, ordered `members`, `alpha`, `confirm_seed_pairs` equal to the run's frozen confirmation blocks, and `test:"paired_sign_flip_v1"`. The current campaign supports performance contrasts only. No synthetic calibration, crash/OOM/correctness or insufficient-holdout result is eligible as a positive statistical finding; negative members contribute p=1. The CLI intentionally declines to invent user-supplied p-values. `confirm` writes a p-value only after a valid positive sealed holdout (v2, existing campaign member) and uses a distinct seed cohort for H2..H16. Other v2 experiments and all v1 experiments retain their historical single-H1 behavior.
+
+**Limitation:** A frozen campaign must contain *all* intended candidate IDs before the first confirm; multiple-candidate discovery IDs and a real-workload campaign challenge are separate gates, not asserted complete here.
