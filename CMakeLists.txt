@@ -586,3 +586,19 @@ add_test(NAME v3_adaptive_worker_resume_and_tamper_rejection
  --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_adaptive_workers)
 set_tests_properties(v3_adaptive_worker_resume_and_tamper_rejection PROPERTIES
  TIMEOUT 180 RUN_SERIAL TRUE)
+
+# V3-04 opt-in multi-dimensional conditional paired search (schema v12).
+add_executable(phaseshift_v3_conditional_policy_tests tests/v3/conditional_pair.cpp)
+target_link_libraries(phaseshift_v3_conditional_policy_tests PRIVATE phaseshift_core)
+add_test(NAME v3_conditional_rare_xor_and_sparse_billion_space
+ COMMAND phaseshift_v3_conditional_policy_tests)
+set_tests_properties(v3_conditional_rare_xor_and_sparse_billion_space PROPERTIES TIMEOUT 75)
+
+add_test(NAME v3_conditional_disjoint_rectangles_worker_resume
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/conditional_worker_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/admissible_calibration.json
+ --unsupported-config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/conditional_implications.json
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_conditional_workers)
+set_tests_properties(v3_conditional_disjoint_rectangles_worker_resume PROPERTIES
+ TIMEOUT 180 RUN_SERIAL TRUE)

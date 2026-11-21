@@ -1,0 +1,244 @@
+#pragma once
+// Experimental bounded V3-04 *conditional* matched-pair discovery portfolio.
+// The only upstream evidence is committed discovery contrast feedback.
+// This is a ranking policy, not a significance test or calibrated model.
+#include "phaseshift/v3/types.hpp"
+#include <algorithm>
+#include <bit>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <map>
+#include <memory>
+#include <optional>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace ps::v3 {
+struct ConditionalPairChoice {
+ std::vector<AxisValue> left,right;
+ std::size_t context=0,edge=0;
+ std::string arm,prior_evidence_digest;
+ bool operator==(const ConditionalPairChoice&)const=default;
+};
+class ConditionalPairPortfolio {
+ using Coords=std::vector<AxisValue>;
+ struct Evidence {std::vector<double> valid;std::size_t censored=0;};
+ struct Context {
+  std::string key;
+  std::vector<std::pair<std::size_t,std::uint64_t>> legal;
+  std::unique_ptr<SparsePermutation> unseen;
+  std::map<std::size_t,Evidence> observed;
+ };
+ const AdmissibleSearchSpace& space_;
+ std::vector<LazySearchSpace::Axis> axes_;
+ std::size_t primary_=0,max_contexts_,max_pairs_,completed_=0;
+ std::uint64_t seed_;
+ double practical_log_ratio_;
+ SparsePermutation global_;
+ std::vector<Context> contexts_;
+ std::map<std::string,std::size_t> by_context_;
+ std::vector<Coords> strata_;
+ std::size_t next_stratum_=0;
+ std::optional<ConditionalPairChoice> pending_;
+ static void append_u64(std::string& s,std::uint64_t value){
+  for(unsigned shift=0;shift<64;shift+=8)s.push_back(static_cast<char>((value>>shift)&255));
+ }
+ static void append_str(std::string& s,const std::string& x) {
+  append_u64(s,static_cast<std::uint64_t>(x.size()));s+=x;
+ }
+ static std::uint64_t stable_hash(const std::string& value){
+  std::uint64_t h=14695981039346656037ULL;
+  for(const unsigned char b:value){h^=b;h*=1099511628211ULL;}
+  return h;
+ }
+ static double median(std::vector<double> values){
+  if(values.empty())throw Error("v3 conditional empty evidence");
+  std::sort(values.begin(),values.end());
+  const auto n=values.size(),m=n/2;
+  return n%2?values[m]:values[m-1]*0.5+values[m]*0.5;
+ }
+ std::string context_key(const Coords& coords)const{
+  if(coords.size()!=axes_.size())throw Error("v3 conditional wrong coordinate count");
+  std::string key;
+  for(std::size_t i=0;i<axes_.size();++i) {
+   if(coords[i].first!=axes_[i].first)throw Error("v3 conditional axis order differs");
+   if(i==primary_)continue;
+   append_str(key,coords[i].first);append_str(key,coords[i].second);
+  }
+  return key;
+ }
+ std::optional<std::size_t> enroll(const Coords& point){
+  const auto key=context_key(point);
+  if(const auto it=by_context_.find(key);it!=by_context_.end())
+   return it->second;
+  if(contexts_.size()>=max_contexts_)return std::nullopt;
+  Context created;created.key=key;
+  auto coords=point;
+  for(std::size_t i=0;i<axes_[primary_].second.size();++i){
+   coords[primary_].second=axes_[primary_].second[i];
+   if(const auto found=space_.index_of(coords))
+    created.legal.emplace_back(i,*found);
+  }
+  if(created.legal.size()<2)return std::nullopt; // singleton cannot form paired contrast
+  const auto n=created.legal.size()-1;
+  created.unseen=std::make_unique<SparsePermutation>(
+      static_cast<std::uint64_t>(n),seed_^stable_hash(key)^0x2a50baf4ULL);
+  const auto id=contexts_.size();
+  by_context_.emplace(key,id);
+  contexts_.push_back(std::move(created));
+  return id;
+ }
+ std::optional<ConditionalPairChoice> explore_at(const Coords& point){
+  const auto id=enroll(point);
+  if(!id)return std::nullopt;
+  auto& c=contexts_[*id];
+  if(!c.unseen->has_next())return std::nullopt;
+  const auto edge=static_cast<std::size_t>(c.unseen->next());
+  return choice(*id,edge,"explore");
+ }
+ ConditionalPairChoice choice(std::size_t id,std::size_t edge,
+                              std::string arm)const {
+  const auto& c=contexts_.at(id);
+  if(edge+1>=c.legal.size())throw Error("v3 conditional edge out of range");
+  return {space_.at(c.legal.at(edge).second),
+          space_.at(c.legal.at(edge+1).second),id,edge,
+          std::move(arm),""};
+ }
+ std::optional<ConditionalPairChoice> new_edge(){
+  // Give each frozen disjoint legal rectangle one deterministic opportunity
+  // before volume-weighted global exploration can obscure a rare stratum.
+  while(next_stratum_<strata_.size()){
+   const auto& origin=strata_.at(next_stratum_++);
+   if(auto c=explore_at(origin))return c;
+  }
+  // Uniform-without-replacement global screening, bounded to prevent
+  // unbounded rejection in a near-exhausted/degenerate conditional universe.
+  for(std::size_t attempt=0;attempt<256&&global_.has_next();++attempt) {
+   if(auto c=explore_at(space_.at(global_.next())))return c;
+  }
+  for(std::size_t id=0;id<contexts_.size();++id)
+   if(contexts_[id].unseen->has_next()){
+    const auto edge=static_cast<std::size_t>(contexts_[id].unseen->next());
+    return choice(id,edge,"explore");
+   }
+  return std::nullopt;
+ }
+ std::optional<std::pair<std::size_t,std::size_t>> replicate_target()const {
+  double best=-1;
+  std::optional<std::pair<std::size_t,std::size_t>> target;
+  for(std::size_t id=0;id<contexts_.size();++id)
+   for(const auto& [edge,obs]:contexts_[id].observed){
+    if(obs.valid.empty())continue; // never promote censored/failed samples
+    const double center=median(obs.valid);
+    std::vector<double> errors;
+    for(const double v:obs.valid)errors.push_back(std::abs(v-center));
+    const double mad=obs.valid.size()>=3?1.4826*median(errors):0.;
+    const double distance=std::abs(std::abs(center)-practical_log_ratio_);
+    const double rank=(1.+std::min(10.,mad))/
+       ((.10+distance)*std::sqrt(static_cast<double>(obs.valid.size())));
+    if(!std::isfinite(rank))throw Error("v3 conditional nonfinite acquisition");
+    const auto key=std::pair{id,edge};
+    if(rank>best||(rank==best&&(!target||key<*target))){
+     best=rank;target=key;
+    }
+   }
+  return target;
+ }
+public:
+ ConditionalPairPortfolio(const AdmissibleSearchSpace& space,
+    std::vector<LazySearchSpace::Axis> axes,std::string primary,
+    std::vector<AdmissibleSearchSpace::Subspace> declared_subspaces,
+    std::uint64_t seed,std::size_t max_pairs,double min_ratio,
+    std::size_t max_contexts=64)
+ :space_(space),axes_(std::move(axes)),
+  max_contexts_(max_contexts),max_pairs_(max_pairs),seed_(seed),
+  practical_log_ratio_(std::log(min_ratio)),
+  global_(space.cardinality(),seed^0xacc705e4ULL){
+  if(axes_.size()<2||axes_.size()>32||!max_contexts_||max_contexts_>128||
+     !max_pairs_||max_pairs_>100 ||!std::isfinite(min_ratio) ||min_ratio<=1.)
+   throw Error("v3 invalid bounded conditional portfolio contract");
+  if(declared_subspaces.size()>256)throw Error("v3 too many strata");
+  const auto primary_it=std::find_if(axes_.begin(),axes_.end(),
+   [&](const auto& axis){return axis.first==primary;});
+  if(primary_it==axes_.end())throw Error("v3 ordered primary axis absent");
+  primary_=static_cast<std::size_t>(std::distance(axes_.begin(),primary_it));
+  if(primary_it->second.size()<2||primary_it->second.size()>4096)
+   throw Error("v3 conditional primary axis cardinality outside 2..4096");
+  std::int64_t prev=0;
+  bool initial=true;
+  for(const auto& label:primary_it->second){
+   std::size_t n=0;std::int64_t v=0;
+   try{v=std::stoll(label,&n);}
+   catch(const std::exception&){throw Error("v3 conditional primary must be numeric");}
+   if(n!=label.size()||(!initial&&v<=prev))
+    throw Error("v3 conditional primary must be strictly ordered numeric");
+   prev=v;initial=false;
+  }
+  for(const auto& scope:declared_subspaces){
+   Coords origin;
+   for(const auto& [axis,labels]:axes_){
+    const auto it=scope.find(axis);
+    if(labels.empty()||(it!=scope.end()&&it->second.empty()))
+     throw Error("v3 conditional empty axis domain");
+    origin.emplace_back(axis,it==scope.end()?labels.front():it->second.front());
+   }
+   if(!space_.index_of(origin))
+    throw Error("v3 conditional declared stratum not in admissible universe");
+   strata_.push_back(std::move(origin));
+  }
+ }
+ std::string evidence_digest()const{
+  std::string data="phaseshift.v3.conditional-pair.1";
+  append_u64(data,completed_);append_u64(data,max_pairs_);
+  append_u64(data,next_stratum_);append_u64(data,global_.state());
+  append_u64(data,std::bit_cast<std::uint64_t>(practical_log_ratio_));
+  append_u64(data,contexts_.size());
+  for(const auto& c:contexts_){
+   append_str(data,c.key);append_u64(data,c.unseen->state());
+   append_u64(data,c.observed.size());
+   for(const auto& [edge,obs]:c.observed){
+    append_u64(data,edge);append_u64(data,obs.censored);
+    append_u64(data,obs.valid.size());
+    for(double d:obs.valid)append_u64(data,std::bit_cast<std::uint64_t>(d==0.?0.:d));
+   }
+  }
+  return ps::sha256(data);
+ }
+ std::optional<ConditionalPairChoice> next(){
+  if(pending_)throw Error("v3 conditional pending discovery lacks committed feedback");
+  if(completed_>=max_pairs_)return std::nullopt;
+  const auto prior=evidence_digest();
+  const auto replicate=replicate_target();
+  const bool explore=completed_<2||completed_%4==0||!replicate;
+  auto candidate=explore?new_edge():std::optional<ConditionalPairChoice>{};
+  if(!candidate&&replicate)
+   candidate=choice(replicate->first,replicate->second,"replicate");
+  if(!candidate&&!explore)
+   candidate=new_edge();
+  if(!candidate)return std::nullopt;
+  candidate->prior_evidence_digest=prior;
+  pending_=*candidate;
+  return candidate;
+ }
+ void on_committed(const ConditionalPairChoice& c,Cohort cohort,
+                   std::optional<double> contrast){
+  if(cohort!=Cohort::Discovery)
+   throw Error("v3 sealed confirmation cannot update conditional portfolio");
+  if(!pending_||*pending_!=c)
+   throw Error("v3 conditional stale/forged pending decision feedback");
+  if(contrast&&!std::isfinite(*contrast))
+   throw Error("v3 nonfinite conditional matched contrast");
+  auto& item=contexts_.at(c.context).observed[c.edge];
+  if(contrast)item.valid.push_back(*contrast);
+  else ++item.censored;
+  ++completed_;pending_.reset();
+ }
+ std::size_t committed()const noexcept{return completed_;}
+ std::size_t tracked_contexts()const noexcept{return contexts_.size();}
+ std::size_t resident_global_entries()const noexcept{return global_.resident_entries();}
+};
+} // namespace ps::v3

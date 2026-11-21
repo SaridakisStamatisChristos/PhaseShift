@@ -33,3 +33,17 @@ The previous fixed-endpoint runner stays on **schema v10**, unchanged. The new o
 **Persistence:** Separate opt-in schema v11 adds v3_adaptive_decisions to bind pair number, axis endpoints, explore/replicate arm and SHA-256 of the predecision committed-only evidence state. Pair decision, both raw workers and case input bytes are committed atomically. Verify/resume rebuilds each action and numeric effect from frozen source and SQLite, rejecting tampering. No confirmation handle reaches this policy.
 
 **Scope limits:** One numeric ordered axis, 3–4096 declared labels and at most 100 matched discovery pairs. Full campaign holdout registry, adaptive multidimensional conditional cells, calibrated uncertainty, complete spent-cost accounting after killed uncommitted workers, statistical multiplicity and external SOTA evidence remain unimplemented. Paired versus mismatched-seed validation is a controlled synthetic oracle, not evidence that real generators are fully exchangeable.
+
+## Optional v12 multi-axis conditional paired discovery
+
+V12 is separate from the v10 fixed mode and v11 one-axis adaptive mode. It creates a **new** SQLite v12 run database and leaves v1/v2 and earlier pilots unchanged. Example using an existing disjoint-rectangle config:
+
+    ./build/phaseshift_v3_pairs conditional --config configs/v2/admissible_calibration.json --out /tmp/v3-conditional --pairs 6 --pause-after 2
+    ./build/phaseshift_v3_pairs verify --run /tmp/v3-conditional
+    ./build/phaseshift_v3_pairs resume --run /tmp/v3-conditional
+
+Every pair differs in only one primary numeric axis and retains the same categorical/non-primary context and fresh seed. The policy operates in the actual legally indexed disjoint union without a Cartesian allocation. Its deterministic discovery budget first screens declared legal rectangular strata, then trades global new-context/edge screening against uncertainty-ranked replication of observed edges. For bounded cost it retains <=128 active contexts, <=4096 primary labels and <=100 pairs per run. These are **heuristics** and cannot establish a p-value or SOTA result.
+
+Full ordered coordinate vectors, chosen action, and prior committed discovery digest are inserted in the same SQLite transaction as the two raw worker batches. Verify/restart independently recreates the schedule and observes only discovery data. A typed implication-rule config is **explicitly rejected** by this version: disjoint rectangles are supported, not arbitrary logical implications. This intentional limitation is a hard gate before any claim of general mixed conditional legality.
+
+Remaining hard gates: campaign-wide sealed independent confirmation, full resource accounting across killed uncommitted attempts, richer conditional-rule legality and region-tree refinement, multi-family held-out policy comparison, multiplicity control and external competition.

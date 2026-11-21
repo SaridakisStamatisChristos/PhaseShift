@@ -4,6 +4,7 @@
 #include "phaseshift/experiment.hpp"
 #include "phaseshift/v3/replicate_planner.hpp"
 #include "phaseshift/v3/adaptive_pair.hpp"
+#include "phaseshift/v3/conditional_pair.hpp"
 #include <sqlite3.h>
 #include <algorithm>
 #include <chrono>
@@ -42,6 +43,7 @@ void apply_axis(Case& c,const std::string& key,const std::string& value){
  else if(key=="unique_count")c.unique_count=integer(value);
  else if(key=="distribution")c.distribution=value;
  else if(key=="weight_class")c.weight_class=value;
+ else if(key=="negative"){require(value=="true"||value=="false","invalid negative");c.negative=value=="true";}
  else if(key=="directed"){require(value=="true"||value=="false","invalid directed");c.directed=value=="true";}
  else throw Error("v3 unsupported structural axis in pilot: "+key);
 }
@@ -95,6 +97,7 @@ struct Plan {
  Config config;
  int pairs=0;
  bool adaptive=false;
+ bool conditional=false;
 };
 std::vector<LazySearchSpace::Axis> ordered_axes(const Config& cfg){
  return {cfg.axes.begin(),cfg.axes.end()};
@@ -102,13 +105,16 @@ std::vector<LazySearchSpace::Axis> ordered_axes(const Config& cfg){
 void validate_plan(const Plan& plan){
  require(plan.pairs>0&&plan.pairs<=100,"discovery pair bound must be 1..100");
  require(plan.config.policy_version=="v2","pilot requires a frozen validated v2 config as input, not a changed v1/v2 default");
- require(plan.config.axes.size()==1,"pilot currently requires exactly one declared structural axis");
+ require(plan.conditional ? plan.config.axes.size()>=2&&plan.config.axes.size()<=32 : plan.config.axes.size()==1,
+  "v12 conditional expects 2..32 axes; v10/v11 expect one");
+ if(plan.conditional)require(plan.config.conditional_rules.empty(),
+  "v12 disjoint rectangles only; implication rules not supported");
  require(plan.config.base.generator_version==1||plan.config.base.generator_version==2,"unsupported generator");
  require(plan.config.max_cases/2>=static_cast<std::uint64_t>(plan.pairs),"pair count exceeds config case cap");
  require(plan.config.seed<static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())-500000100ULL,"holdout seed exclusion window overflow");
  const auto& labels=plan.config.axes.at(plan.axis);
- if(plan.adaptive){
-  require(labels.size()>=3&&labels.size()<=4096,
+ if(plan.adaptive||plan.conditional){
+  require(labels.size()>=(plan.conditional?2U:3U)&&labels.size()<=4096,
    "adaptive policy requires 3..4096 ordered structural values");
   static const std::set<std::string> numeric={
     "x","n","k","vertices","edges","threshold","value_range","unique_count"};
@@ -120,10 +126,12 @@ void validate_plan(const Plan& plan){
  require(plan.left!=plan.right,"pair endpoints must differ");
  require(std::find(labels.begin(),labels.end(),plan.left)!=labels.end()&&
   std::find(labels.begin(),labels.end(),plan.right)!=labels.end(),"pair coordinate not in frozen legal space");
- Case trial=plan.config.base;
- apply_axis(trial,plan.axis,plan.left);validate_case_schema(trial,plan.config.max_bytes);
- trial=plan.config.base;
- apply_axis(trial,plan.axis,plan.right);validate_case_schema(trial,plan.config.max_bytes);
+ if(!plan.conditional){
+  Case trial=plan.config.base;
+  apply_axis(trial,plan.axis,plan.left);validate_case_schema(trial,plan.config.max_bytes);
+  trial=plan.config.base;
+  apply_axis(trial,plan.axis,plan.right);validate_case_schema(trial,plan.config.max_bytes);
+ }
 }
 Plan make_plan(const std::string& source,const std::string& left,
  const std::string& right,int count){
@@ -159,7 +167,24 @@ Plan make_adaptive_plan(const std::string& source,int count){
  validate_plan(draft);
  return draft;
 }
+Plan make_conditional_plan(const std::string& source,int count){
+ const auto cfg=config_from_json(Json::parse(source));
+ Plan result;result.source=source;result.config=cfg;result.axis=cfg.axis;
+ result.pairs=count;result.conditional=true;
+ require(cfg.axes.count(result.axis)!=0,"v12 primary axis not in frozen declared space");
+ const auto& labels=cfg.axes.at(result.axis);
+ require(labels.size()>=2,"v12 requires at least two primary labels");
+ result.left=labels[0];result.right=labels[1];
+ validate_plan(result);
+ const auto axes=ordered_axes(cfg);
+ const AdmissibleSearchSpace legal(axes,cfg.admissible_subspaces);
+ ConditionalPairPortfolio probe(legal,axes,result.axis,cfg.admissible_subspaces,
+  cfg.seed,static_cast<std::size_t>(count),cfg.min_ratio);
+ require(probe.next().has_value(),"v12 no feasible conditional pair");
+ return result;
+}
 void enable_adaptive_schema(Sqlite& db);
+void enable_conditional_schema(Sqlite& db);
 void create_schema(Sqlite& db,const Plan& plan){
  db.exec(R"SQL(
  BEGIN IMMEDIATE;
@@ -201,6 +226,7 @@ void create_schema(Sqlite& db,const Plan& plan){
  st.bind(3,plan.axis);st.bind(4,plan.left);st.bind(5,plan.right);
  st.bind(6,static_cast<std::int64_t>(plan.pairs));st.done();
  if(plan.adaptive)enable_adaptive_schema(db); // same atomic schema/plan commit
+ if(plan.conditional)enable_conditional_schema(db);
  db.exec("COMMIT");
 }
 void enable_adaptive_schema(Sqlite& db){
@@ -214,11 +240,30 @@ void enable_adaptive_schema(Sqlite& db){
  PRAGMA user_version=11;
  )SQL");
 }
+void enable_conditional_schema(Sqlite& db){
+ db.exec(R"SQL(
+ CREATE TABLE v3_conditional_decisions(
+  pair_number INTEGER PRIMARY KEY REFERENCES v3_pairs(pair_number),
+  axis TEXT NOT NULL, left_coords TEXT NOT NULL,right_coords TEXT NOT NULL,
+  arm TEXT NOT NULL CHECK(arm IN ('explore','replicate')),
+  prior_evidence_digest TEXT NOT NULL CHECK(length(prior_evidence_digest)=64),
+  CHECK(left_coords<>right_coords));
+ PRAGMA user_version=12;
+ )SQL");
+}
+std::string encode_coords(const std::vector<AxisValue>& coords){
+ std::string out;
+ for(const auto& [name,value]:coords){
+  out+=std::to_string(name.size())+":"+name;
+  out+=std::to_string(value.size())+":"+value;
+ }
+ return out;
+}
 Plan read_plan(Sqlite& db){
  Statement version(db,"PRAGMA user_version");
  require(version.row(),"cannot inspect v3 schema version");
  const auto schema=version.number(0);
- require(schema==10||schema==11,"not a supported v3 pilot SQLite database");
+ require(schema==10||schema==11||schema==12,"not a supported v3 pilot SQLite database");
  Statement st(db,"SELECT source_json,source_sha256,axis,left_label,right_label,max_pairs,protocol FROM v3_plan WHERE id=1");
  require(st.row(),"missing immutable v3 plan");
  const auto source=st.str(0),digest=st.str(1),axis=st.str(2),left=st.str(3),right=st.str(4);
@@ -226,7 +271,9 @@ Plan read_plan(Sqlite& db){
  const auto protocol=st.str(6);
  require(sha256(source)==digest,"frozen plan digest mismatch");
  require(protocol=="v3_matched_discovery_pilot_1"&&count>0&&count<=100,"invalid v3 protocol/count");
- auto result=make_plan(source,left,right,static_cast<int>(count));
+ auto result=schema==12?
+   make_conditional_plan(source,static_cast<int>(count)):
+   make_plan(source,left,right,static_cast<int>(count));
  result.adaptive=schema==11;
  if(result.adaptive){
   validate_plan(result);
@@ -234,6 +281,8 @@ Plan read_plan(Sqlite& db){
   require(left==labels.at(0)&&right==labels.at(1),
    "v11 frozen adaptive metadata anchors mismatch");
  }
+ if(schema==12)require(result.left==left&&result.right==right,
+   "v12 frozen conditional metadata anchors mismatch");
  require(result.axis==axis,"stored axis changed during replay");
  return result;
 }
@@ -256,9 +305,21 @@ struct ScheduledV3 {
  MatchedDiscoveryPair matched;
  std::string left,right;
  std::optional<AdaptivePairChoice> adaptive_choice;
+ std::optional<ConditionalPairChoice> conditional_choice;
 };
 ScheduledV3 select_pair(ReplicatePlanner& planner,const Plan& plan,
-                       AdaptivePairPolicy* adaptive){
+                       AdaptivePairPolicy* adaptive,
+                       ConditionalPairPortfolio* conditional){
+ if(conditional){
+  const auto choice=conditional->next();
+  require(choice.has_value(),"v12 conditional frontier exhausted under bounded budget");
+  const AdmissibleSearchSpace legal(ordered_axes(plan.config),
+     plan.config.admissible_subspaces);
+  const auto version=static_cast<std::uint32_t>(plan.config.base.generator_version);
+  const auto paired=planner.propose(legal,{choice->left,version},
+                                    {choice->right,version});
+  return {paired,"","",std::nullopt,*choice};
+ }
  if(!adaptive)return {proposed(planner,plan),plan.left,plan.right,std::nullopt};
  const auto choice=adaptive->next();
  require(choice.has_value(),"adaptive exploration/replication frontier exhausted");
@@ -275,15 +336,25 @@ Case materialize(const Plan& plan,const std::string& value,std::uint64_t seed){
  apply_axis(c,plan.axis,value);
  return make_case(c,plan.config.max_bytes);
 }
+Case materialize_selected(const Plan& plan,const ScheduledV3& selected,
+                          int side,std::uint64_t seed){
+ if(!selected.conditional_choice)
+  return materialize(plan,side==0?selected.left:selected.right,seed);
+ Case c=plan.config.base;c.seed=seed;
+ const auto& coords=side==0?selected.conditional_choice->left:
+                             selected.conditional_choice->right;
+ for(const auto& [axis,value]:coords)apply_axis(c,axis,value);
+ return make_case(c,plan.config.max_bytes);
+}
 std::optional<double> per_side_metric(const std::vector<Observation>& rows,
  const std::string& main,const std::string& competitor);
 std::size_t replay(Sqlite& db,const Plan& plan,ReplicatePlanner& planner,
-                   AdaptivePairPolicy* adaptive){
+                   AdaptivePairPolicy* adaptive,ConditionalPairPortfolio* conditional){
  Statement rows(db,"SELECT pair_number,seed,left_first,left_case_id,right_case_id,status,log_contrast,pair_wall_ns FROM v3_pairs ORDER BY pair_number");
  std::size_t completed=0;
  while(rows.row()){
   require(completed<static_cast<std::size_t>(plan.pairs),"persisted pairs exceed frozen cap");
-  const auto selected=select_pair(planner,plan,adaptive);
+  const auto selected=select_pair(planner,plan,adaptive,conditional);
   const auto& proposal=selected.matched;
   const auto seed=proposal.first.key.replicate.seed;
   if(adaptive){
@@ -296,11 +367,24 @@ std::size_t replay(Sqlite& db,const Plan& plan,ReplicatePlanner& planner,
      "v11 adaptive transcript tamper or committed-only policy replay mismatch");
    require(!decision.row(),"duplicate v11 adaptive design");
   }
+  if(conditional){
+   const auto& choice=*selected.conditional_choice;
+   Statement decision(db,"SELECT axis,left_coords,right_coords,arm,prior_evidence_digest FROM v3_conditional_decisions WHERE pair_number=?");
+   decision.bind(1,static_cast<std::int64_t>(completed));
+   require(decision.row()&&decision.str(0)==plan.axis&&
+      decision.str(1)==encode_coords(choice.left)&&
+      decision.str(2)==encode_coords(choice.right)&&
+      decision.str(3)==choice.arm&&
+      decision.str(4)==choice.prior_evidence_digest,
+      "v12 committed conditional policy schedule/evidence mismatch");
+   require(!decision.row(),"duplicate v12 conditional decision");
+  }
   require(rows.number(0)==static_cast<std::int64_t>(completed)&&
    rows.number(1)==static_cast<std::int64_t>(seed)&&
    rows.number(2)==static_cast<std::int64_t>(proposal.first_runs_first?1:0),
    "deterministic v3 pair transcript mismatch");
-  const auto a=materialize(plan,selected.left,seed),b=materialize(plan,selected.right,seed);
+  const auto a=materialize_selected(plan,selected,0,seed),
+             b=materialize_selected(plan,selected,1,seed);
   require(rows.str(3)==a.id&&rows.str(4)==b.id&&rows.number(7)>0,
    "v3 committed case identity or cost mismatch");
   const auto status=rows.str(5);
@@ -352,6 +436,8 @@ std::size_t replay(Sqlite& db,const Plan& plan,ReplicatePlanner& planner,
     "stored pair contrast differs from independent raw sample reconstruction");
   }
   if(adaptive)adaptive->on_committed(*selected.adaptive_choice,
+                                  Cohort::Discovery,recalculated);
+  if(conditional)conditional->on_committed(*selected.conditional_choice,
                                   Cohort::Discovery,recalculated);
   ++completed;
  }
@@ -405,17 +491,19 @@ void insert_samples(Sqlite& db,std::size_t index,int side,const Case& c,
  }
 }
 void execute_pairs(Sqlite& db,const Plan& plan,ReplicatePlanner& planner,
- AdaptivePairPolicy* adaptive,std::size_t completed,std::size_t pause){
+ AdaptivePairPolicy* adaptive,ConditionalPairPortfolio* conditional,
+ std::size_t completed,std::size_t pause){
  const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(plan.config.total_wall_s);
  const std::vector<std::string> algorithms=plan.config.b.empty()?
   std::vector<std::string>{plan.config.a}:
   std::vector<std::string>{plan.config.a,plan.config.b};
  std::size_t this_call=0;
  while(completed<static_cast<std::size_t>(plan.pairs)&&(pause==0||this_call<pause)){
-  const auto selected=select_pair(planner,plan,adaptive);
+  const auto selected=select_pair(planner,plan,adaptive,conditional);
   const auto& proposal=selected.matched;
   const auto seed=proposal.first.key.replicate.seed;
-  const auto a=materialize(plan,selected.left,seed),b=materialize(plan,selected.right,seed);
+  const auto a=materialize_selected(plan,selected,0,seed),
+             b=materialize_selected(plan,selected,1,seed);
   const auto started=std::chrono::steady_clock::now();
   auto measure_one=[&](const Case& c){
    return measure(c,algorithms,plan.config.blocks,plan.config.warmup,
@@ -465,12 +553,21 @@ void execute_pairs(Sqlite& db,const Plan& plan,ReplicatePlanner& planner,
     choice.bind(5,chosen.arm);choice.bind(6,chosen.prior_evidence_digest);
     choice.done();
    }
+   if(conditional){
+    const auto& chosen=*selected.conditional_choice;
+    Statement st(db,"INSERT INTO v3_conditional_decisions(pair_number,axis,left_coords,right_coords,arm,prior_evidence_digest) VALUES(?,?,?,?,?,?)");
+    st.bind(1,static_cast<std::int64_t>(completed));st.bind(2,plan.axis);
+    st.bind(3,encode_coords(chosen.left));st.bind(4,encode_coords(chosen.right));
+    st.bind(5,chosen.arm);st.bind(6,chosen.prior_evidence_digest);st.done();
+   }
    insert_samples(db,completed,0,a,left);insert_samples(db,completed,1,b,right);
    db.exec("COMMIT");
   }catch(...){db.exec("ROLLBACK");throw;}
   if(const auto* fault=std::getenv("PHASESHIFT_V3_FAILPOINT");fault&&std::string(fault)=="after_pair_commit")
    std::_Exit(89);
   if(adaptive)adaptive->on_committed(*selected.adaptive_choice,
+                                  Cohort::Discovery,contrast);
+  if(conditional)conditional->on_committed(*selected.conditional_choice,
                                   Cohort::Discovery,contrast);
   ++completed;++this_call;
  }
@@ -491,7 +588,7 @@ int numeric_option(int argc,char** argv,const std::string& key,int fallback){
 void syntax(int argc,char** argv,const std::string& command){
  const std::set<std::string> accepted=command=="run"?
   std::set<std::string>{"--config","--out","--left","--right","--pairs","--pause-after"}:
-  command=="adaptive"?
+  command=="adaptive"||command=="conditional"?
   std::set<std::string>{"--config","--out","--pairs","--pause-after"}:
   command=="verify"?std::set<std::string>{"--run"}:
   std::set<std::string>{"--run","--pause-after"};
@@ -508,15 +605,17 @@ int main(int argc,char** argv){
  try{
   require(argc>=2,"expected run, resume or verify");
   const std::string command=argv[1];
-  require(command=="run"||command=="adaptive"||command=="resume"||command=="verify","unknown pilot command");
+  require(command=="run"||command=="adaptive"||command=="conditional"||command=="resume"||command=="verify","unknown pilot command");
   syntax(argc,argv,command);
   const auto pause=numeric_option(argc,argv,"--pause-after",0);
-  if(command=="run"||command=="adaptive"){
+  if(command=="run"||command=="adaptive"||command=="conditional"){
    const auto config=option(argc,argv,"--config"),out=option(argc,argv,"--out");
    require(!config.empty()&&!out.empty(),"run needs config and output path");
    Plan plan;
    if(command=="adaptive")
     plan=make_adaptive_plan(read_file(config),numeric_option(argc,argv,"--pairs",3));
+   else if(command=="conditional")
+    plan=make_conditional_plan(read_file(config),numeric_option(argc,argv,"--pairs",3));
    else{
     const auto left=option(argc,argv,"--left"),right=option(argc,argv,"--right");
     require(!left.empty()&&!right.empty(),"run needs two frozen endpoint labels");
@@ -530,8 +629,16 @@ int main(int argc,char** argv){
    std::optional<AdaptivePairPolicy> adaptive;
    if(plan.adaptive)adaptive.emplace(adaptive_legal_labels(plan),
                   plan.config.seed,static_cast<std::size_t>(plan.pairs),plan.config.min_ratio);
+   std::optional<AdmissibleSearchSpace> legal;
+   std::optional<ConditionalPairPortfolio> conditional;
+   if(plan.conditional){
+    const auto axes=ordered_axes(plan.config);
+    legal.emplace(axes,plan.config.admissible_subspaces);
+    conditional.emplace(*legal,axes,plan.axis,plan.config.admissible_subspaces,
+      plan.config.seed,static_cast<std::size_t>(plan.pairs),plan.config.min_ratio);
+   }
    execute_pairs(db,plan,planner,adaptive?&*adaptive:nullptr,
-                 0,static_cast<std::size_t>(pause));
+                 conditional?&*conditional:nullptr,0,static_cast<std::size_t>(pause));
    return 0;
   }
   const auto run=option(argc,argv,"--run");
@@ -543,12 +650,21 @@ int main(int argc,char** argv){
   std::optional<AdaptivePairPolicy> adaptive;
   if(plan.adaptive)adaptive.emplace(adaptive_legal_labels(plan),
                    plan.config.seed,static_cast<std::size_t>(plan.pairs),plan.config.min_ratio);
-  const auto completed=replay(db,plan,planner,adaptive?&*adaptive:nullptr);
+  std::optional<AdmissibleSearchSpace> legal;
+  std::optional<ConditionalPairPortfolio> conditional;
+  if(plan.conditional){
+   const auto axes=ordered_axes(plan.config);
+   legal.emplace(axes,plan.config.admissible_subspaces);
+   conditional.emplace(*legal,axes,plan.axis,plan.config.admissible_subspaces,
+     plan.config.seed,static_cast<std::size_t>(plan.pairs),plan.config.min_ratio);
+  }
+  const auto completed=replay(db,plan,planner,adaptive?&*adaptive:nullptr,
+                              conditional?&*conditional:nullptr);
   if(command=="verify"){
    std::cout<<"v3 replay verified "<<completed<<" committed matched pairs\n";return 0;
   }
   execute_pairs(db,plan,planner,adaptive?&*adaptive:nullptr,
-                completed,static_cast<std::size_t>(pause));
+                conditional?&*conditional:nullptr,completed,static_cast<std::size_t>(pause));
   return 0;
  }catch(const std::exception& e){std::cerr<<"PHASESHIFT v3 error: "<<e.what()<<"\n";return 2;}
 }

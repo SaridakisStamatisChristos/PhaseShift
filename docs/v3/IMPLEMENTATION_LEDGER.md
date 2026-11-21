@@ -29,7 +29,7 @@
 | V3-01 | Fair consumed-resource benchmark and falsification | PARTIAL | Real CLI diagnostic, 20-seed separate manifests, strict SQLite/raw-log verifier and Release CTest written; broader landscapes/full heldout/CI evidence pending |
 | V3-02 | Orchestrator extraction and typed control-plane | PARTIAL | Legacy v2 selection extracted to a dedicated adapter with differential characterization CTest; typed keys, committed-only snapshot and budget ledger present. Full coordinator extraction and exact-SHA gates still outstanding |
 | V3-03 | Fresh matched-seed adaptive discovery replication | PARTIAL | v10 fixed-pair and v11 single-axis adaptive real-worker design, atomic two-sided SQLite evidence, deterministic resume; full cost and confirmation isolation gates remain open |
-| V3-04 | Legal cell / axis portfolio | PARTIAL | Standalone opt-in ordered-axis slice policy, legal mixed-space contexts, deterministic reserve and 2.048B virtual-index memory/feasibility oracle written; no main CLI wiring or held-out policy benefit established |
+| V3-04 | Legal cell / axis portfolio | PARTIAL | Standalone axis slicer plus new opt-in v12 multi-axis conditional matched worker portfolio over disjoint admissible rectangles; rare-stratum screening, 2.048B sparse index, replay and tamper falsifiers. Full region tree, implication rules and heldout benefit outstanding |
 | V3-05 | Predictive cost/uncertainty acquisition | OPEN | Frozen development-only calibration |
 | V3-06 | Optional surrogate challenger | NOT_REQUIRED_YET | Killable research branch; only promote if its evidence wins |
 | V3-07 | Boundary taxonomy & shape selection | OPEN | Independent multi-cliff / smooth truth |
@@ -83,3 +83,13 @@ New opt-in **schema v11** behind phaseshift_v3_pairs adaptive retains v10 fixed 
 Every adaptive decision and both real-worker outcomes commit in one new-run transaction. Independent replay checks decisions, raw-input identities, whole worker status and numeric effect reconstruction, and predecision evidence digest. Falsification gates include OS crash before/after commit, fabricated decision arm/labels/digest/seed/effect, nonfinite and holdout rejection and an independent noise-confounding fixture.
 
 **Evidence status:** CODE WRITTEN; exact-head CI pending. V3-03 remains PARTIAL: only one numeric ordered axis, no campaign-wide sealed confirmation registry, no full killed-worker cost recovery, no predictive calibration, no external SOTA comparison.
+
+## V3-04 conditional paired-worker successor (schema v12)
+
+Pure conditional_pair.hpp policy: selects legal adjacent primary-axis contrasts inside immutable non-primary coordinate contexts from an AdmissibleSearchSpace union of disjoint rectangles. One declared numeric primary; other axes may be categorical. Explicit first-pass coverage of every declared stratum precedes volume-weighted sparse candidate screening; a bounded context pool and sparse Fisher-Yates permutation prevent eager product expansion. Every fourth slot attempts a globally new context/edge; ambiguous observed edges can be remeasured with fresh matched seeds. Independent null/censor/NaN/confirmation feedback is rejected.
+
+New conditional option in the existing opt-in phaseshift_v3_pairs executable creates a separate v12 authoritative SQLite schema. Stored full-coordinate design, arm, and predecision evidence digest bind atomic real-worker observations. Verify and resume independently replay each policy decision and raw input/worker effect, while previous v10/v11 paths and stable v1/v2 remain unchanged. To avoid a false legal-case promise, v12 currently **rejects conditional implication rules** rather than accidentally overlooking them; only disjoint admissible rectangles are supported.
+
+Verification program: tests/v3/conditional_pair.cpp (exhaustive legal tiny oracle, guaranteed rare-stratum exposure, categorical XOR interaction isolation, malformed/nonfinite/holdout feedback, 2.048B cardinality sparse-RSS challenge); tests/v3/conditional_worker_cli.py (real workers, seeded pause/resume, before/after commit failure, raw and decision tamper, unsupported-rule rejection, fixed schema backward compatibility).
+
+**State:** code produced; full exact-head CI evidence required before VERIFIED engineering claims. The V3-04 milestone remains PARTIAL: no generalized implication-rule frontiers, advanced region splits/shape classification, independent heldout performance proof, or external competitor comparison.

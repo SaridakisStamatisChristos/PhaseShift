@@ -47,3 +47,15 @@ The independent synthetic oracle supplies common ±0.7 log-time seed noise to tw
 ## F-014 — v11 adaptation accidentally mutates v10
 
 Implement v11 only for new opt-in run directories; retain v10 fixed-pair runner and previous source Store schemas unchanged. Run both independent CLI checks under CI. **State: tests authored; CI pending.**
+
+## F-015 — Rare admissible category invisibility in weighted search
+
+Opt-in v12 conditional policy enumerates declared disjoint rectangle strata lazily and allocates one initial matched legal edge in each, independent of that rectangle's virtual volume. A direct small finite-domain oracle requires both rare/common categories before repeat, and synthetic XOR requires all four categorical contexts. **State: test authored; exact-head CI pending.**
+
+## F-016 — Implication rule silently ignored as if legal
+
+AdmissibleSearchSpace indexes disjoint rectangles but is not a complete oracle for arbitrary conditional implication rules. Until the richer conditional feasibility engine is integrated, v12 refuses source configs with conditional_rules. Both positive disjoint-rectangle run and negative implication test are CI gates. **State: regression authored, exact-head CI pending.**
+
+## F-017 — Mixed structural coordinates change across a matched seed
+
+Independent Python SQLite oracle checks matching category context, legal only-primary-axis shifts, same fresh seed, full raw workers, input digests, and deterministic decision transcript. Tamper a prior evidence digest, arm, coordinate, seed or effect and require verify to fail. Kill before and after pair commit. **State: test authored; exact-head CI pending.**
