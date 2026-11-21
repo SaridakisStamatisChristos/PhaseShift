@@ -531,3 +531,10 @@ set_tests_properties(v2_cliff_bracketing_cli_holdout_contract PROPERTIES TIMEOUT
 add_test(NAME v3_independent_benchmark_fairness_contract
  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/benchmark_fairness.py)
 set_tests_properties(v3_independent_benchmark_fairness_contract PROPERTIES TIMEOUT 30)
+
+# V3-01 actual explore/resume/confirm/SQLite benchmark and scorecard smoke.
+add_test(NAME v3_real_worker_consumed_budget_scorecard
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/run_real_cli_diagnostic.py
+ --binary $<TARGET_FILE:phaseshift> --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_quick)
+set_tests_properties(v3_real_worker_consumed_budget_scorecard PROPERTIES
+ TIMEOUT 180 RUN_SERIAL TRUE)
