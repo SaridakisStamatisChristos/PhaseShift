@@ -67,3 +67,7 @@ The independent v13 Python oracle enumerates all 16 (`negative`,`threshold`,`x`)
 ## F-019 — Conditional region tree silently revisits an edge or excludes a rare cell
 
 Independent finite oracle exhausts 62 legal edge pairs in two disjoint categorical cells, including contrasting double-cliff/xor signs; new edges may not repeat. Every legal context is represented independently before local bisection. Separate 2.048B virtual-domain test caps live contexts and checks no Cartesian allocation. Region-state hash and raw worker evidence must replay under forced crashes, with v12/v13 backward behavior unmodified. **State: tests authored; CI verification pending.**
+
+## F-020 — No-op arm corruption falsifier (v14 first CI)
+
+First exact-head GCC CTest (`f26d5da5`, test 106) failed because the v14 Python tamper test assigned a fixed `replicate` label to an already-replicate pair, so `verify` correctly accepted an **unchanged** transcript. This is a testing-oracle error, not evidence that the verifier accepts a changed policy decision. The repaired falsifier atomically toggles `explore` ↔ `replicate` using SQL `CASE` regardless of the original arm, guaranteeing actual corruption. Re-run GCC, Clang, sanitizer and coverage on the repaired exact SHA before accepting this check. State: REPAIR WRITTEN; new-head results pending.

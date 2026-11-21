@@ -129,7 +129,7 @@ def main():
         invoke(args.binary,"verify","--run",target)
 
     tamper(args.binary,run,root,"arm",
-           "UPDATE v3_conditional_decisions SET arm='replicate' WHERE pair_number=2")
+           "UPDATE v3_conditional_decisions SET arm=CASE WHEN arm='explore' THEN 'replicate' ELSE 'explore' END WHERE pair_number=2")
     tamper(args.binary,run,root,"prior",
            "UPDATE v3_conditional_decisions SET prior_evidence_digest=hex(zeroblob(32)) WHERE pair_number=1")
     tamper(args.binary,run,root,"coordinate",
