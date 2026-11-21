@@ -345,3 +345,8 @@ target_link_libraries(phaseshift_campaign_worker_fixture PRIVATE phaseshift_core
 configure_file(tests/run_v2_campaign_worker.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_campaign_worker.cmake @ONLY)
 add_test(NAME v2_campaign_two_real_worker_hypotheses COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_campaign_worker.cmake)
 set_tests_properties(v2_campaign_two_real_worker_hypotheses PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+
+# M6 independent worker-v2 pilot and original v1 oracle comparison.
+add_executable(phaseshift_measurement_v2_tests tests/measurement_v2.cpp)
+target_link_libraries(phaseshift_measurement_v2_tests PRIVATE phaseshift_core)
+add_test(NAME calibrated_batch_v2_unit COMMAND phaseshift_measurement_v2_tests)

@@ -32,3 +32,5 @@ States are deliberately strict; no intermediate green workflow grants final-bran
 - M9 SQLite additive v8 opt-in: newly implemented, allows historical v7 read-only and v1 untouched; budget ledger FK and atomic transaction tests added. Does not yet implement full campaign, model-cache or candidate-key table set. Independent latest-revision CI pending.
 
 - M5/M7 ranked multiple candidates: up to 16 distinct geometric, HYPOTHESIZED-only H1..H16 with explicit frozen candidate data; unique v2 holdout seed streams. Provisional until a real multi-change/real-worker campaign passes and family correction is sealed.
+
+- M6 separate calibrated worker pilot: pilot correctness, final timed output validation and noninterference with legacy timing implemented. End-to-end CLI and per-run version selector remain the next verification step; no precision gain established.
