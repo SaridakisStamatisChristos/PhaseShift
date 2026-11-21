@@ -2139,7 +2139,7 @@ void verify_bundle(const std::string& bundle){
    if(!expected.count(prefix+"witness.hex"))
     throw Error("v2 witness artifact absent from bundle: "+id);
    auto encoded=read_file((path/(prefix+"witness.hex")).string());
-   while(!encoded.empty()&&(encoded.back()=='\\n'||encoded.back()=='\\r'))
+   while(!encoded.empty()&&(encoded.back()=='\n'||encoded.back()=='\r'))
     encoded.pop_back();
    const auto digest=sha256(hex_decode(encoded));
    sqlite3_stmt* match=nullptr;
