@@ -485,3 +485,9 @@ configure_file(tests/run_v2_factorial_holdout.cmake.in
 add_test(NAME v2_factorial_independent_real_worker_holdout
  COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_factorial_holdout.cmake)
 set_tests_properties(v2_factorial_independent_real_worker_holdout PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+
+add_executable(phaseshift_model_cache_v2_tests tests/model_cache_v2.cpp)
+target_link_libraries(phaseshift_model_cache_v2_tests PRIVATE phaseshift_core)
+add_test(NAME v2_reconstructable_model_sidecar_oracle
+ COMMAND phaseshift_model_cache_v2_tests ${CMAKE_CURRENT_BINARY_DIR}/ctest_v2_model_cache)
+set_tests_properties(v2_reconstructable_model_sidecar_oracle PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
