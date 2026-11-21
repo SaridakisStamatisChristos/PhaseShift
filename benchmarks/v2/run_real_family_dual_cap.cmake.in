@@ -3,7 +3,7 @@ file(REMOVE_RECURSE "${RUN}")
 execute_process(
  COMMAND "@Python3_EXECUTABLE@" "@CMAKE_CURRENT_SOURCE_DIR@/benchmarks/v2/real_family_dual_cap.py"
   --binary "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" --out "${RUN}"
-  --seeds 31 --cases 4 --cpu-budget-ns 5000000000 --wall-budget-ns 15000000000
+  --seeds 31 --cases 8 --cpu-budget-ns 5000000000 --wall-budget-ns 15000000000
  RESULT_VARIABLE rc)
 if(NOT rc EQUAL 0)
  message(FATAL_ERROR "v2 real sorting/Top-K/graph dual cap benchmark failed")
