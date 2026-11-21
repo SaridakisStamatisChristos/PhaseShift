@@ -57,6 +57,10 @@ int main(int argc,char** argv){try{
  REQUIRE(scalar(store.raw(),"SELECT COUNT(*) FROM campaign_outcomes_v2 WHERE raw_p=1")==1);
  REQUIRE(scalar(store.raw(),"SELECT COUNT(*) FROM campaigns_v2 WHERE state='FINALIZED'")==1);
  REQUIRE(fails([&]{(void)ps::finalize_campaign_v2(store,"C1");}));
+ // Immutable read-only connections ignore an active WAL unless it has been
+ // checkpointed; flush the completed campaign transaction before verifying.
+ REQUIRE(sqlite3_wal_checkpoint_v2(store.raw(),nullptr,SQLITE_CHECKPOINT_TRUNCATE,
+                                   nullptr,nullptr)==SQLITE_OK);
  ps::Store readonly(std::string(argv[1])+"/campaign.sqlite",true);
  REQUIRE(scalar(readonly.raw(),"PRAGMA user_version")==9);
  REQUIRE(scalar(readonly.raw(),"SELECT COUNT(*) FROM campaign_outcomes_v2")==3);

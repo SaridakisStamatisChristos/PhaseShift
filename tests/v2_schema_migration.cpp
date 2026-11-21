@@ -66,7 +66,7 @@ int main(int argc,char** argv){try{
  }
  const auto future=(fs::path(argv[1])/"future.sqlite").string();
  sqlite3* raw=nullptr;CHECK(sqlite3_open(future.c_str(),&raw)==SQLITE_OK);
- CHECK(sqlite3_exec(raw,"PRAGMA user_version=9",nullptr,nullptr,nullptr)==SQLITE_OK);
+ CHECK(sqlite3_exec(raw,"PRAGMA user_version=10",nullptr,nullptr,nullptr)==SQLITE_OK);
  sqlite3_close(raw);
  bool rejected=false;try{ps::Store future_schema(future);}catch(const ps::Error&){rejected=true;}
  CHECK(rejected);
