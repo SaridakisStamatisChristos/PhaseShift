@@ -434,3 +434,95 @@ add_test(NAME weighted_v2_invalid_config_contract
  --binary ${CMAKE_CURRENT_BINARY_DIR}/phaseshift
  --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/weighted_admissible.json)
 set_tests_properties(weighted_v2_invalid_config_contract PROPERTIES TIMEOUT 90)
+
+# M2: bounded exact disjoint decomposition of conditional implication rules.
+add_executable(phaseshift_conditional_rule_v2_tests tests/conditional_rules_v2.cpp)
+target_link_libraries(phaseshift_conditional_rule_v2_tests PRIVATE phaseshift_core)
+add_test(NAME conditional_rules_v2_exhaustive_oracle COMMAND phaseshift_conditional_rule_v2_tests)
+
+configure_file(tests/run_v2_conditional_rules.cmake.in
+ ${CMAKE_CURRENT_BINARY_DIR}/run_v2_conditional_rules.cmake @ONLY)
+add_test(NAME conditional_rules_v2_cli_replay
+ COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_conditional_rules.cmake)
+set_tests_properties(conditional_rules_v2_cli_replay PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
+
+add_executable(phaseshift_v2_evidence_view_tests tests/evidence_view_v2.cpp)
+target_link_libraries(phaseshift_v2_evidence_view_tests PRIVATE phaseshift_core)
+add_test(NAME v2_committed_discovery_view_oracle COMMAND phaseshift_v2_evidence_view_tests)
+
+configure_file(benchmarks/v2/run_dual_cap_challenge.cmake.in
+ ${CMAKE_CURRENT_BINARY_DIR}/run_dual_cap_challenge.cmake @ONLY)
+add_test(NAME v2_dual_cap_full_cli_accounting
+ COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_dual_cap_challenge.cmake)
+set_tests_properties(v2_dual_cap_full_cli_accounting PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+
+add_executable(phaseshift_cpu_usage_v2_tests tests/cpu_usage_v2.cpp)
+target_link_libraries(phaseshift_cpu_usage_v2_tests PRIVATE phaseshift_core)
+add_test(NAME v2_linux_parent_waited_worker_cpu_oracle COMMAND phaseshift_cpu_usage_v2_tests)
+
+add_executable(phaseshift_scheduler_heap_v2_tests tests/scheduler_heap_v2.cpp)
+target_link_libraries(phaseshift_scheduler_heap_v2_tests PRIVATE phaseshift_core)
+add_test(NAME v2_scheduler_heap_matches_independent_full_scan COMMAND phaseshift_scheduler_heap_v2_tests)
+
+add_executable(phaseshift_fixed_factorial_holdout_tests tests/factorial_holdout_v2.cpp)
+target_link_libraries(phaseshift_fixed_factorial_holdout_tests PRIVATE phaseshift_core)
+add_test(NAME v2_fixed_independent_factorial_holdout_math
+ COMMAND phaseshift_fixed_factorial_holdout_tests)
+
+configure_file(benchmarks/v2/run_real_family_dual_cap.cmake.in
+ ${CMAKE_CURRENT_BINARY_DIR}/run_real_family_dual_cap.cmake @ONLY)
+add_test(NAME v2_real_sorting_topk_graph_dual_cap
+ COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_real_family_dual_cap.cmake)
+set_tests_properties(v2_real_sorting_topk_graph_dual_cap PROPERTIES TIMEOUT 240 RUN_SERIAL TRUE)
+
+add_test(NAME v2_dual_cap_scorecard_falsification
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/summarize_dual_cap_v2.py)
+set_tests_properties(v2_dual_cap_scorecard_falsification PROPERTIES
+ ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/v2" TIMEOUT 30)
+
+configure_file(tests/run_v2_factorial_holdout.cmake.in
+ ${CMAKE_CURRENT_BINARY_DIR}/run_v2_factorial_holdout.cmake @ONLY)
+add_test(NAME v2_factorial_independent_real_worker_holdout
+ COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_factorial_holdout.cmake)
+set_tests_properties(v2_factorial_independent_real_worker_holdout PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+
+add_executable(phaseshift_model_cache_v2_tests tests/model_cache_v2.cpp)
+target_link_libraries(phaseshift_model_cache_v2_tests PRIVATE phaseshift_core)
+add_test(NAME v2_reconstructable_model_sidecar_oracle
+ COMMAND phaseshift_model_cache_v2_tests ${CMAKE_CURRENT_BINARY_DIR}/ctest_v2_model_cache)
+set_tests_properties(v2_reconstructable_model_sidecar_oracle PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
+
+configure_file(tests/run_v2_model_cache.cmake.in
+ ${CMAKE_CURRENT_BINARY_DIR}/run_v2_model_cache.cmake @ONLY)
+add_test(NAME v2_durable_model_cache_real_worker_repair
+ COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_model_cache.cmake)
+set_tests_properties(v2_durable_model_cache_real_worker_repair
+ PROPERTIES TIMEOUT 150 RUN_SERIAL TRUE)
+
+add_executable(phaseshift_v2_noisy_detection_tests tests/v2_noisy_detection.cpp)
+target_link_libraries(phaseshift_v2_noisy_detection_tests PRIVATE phaseshift_core)
+add_test(NAME v2_noisy_holdout_segmentation_challenge
+ COMMAND phaseshift_v2_noisy_detection_tests ${CMAKE_CURRENT_BINARY_DIR}/ctest_v2_noisy)
+set_tests_properties(v2_noisy_holdout_segmentation_challenge PROPERTIES
+ TIMEOUT 90 RUN_SERIAL TRUE)
+add_executable(phaseshift_v2_large_space_rss_tests tests/v2_large_space_rss.cpp)
+target_link_libraries(phaseshift_v2_large_space_rss_tests PRIVATE phaseshift_core)
+add_test(NAME v2_billion_coordinate_measured_rss
+ COMMAND phaseshift_v2_large_space_rss_tests)
+set_tests_properties(v2_billion_coordinate_measured_rss PROPERTIES TIMEOUT 30)
+
+# M2 numeric morphology compatibility and exhaustive single-axis validation.
+add_test(NAME v2_typed_ordered_axis_contract
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/verify_v2_axis_contract.py
+ --binary ${CMAKE_CURRENT_BINARY_DIR}/phaseshift)
+set_tests_properties(v2_typed_ordered_axis_contract PROPERTIES TIMEOUT 90)
+
+# Additional opt-in cliff-bracket search-policy acceptance.
+add_executable(phaseshift_cliff_bracket_v2_tests tests/cliff_bracket_v2.cpp)
+target_link_libraries(phaseshift_cliff_bracket_v2_tests PRIVATE phaseshift_core)
+add_test(NAME v2_cliff_bracketing_full_threshold_oracle COMMAND phaseshift_cliff_bracket_v2_tests)
+set_tests_properties(v2_cliff_bracketing_full_threshold_oracle PROPERTIES TIMEOUT 20)
+add_test(NAME v2_cliff_bracketing_cli_holdout_contract
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/verify_v2_cliff_bracket_cli.py
+ --binary $<TARGET_FILE:phaseshift> --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_cliff_bracket_v2)
+set_tests_properties(v2_cliff_bracketing_cli_holdout_contract PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)

@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "experiment_id": "v2-conditional-implication-replay",
+  "problem_family": "calibration",
+  "algorithms": ["calibration"],
+  "seed": 337,
+  "primary_axis": "x",
+  "axes": {
+    "negative": {"values": [false, true]},
+    "threshold": {"values": [2, 3]},
+    "x": {"values": [0, 1, 2, 3]}
+  },
+  "search": {
+    "policy_version": "v2",
+    "method": "uniform_v2",
+    "replicates": 2,
+    "max_cases": 12,
+    "conditional_rules": [
+      {"when": {"axis": "negative", "values": [true]},
+       "require": {"axis": "x", "values": [2, 3]}},
+      {"when": {"axis": "negative", "values": [false]},
+       "require": {"axis": "x", "values": [0, 1]}},
+      {"when": {"axis": "threshold", "values": [2]},
+       "require": {"axis": "negative", "values": [false]}}
+    ]
+  },
+  "measurement": {
+    "paired_discovery_blocks": 1,
+    "paired_confirm_blocks": 20,
+    "warmup_iterations": 0
+  },
+  "limits": {"total_wall_seconds": 90, "max_search_queue": 64}
+}

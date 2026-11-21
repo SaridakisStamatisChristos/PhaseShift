@@ -1,5 +1,6 @@
 #pragma once
 #include <cstddef>
+#include <optional>
 #include <span>
 #include <vector>
 namespace ps {
@@ -18,4 +19,18 @@ MultiChangeFitV2 fit_multi_change_v2(std::span<const double> values,
 // fallback when the unconstrained optimum exceeds max_changes.
 MultiChangeFitV2 fit_multi_change_pelt_v2(std::span<const double> values,
  std::size_t min_segment_size,std::size_t max_changes,double penalty);
+}
+
+// Optional discovery-only screen for an abrupt and persistent level change.
+// It is NOT a significance test or a confidence interval. Requires 3 measured
+// bins on each side; rejects short impulses and broad smooth transitions.
+// Log-metric units and a predeclared log(practical effect ratio) are expected.
+namespace ps {
+struct PersistentJumpEvidenceV2 {
+ double absolute_persistent_shift=0;
+ double absolute_edge_change=0;
+ double upper_quartile_background_change=0;
+};
+std::optional<PersistentJumpEvidenceV2> screen_persistent_jump_v2(
+ std::span<const double> values,std::size_t cut,double minimum_log_effect);
 }
