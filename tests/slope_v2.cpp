@@ -23,7 +23,8 @@ static double brute(const std::vector<std::int64_t>& x,
  std::vector<std::size_t> boundaries;
  std::function<void(std::size_t)> recurse=[&](std::size_t start){
   if(y.size()-start>=min){
-   auto last=std::size_t{0},total=penalty*boundaries.size();
+   std::size_t last=0;
+   double total=penalty*static_cast<double>(boundaries.size());
    for(auto end:boundaries){total+=loss(x,y,last,end);last=end;}
    total+=loss(x,y,last,y.size());
    best=std::min(best,total);
