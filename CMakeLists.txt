@@ -538,3 +538,10 @@ add_test(NAME v3_real_worker_consumed_budget_scorecard
  --binary $<TARGET_FILE:phaseshift> --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_quick)
 set_tests_properties(v3_real_worker_consumed_budget_scorecard PROPERTIES
  TIMEOUT 180 RUN_SERIAL TRUE)
+
+# V3-02 opt-in typed control-plane and V3-03 paired-plan contract tests.
+add_executable(phaseshift_v3_contract_tests tests/v3/control_plane.cpp)
+target_link_libraries(phaseshift_v3_contract_tests PRIVATE phaseshift_core)
+add_test(NAME v3_typed_keys_frozen_discovery_budget_and_matched_seeds
+ COMMAND phaseshift_v3_contract_tests)
+set_tests_properties(v3_typed_keys_frozen_discovery_budget_and_matched_seeds PROPERTIES TIMEOUT 30)
