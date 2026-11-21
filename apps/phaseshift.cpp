@@ -19,6 +19,7 @@ Usage:
   phaseshift ablate --config CONFIG --out DIRECTORY
   phaseshift intervene --run RUN_DIRECTORY --out NEW_DIRECTORY [--hypothesis H1] [--pairs 9]
   phaseshift scaling --run RUN_DIRECTORY --out NEW_DIRECTORY [--seeds 3]
+  phaseshift confirm-interaction --run RUN_DIRECTORY (v2 exploratory holdout only)
   phaseshift confirm --run RUN_DIRECTORY [--hypothesis H1]
   phaseshift campaign-freeze --run RUN_DIRECTORY --manifest CAMPAIGN.json
   phaseshift campaign-finalize --run RUN_DIRECTORY --campaign CAMPAIGN_ID
@@ -50,6 +51,7 @@ int main(int argc,char** argv){
     {"explore",{"--config","--out","--pause-after"}},{"resume",{"--run","--pause-after"}},
     {"ablate",{"--config","--out"}},{"intervene",{"--run","--out","--hypothesis","--pairs"}},
     {"scaling",{"--run","--out","--seeds"}},{"confirm",{"--run","--hypothesis"}},
+    {"confirm-interaction",{"--run"}},
     {"minimize",{"--run","--hypothesis"}},
     {"campaign-freeze",{"--run","--manifest"}},
     {"campaign-finalize",{"--run","--campaign"}},{"minimize-case",{"--run","--case","--algorithm"}},
@@ -97,6 +99,7 @@ int main(int argc,char** argv){
    if(chars!=raw.size())throw ps::Error("invalid --pairs");
    ps::intervene(run,out,option("--hypothesis","H1"),count);return 0;
   }
+  if(cmd=="confirm-interaction"){ps::confirm_factorial(run);return 0;}
   if(cmd=="confirm"){ps::confirm(run,option("--hypothesis","H1"));return 0;}
   if(cmd=="campaign-freeze"){
    const auto path=option("--manifest");

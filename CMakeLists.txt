@@ -479,3 +479,9 @@ add_test(NAME v2_dual_cap_scorecard_falsification
  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/summarize_dual_cap_v2.py)
 set_tests_properties(v2_dual_cap_scorecard_falsification PROPERTIES
  ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/v2" TIMEOUT 30)
+
+configure_file(tests/run_v2_factorial_holdout.cmake.in
+ ${CMAKE_CURRENT_BINARY_DIR}/run_v2_factorial_holdout.cmake @ONLY)
+add_test(NAME v2_factorial_independent_real_worker_holdout
+ COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_factorial_holdout.cmake)
+set_tests_properties(v2_factorial_independent_real_worker_holdout PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)

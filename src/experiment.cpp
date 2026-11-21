@@ -906,6 +906,109 @@ static void v2_factorial_diagnostic(Store& store,const Config& cfg){
  store.event("v2_factorial_screen_discovery_only",record.str());
 }
 
+// Optional v2 experimental validation. Independent holdout inference is
+// intentionally NOT a globally CONFIRMED hypothesis: no population-wide
+// multiplicity claim is licensed until this cohort joins a frozen campaign.
+void confirm_factorial(const std::string& run){
+ Store source(run+"/run.sqlite",true);
+ const auto cfg=config_from_json(Json::parse(source.config()));
+ if(cfg.policy_version!="v2"||cfg.axes.size()!=2||cfg.replicate_count<3)
+  throw Error("factorial holdout requires an opt-in 2-axis v2 experiment");
+ auto first=cfg.axes.begin(),second=std::next(first);
+ if(first->second.size()!=2||second->second.size()!=2)
+  throw Error("factorial holdout requires two binary nominal factors");
+ std::vector<FactorialCellV2> discovery;
+ std::string ledger;
+ for(const auto& c:source.cases(false)){
+  const auto m=metric(source,c,cfg,false);
+  if(!m)throw Error("factorial discovery has invalid/failed samples");
+  discovery.push_back(FactorialCellV2{
+   axis_label(c,first->first),axis_label(c,second->first),c.seed,m,"ok"});
+  ledger+=c.id+";";
+ }
+ const std::array<std::string,2> a{first->second[0],first->second[1]};
+ const std::array<std::string,2> b{second->second[0],second->second[1]};
+ const auto discovered=screen_factorial_v2(
+  a,b,discovery,static_cast<std::size_t>(cfg.replicate_count),
+  std::log(cfg.min_ratio));
+ if(discovered.kind!="CONDITIONAL_PERFORMANCE_CANDIDATE")
+  throw Error("no complete discovery-only factorial performance interaction to validate");
+ constexpr std::uint64_t offset=500000000ULL;
+ constexpr std::uint64_t cohorts=20;
+ constexpr std::uint64_t max_seed=
+  static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
+ if(cfg.seed>max_seed-offset-(cohorts-1))
+  throw Error("independent factorial holdout seed window exceeds SQLite range");
+ const auto seed_start=cfg.seed+offset;
+ const int direction=discovered.median_contrast>0?1:-1;
+ const auto evidence_dir=fs::path(run)/"factorial_holdout";
+ if(fs::exists(evidence_dir))throw Error("factorial holdout already exists; immutable evidence cannot be overwritten");
+ fs::create_directories(evidence_dir);
+ Json frozen;
+ frozen.put("schema_version",static_cast<std::int64_t>(1));
+ frozen.put("source_config_sha256",sha256(source.config()));
+ frozen.put("discovery_case_ledger_sha256",sha256(ledger));
+ frozen.put("first_axis",first->first);frozen.put("second_axis",second->first);
+ frozen.put("fixed_cohorts",static_cast<std::int64_t>(cohorts));
+ frozen.put("seed_start",static_cast<std::int64_t>(seed_start));
+ frozen.put("predeclared_direction",static_cast<std::int64_t>(direction));
+ frozen.put("minimum_signed_log_effect",std::log(cfg.min_ratio));
+ frozen.put("one_sided_alpha",0.01);
+ frozen.put("publication_status","experimental; must still pass frozen multi-hypothesis campaign");
+ write_file((evidence_dir/"frozen_plan.json").string(),frozen.str());
+ Store holdout((evidence_dir/"holdout.sqlite").string());
+ holdout.experiment(source.config(),environment());
+ holdout.event("factorial_holdout_frozen_before_first_sample",frozen.str());
+ std::vector<FactorialCellV2> cells;
+ std::vector<std::uint64_t> discovery_seeds;
+ for(int i=0;i<cfg.replicate_count;++i)
+  discovery_seeds.push_back(cfg.seed+static_cast<std::uint64_t>(i));
+ const auto deadline=std::chrono::steady_clock::now()+
+  std::chrono::seconds(cfg.total_wall_s);
+ for(std::uint64_t i=0;i<cohorts;++i){
+  const auto seed=seed_start+i;
+  for(const auto& x:a)for(const auto& y:b){
+   if(std::chrono::steady_clock::now()>=deadline)
+    throw Error("factorial holdout wall deadline exhausted; partial raw evidence preserved");
+   Case raw=cfg.base;raw.seed=seed;
+   assign(raw,first->first,x);assign(raw,second->first,y);
+   const auto c=make_case(raw,cfg.max_bytes);
+   const auto names=cfg.b.empty()?std::vector<std::string>{cfg.a}:
+      std::vector<std::string>{cfg.a,cfg.b};
+   const auto measurements=measure(c,names,1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,
+     cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline,cfg.measurement_protocol_version);
+   holdout.exec("BEGIN IMMEDIATE");
+   try{
+    for(const auto& row:measurements)holdout.add_observation(c,row,true);
+    holdout.exec("COMMIT");
+   }catch(...){holdout.exec("ROLLBACK");throw;}
+   const auto estimated=metric(holdout,c,cfg,true);
+   std::string status="ok";
+   if(!estimated){
+    status="incomplete";
+    for(const auto& row:measurements)
+     if(row.algorithm==cfg.a&&row.status!="ok"){status=row.status;break;}
+   }
+   cells.push_back(FactorialCellV2{x,y,seed,estimated,status});
+  }
+ }
+ const auto result=fixed_factorial_holdout_v2(
+  a,b,cells,discovery_seeds,static_cast<std::size_t>(cohorts),
+  direction,std::log(cfg.min_ratio),0.01);
+ Json outcome;
+ outcome.put("state",result.state);
+ outcome.put("fixed_cohorts",static_cast<std::int64_t>(result.tested_cohorts));
+ outcome.put("consistent_sign_cohorts",static_cast<std::int64_t>(result.consistent_sign_cohorts));
+ outcome.put("median_signed_effect",result.median_signed_effect);
+ outcome.put("unadjusted_one_sided_p",result.unadjusted_one_sided_p);
+ outcome.put("supports_predeclared_effect",result.supports_predeclared_effect);
+ outcome.put("overall_confirmed",false);
+ outcome.put("reason","Independent single-factorial holdout only; no campaign seal or multiplicity control");
+ holdout.event("factorial_holdout_unsealed_verdict",outcome.str());
+ write_file((evidence_dir/"result.json").string(),outcome.str());
+ std::cout<<"factorial independent holdout "<<outcome.str()<<"\n";
+}
+
 // This detector is deliberately exploratory: a slope break is not a jump,
 // does not license v1 two-side confirmation, and has no p-value. Retain the
 // raw model and all selected cuts without manufacturing an HYPOTHESIZED claim.

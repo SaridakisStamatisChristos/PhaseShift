@@ -25,6 +25,7 @@ void explore(const Config& cfg,const std::string& out,std::size_t pause_after=0)
 void resume(const std::string& run,std::size_t pause_after=0);
 void ablate(const Config& cfg,const std::string& out);
 void intervene(const std::string& source,const std::string& out,const std::string& hypothesis_id="H1",int seed_pairs=9);
+void confirm_factorial(const std::string& run);
 void confirm(const std::string& run,const std::string& id="H1");
 void minimize(const std::string& run,const std::string& id="H1");
 void replay(const std::string& run,const std::string& case_id,const std::string& db="");
