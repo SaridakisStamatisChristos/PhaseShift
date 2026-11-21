@@ -37,7 +37,7 @@ static void replay_and_exploration(){
   b.on_committed(*y,Cohort::Discovery,contrast);
   CHECK(a.evidence_digest()==b.evidence_digest());
  }
- CHECK(explored.size()==5);
+ CHECK(explored.size()==4); // first two plus every fourth among twelve
  CHECK(replicate_count>=5);
  CHECK(a.committed_pairs()==12);
  CHECK(!a.next().has_value());
