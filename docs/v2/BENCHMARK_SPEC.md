@@ -1,3 +1,5 @@
+> **Status notice (R7 continuation, 21 November 2026):** This file contains historical checkpoint observations; consult [CONTINUATION_STATUS.md](CONTINUATION_STATUS.md) for the current exact-revision evidence and open hard gates. Earlier “pending latest CI” statements describe older revisions, not the current branch head.
+
 # PHASESHIFT v2 — Benchmark Protocol (partial)
 
 Source plan: `PHASESHIFT_V2_SOTA_UPGRADE_MASTER_PLAN.md`, benchmark scenario inventory `benchmarks/v2/scenarios.json`.
