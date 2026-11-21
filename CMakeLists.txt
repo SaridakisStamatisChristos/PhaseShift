@@ -8,7 +8,7 @@ find_package(OpenSSL REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(JSONC REQUIRED IMPORTED_TARGET json-c)
 option(PHASESHIFT_SANITIZE "Build with AddressSanitizer and UBSan" OFF)
-add_library(phaseshift_core STATIC src/core.cpp src/algorithms.cpp src/morphology.cpp src/statistics.cpp src/scaling.cpp src/minimize.cpp src/reproducer.cpp src/runner.cpp src/store.cpp src/experiment.cpp src/boundary_v2.cpp src/interaction_v2.cpp)
+add_library(phaseshift_core STATIC src/core.cpp src/algorithms.cpp src/morphology.cpp src/statistics.cpp src/scaling.cpp src/minimize.cpp src/reproducer.cpp src/runner.cpp src/store.cpp src/experiment.cpp src/boundary_v2.cpp src/interaction_v2.cpp src/campaign_v2.cpp)
 target_include_directories(phaseshift_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 # Record actual compilation profile and checkout provenance for every run.
 set(PHASESHIFT_EFFECTIVE_FLAGS "${CMAKE_CXX_FLAGS}")
@@ -325,3 +325,9 @@ set_tests_properties(v2_sampled_cpu_budget_resume PROPERTIES TIMEOUT 90 RUN_SERI
 add_executable(phaseshift_v2_schema_migration_tests tests/v2_schema_migration.cpp)
 target_link_libraries(phaseshift_v2_schema_migration_tests PRIVATE phaseshift_core)
 add_test(NAME v2_schema8_non_destructive_migration COMMAND phaseshift_v2_schema_migration_tests ${CMAKE_CURRENT_BINARY_DIR}/ctest_v2_schema_migration)
+
+# M7 fixed predeclared multi-hypothesis Holm family, stored in opt-in schema v9.
+add_executable(phaseshift_campaign_v2_tests tests/campaign_v2.cpp)
+target_link_libraries(phaseshift_campaign_v2_tests PRIVATE phaseshift_core)
+add_test(NAME campaign_v2_frozen_holm COMMAND phaseshift_campaign_v2_tests ${CMAKE_CURRENT_BINARY_DIR}/ctest_campaign_v2)
+set_tests_properties(campaign_v2_frozen_holm PROPERTIES TIMEOUT 25)

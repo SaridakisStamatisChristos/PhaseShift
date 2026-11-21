@@ -77,3 +77,7 @@ Main/source baseline: `93b47590c7e44eaf062d97995e9c5cd33274a7a2`; target PR: htt
 
 ### M9 opt-in additive SQLite v8 persistence slice
 The v2 workflow now calls `Store::upgrade_v2_schema()` explicitly before writing its experiment, leaving all v1-created v7 databases unchanged. Schema v8 adds a policy-version register and foreign-keyed, exactly-once case/decision sampled-CPU ledger committed in the same transaction as raw cases and the scheduler decision; a SQL ledger missing/mislinked row fails closed. An independent schema migration/read-only test validates v1 schema isolation, v7→v8 preservation and v9 rejection. All other proposed M9 tables and complete crash-injection tests remain outstanding. **CI gate pending on this revision.**
+
+
+## M7 registry slice — frozen family/SQLite v9 (21 Nov 2026)
+Predeclared, one-family-per-v2-run immutable campaign manifest and Holm outcome table implemented with explicit positive seal+p-value requirements, conservative p=1 for negative members, re-freeze/re-finalize refusal, and independent schema-v9 migration tests. Execution from CLI and complete multi-hypothesis lifecycle remain separate verification gates. No global FWER/SOTA claim.

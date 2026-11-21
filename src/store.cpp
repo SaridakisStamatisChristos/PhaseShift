@@ -44,7 +44,7 @@ Store::Store(const std::string& path,bool readonly){
  int version=-1;
  {Statement st(db_,"PRAGMA user_version");auto rc=sqlite3_step(st.p);check(rc,db_,"schema version");
   version=sqlite3_column_int(st.p,0);}
- if(version>8||(readonly&&version!=6&&version!=7&&version!=8)){
+ if(version>9||(readonly&&version!=6&&version!=7&&version!=8&&version!=9)){
   // A constructor that throws never runs Store::~Store; release the handle
   // after the version query statement has finalized (also under LeakSanitizer).
   sqlite3_close(db_);db_=nullptr;
@@ -138,7 +138,7 @@ void Store::upgrade_v2_schema(){
  Statement version(db_,"PRAGMA user_version");
  if(sqlite3_step(version.p)!=SQLITE_ROW)throw Error("cannot read v2 schema version");
  const auto current=sqlite3_column_int(version.p,0);
- if(current==8)return;
+ if(current==8||current==9)return;
  if(current!=7)throw Error("v2 schema migration requires current v7 evidence");
  // DDL and version bit flip form one transaction; old records are never rewritten.
  exec(R"SQL(
