@@ -360,3 +360,9 @@ set_tests_properties(v2_calibrated_batch_worker_resume PROPERTIES TIMEOUT 90 RUN
 add_executable(phaseshift_confirmation_seed_v2_tests tests/confirmation_seed_v2.cpp)
 target_link_libraries(phaseshift_confirmation_seed_v2_tests PRIVATE phaseshift_core)
 add_test(NAME confirmation_prescribed_seed_isolation COMMAND phaseshift_confirmation_seed_v2_tests ${CMAKE_CURRENT_BINARY_DIR}/ctest_confirmation_seed_v2)
+
+# M7 null stress campaign with correct discrete marginal p-values and dependence.
+add_executable(phaseshift_fwer_null_tests tests/fwer_correlated_null.cpp)
+target_link_libraries(phaseshift_fwer_null_tests PRIVATE phaseshift_core)
+add_test(NAME v2_correlated_null_holm_smoke COMMAND phaseshift_fwer_null_tests)
+set_tests_properties(v2_correlated_null_holm_smoke PROPERTIES TIMEOUT 25)

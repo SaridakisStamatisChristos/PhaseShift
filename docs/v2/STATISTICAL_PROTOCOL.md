@@ -40,3 +40,7 @@ For v9 campaign runs, generated summaries and reports attach `campaign_id`, `cam
 ## Confirmation cohort isolation hardening
 
 The v2 confirmed-H1..H16 seal now passes the exact immutable set of 20–100 seed-group IDs generated for that hypothesis's fixed independent holdout (distinct windows for H2..H16). SQLite's sealed evidence may not be supplied by a different candidate's held-out observations with the same boundary coordinates. Duplicate, missing or mismatched groups fail closed; oracle checks and discovery-overlap exclusion still apply. Legacy v1 seal callers without prescribed seed groups keep unchanged behavior. An adversarial test creates 20 valid but wrongly attributed pairs and requires refusal before adding the true cohort.
+
+## Controlled null stress campaign
+
+The deterministic `v2_correlated_null_holm_smoke` generates 3,000 independent *simulated* all-null campaigns for family sizes 1, 2, 4, 8 and 16 under independent, perfectly shared and partially correlated sign streams. It computes *exact discrete* two-sided binomial sign-test p-values under each marginal null and applies Holm step-down at alpha 0.05. The observed campaign-wise false-positive fraction is required to be <=0.075 as a **coarse Monte Carlo smoke**, not an estimate of the engine's population FWER and not a guarantee under selection or reuse of real-world holdouts. All v2 campaign claims still require generated real-worker evidence with independent seed groups and immutable outcome seals.
