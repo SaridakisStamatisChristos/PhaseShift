@@ -28,4 +28,13 @@ with sqlite3.connect(pathlib.Path(args.run)/"run.sqlite") as db:
    seeds[id]={int(x[0]) for x in db.execute("SELECT DISTINCT seed_group FROM confirmation_evidence WHERE hypothesis_id=?",(id,))}
  if len(seeds)==2:assert seeds["H1"].isdisjoint(seeds["H2"]),seeds
  assert db.execute("SELECT COUNT(*) FROM campaign_outcomes_v2").fetchone()[0]==2
+ report=json.loads((pathlib.Path(args.run)/"report.json").read_text())
+ findings={h["id"]:h for h in report["summary"]["hypotheses"]}
+ assert set(findings)=={"H1","H2"},findings
+ for id,status,p,adjusted,reject,*_ in members:
+  item=findings[id]
+  assert item["campaign_state"]=="FINALIZED",(id,item)
+  assert item["holm_adjusted_p"]==adjusted,(id,item,adjusted)
+  assert item["familywise_reject"]==bool(reject),(id,item,reject)
+  assert item["familywise_status"]==("FAMILYWISE_SEALED" if reject else "NOT_FAMILYWISE_CONFIRMED")
  print("REAL-WORKER V2 CAMPAIGN:",json.dumps(members))

@@ -111,7 +111,9 @@ int main(int argc,char** argv){
    const auto id=option("--campaign");
    if(id.empty())throw ps::Error("campaign-finalize requires --campaign");
    ps::Store s(run+"/run.sqlite");
-   std::cout<<ps::finalize_campaign_v2(s,id).str()<<"\n";
+   const auto outcome=ps::finalize_campaign_v2(s,id);
+   ps::report(run);
+   std::cout<<outcome.str()<<"\n";
    return 0;
   }
   if(cmd=="minimize"){ps::minimize(run,option("--hypothesis","H1"));return 0;}
