@@ -214,7 +214,14 @@ void Store::add_observation(const Case& c,const Observation& v,bool holdout){
  if(v.status=="ok")s.integer(4,v.ns);else s.null(4);
  if(v.status=="ok")s.integer(5,v.batch);else s.null(5);
  if(v.status=="ok")s.integer(6,v.work);else s.null(6);
- s.integer(7,v.block);s.integer(8,holdout?1:0);s.text(9,v.digest);s.text(10,v.detail);
+ s.integer(7,v.block);s.integer(8,holdout?1:0);s.text(9,v.digest);
+ std::string detail=v.detail;
+ if(v.measurement_protocol_version=="calibrated_batch_v2"){
+  detail+=";measurement_protocol_version=calibrated_batch_v2";
+  detail+=";pilot_ns="+std::to_string(v.pilot_ns);
+  detail+=";pilot_iterations="+std::to_string(v.pilot_iterations);
+ }
+ s.text(10,detail);
  if(v.status=="ok"&&v.cpu_ns>=0)s.integer(11,v.cpu_ns);else s.null(11);
  if(v.peak_rss_bytes>=0)s.integer(12,v.peak_rss_bytes);else s.null(12);
  if(v.order_position>=0)s.integer(13,v.order_position);else s.null(13);

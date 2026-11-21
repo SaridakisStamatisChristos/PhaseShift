@@ -71,8 +71,10 @@ static Result run_plugin(const Case& c,const std::string& path){
  return {decode_values(bytes),0};
 }
 static Result run_any(const Case& c,const std::string& algorithm){if(algorithm.rfind("plugin:",0)==0)return run_plugin(c,algorithm.substr(7));return execute(c,algorithm);}
-static Json measure_one(const Case& c,const std::string& algorithm,int block,int warmup,int order_position,std::uint64_t order_seed,int sample_ms,int minimum_batch_ms){
+static Json measure_one(const Case& c,const std::string& algorithm,int block,int warmup,int order_position,std::uint64_t order_seed,int sample_ms,int minimum_batch_ms,const std::string& measurement_protocol_version){
  Json v;v.put("algorithm",algorithm);v.put("block",static_cast<std::int64_t>(block));v.put("status","ok");
+ const bool separate_pilot=measurement_protocol_version=="calibrated_batch_v2";
+ if(separate_pilot)v.put("measurement_protocol_version",measurement_protocol_version);
  v.put("order_position",static_cast<std::int64_t>(order_position));
  {std::ostringstream h;h<<std::hex<<order_seed;v.put("order_seed",h.str());}
  try{
@@ -94,6 +96,40 @@ static Json measure_one(const Case& c,const std::string& algorithm,int block,int
   const std::uint64_t max_iterations=std::max<std::uint64_t>(1,
     std::min<std::uint64_t>(2048,16ULL*1024*1024/std::max<std::size_t>(output_bytes,1)));
   std::uint64_t iterations=1,ns=0;Result last;
+  if(separate_pilot){
+   // All pilot algorithm calls and oracle checks occur outside the final
+   // reported timed region. Retention remains bounded by max_iterations.
+   const auto pilot_started=std::chrono::steady_clock::now();
+   for(;;){
+    std::vector<Result> trial_outputs;
+    trial_outputs.reserve(static_cast<std::size_t>(iterations));
+    const auto started=std::chrono::steady_clock::now();
+    for(std::uint64_t index=0;index<iterations;++index)
+     trial_outputs.push_back(run_any(c,algorithm));
+    const auto ended=std::chrono::steady_clock::now();
+    for(const auto& tested:trial_outputs){
+     observable_sink=observable_sink^tested.work;
+     if(tested.values!=expected){
+      v.put("status","wrong_answer");
+      v.put("detail","one or more separate pilot outputs failed independent oracle");
+      return v;
+     }
+    }
+    const auto duration=static_cast<std::uint64_t>(std::max<std::int64_t>(1,
+     std::chrono::duration_cast<std::chrono::nanoseconds>(ended-started).count()));
+    if(duration>static_cast<std::uint64_t>(sample_ms)*1000000ULL){
+     v.put("status","timeout");v.put("detail","pilot exceeded sample wall budget");
+     return v;
+    }
+    if(duration>=static_cast<std::uint64_t>(minimum_batch_ms)*1000000ULL||
+       iterations>=max_iterations||duration>500000000ULL)break;
+    iterations=std::min<std::uint64_t>(max_iterations,iterations*2);
+   }
+   const auto elapsed=std::chrono::duration_cast<std::chrono::nanoseconds>(
+     std::chrono::steady_clock::now()-pilot_started).count();
+   v.put("pilot_ns",static_cast<std::int64_t>(std::max<std::int64_t>(1,elapsed)));
+   v.put("pilot_iterations",static_cast<std::int64_t>(iterations));
+  }
   struct rusage before{},after{};int cpu_valid=0;
   for(;;){
    std::vector<Result> completed;completed.reserve(static_cast<std::size_t>(iterations));
@@ -112,7 +148,7 @@ static Json measure_one(const Case& c,const std::string& algorithm,int block,int
    if(ns>static_cast<std::uint64_t>(sample_ms)*1000000ULL){
    v.put("status","timeout");v.put("detail","measured operation exceeded max_sample_wall_ms; censored, not a valid timing");return v;
   }
-  if(ns>=static_cast<std::uint64_t>(minimum_batch_ms)*1000000ULL||iterations>=max_iterations||ns>500000000)break;
+  if(separate_pilot||ns>=static_cast<std::uint64_t>(minimum_batch_ms)*1000000ULL||iterations>=max_iterations||ns>500000000)break;
    iterations=std::min<std::uint64_t>(max_iterations,iterations*2);
   }
   if(cpu_valid){
@@ -138,6 +174,9 @@ Json worker_measure(const Json& request,const Bytes& bytes){
  const int blocks=static_cast<int>(request.i("blocks",9)),warmup=static_cast<int>(request.i("warmup",2));
  const int sample_ms=static_cast<int>(request.i("sample_ms",3000));
  const int minimum_batch_ms=static_cast<int>(request.i("minimum_batch_ms",2));
+ const auto measurement_protocol_version=request.s("measurement_protocol_version","legacy_retained_outputs_v1");
+ if(measurement_protocol_version!="legacy_retained_outputs_v1"&&measurement_protocol_version!="calibrated_batch_v2")
+  throw Error("unsupported measurement protocol; kernel_only_v2 is not available");
  if(blocks<1||blocks>100||warmup<0||warmup>100||sample_ms<100||sample_ms>60000||minimum_batch_ms<1||minimum_batch_ms>100)throw Error("invalid measurement bounds");
  Json answer;auto* list=json_object_new_array();
  for(int i=0;i<blocks;i++){
@@ -150,7 +189,7 @@ Json worker_measure(const Json& request,const Bytes& bytes){
    else order={names[1],names[0],names[0],names[1]};
   }
   for(std::size_t position=0;position<order.size();position++){
-   auto v=measure_one(c,order[position],i,warmup,static_cast<int>(position),order_seed,sample_ms,minimum_batch_ms);
+   auto v=measure_one(c,order[position],i,warmup,static_cast<int>(position),order_seed,sample_ms,minimum_batch_ms,measurement_protocol_version);
    json_object_array_add(list,v.p);v.p=nullptr;
   }
  }
@@ -217,7 +256,9 @@ static Bytes read_frame(int fd,int timeout_ms,std::size_t limit,
  return buf;
 }
 std::vector<Observation> measure(const Case& c,const std::vector<std::string>& names,int blocks,int warmup,int timeout_ms,int memory_mb,int minimum_batch_ms,bool spawn_per_sample,
- std::chrono::steady_clock::time_point hard_deadline){
+ std::chrono::steady_clock::time_point hard_deadline,const std::string& measurement_protocol_version){
+ if(measurement_protocol_version!="legacy_retained_outputs_v1"&&measurement_protocol_version!="calibrated_batch_v2")
+  throw Error("unsupported measurement protocol version");
  if(std::chrono::steady_clock::now()>=hard_deadline)throw Error("total_wall_seconds budget exhausted before worker start");
  if(spawn_per_sample){
   if(names.empty()||names.size()>2||blocks<1||blocks>100)throw Error("invalid per-sample isolation bounds");
@@ -232,7 +273,7 @@ std::vector<Observation> measure(const Case& c,const std::vector<std::string>& n
    for(std::size_t position=0;position<order.size();position++){
     /* New child for *each* sample; no native plugin state survives a sample.
        Spawn and IPC overhead remain outside the timed operation. */
-    auto result=measure(c,{order[position]},1,warmup,timeout_ms,memory_mb,minimum_batch_ms,false,hard_deadline);
+    auto result=measure(c,{order[position]},1,warmup,timeout_ms,memory_mb,minimum_batch_ms,false,hard_deadline,measurement_protocol_version);
     if(result.size()!=1)throw Error("per-sample worker did not return one observation");
     auto& value=result.front();value.block=block;value.order_position=static_cast<std::int64_t>(position);
     std::ostringstream hex;hex<<std::hex<<order_seed;value.order_seed=hex.str();
@@ -270,6 +311,8 @@ std::vector<Observation> measure(const Case& c,const std::vector<std::string>& n
  std::vector<Observation> result;
  try{
   Json req;req.put("protocol",static_cast<std::int64_t>(1));req.put("family",c.family);req.put("params",case_params(c));req.put("seed",static_cast<std::int64_t>(c.seed));req.put("bytes_length",static_cast<std::int64_t>(c.bytes.size()));req.put("bytes_sha256",sha256(c.bytes));req.put("blocks",static_cast<std::int64_t>(blocks));req.put("warmup",static_cast<std::int64_t>(warmup));req.put("sample_ms",static_cast<std::int64_t>(timeout_ms));req.put("minimum_batch_ms",static_cast<std::int64_t>(minimum_batch_ms));
+  if(measurement_protocol_version!="legacy_retained_outputs_v1")
+   req.put("measurement_protocol_version",measurement_protocol_version);
   auto* arr=json_object_new_array();for(const auto& name:names)json_object_array_add(arr,json_object_new_string(name.c_str()));json_object_object_add(req.p,"algorithms",arr);
   /* Allow one per-sample deadline per operation, plus bounded IPC transfer. */
   const auto operation_count=static_cast<std::int64_t>(blocks)*static_cast<std::int64_t>(names.size()==2?4:1);
@@ -285,6 +328,8 @@ std::vector<Observation> measure(const Case& c,const std::vector<std::string>& n
    s.algorithm=v.s("algorithm");s.status=v.s("status","infrastructure_error");s.digest=v.s("digest");s.detail=v.s("detail");s.ns=v.i("ns");s.work=v.i("work");s.batch=v.i("batch",1);s.block=v.i("block");
    s.cpu_ns=v.i("cpu_ns",-1);s.peak_rss_bytes=v.i("peak_rss_bytes",-1);
    s.order_position=v.i("order_position",-1);s.order_seed=v.s("order_seed");
+   s.measurement_protocol_version=v.s("measurement_protocol_version","legacy_retained_outputs_v1");
+   s.pilot_ns=v.i("pilot_ns",-1);s.pilot_iterations=v.i("pilot_iterations",-1);
    result.push_back(s);
   }
   if(result.empty())throw Error("empty worker response");
