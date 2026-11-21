@@ -235,6 +235,8 @@ std::size_t replay(Sqlite& db,const Plan& plan,ReplicatePlanner& planner){
     const auto valid=sample.str(0)=="ok";
     require(valid==(sqlite3_column_type(sample.stmt,1)!=SQLITE_NULL),
       "failed sample promoted to a time metric");
+    require(status!="ok"||valid,
+      "pair positive contrast conflicts with raw failing worker status");
     ++seen;
    }
    require(seen==expected,"incomplete persisted real-worker observation batch");

@@ -94,7 +94,8 @@ def main():
     bad_status = root / "bad_status"
     shutil.copytree(normal, bad_status)
     with sqlite3.connect(str(bad_status / "run.sqlite")) as db:
-        db.execute("UPDATE v3_samples SET status='wrong_answer' WHERE pair_number=0 AND side=0")
+        db.execute("""UPDATE v3_samples SET status='wrong_answer', ns=NULL,
+                   batch=NULL, work=NULL WHERE pair_number=0 AND side=0""")
     invoke(args.binary, "verify", "--run", bad_status, expect=2)
     print("PASS v3 matched-seed real worker, resume, pre/post-commit crash, vetoed tamper and status")
 
