@@ -1835,7 +1835,8 @@ void report(const std::string& run,const std::string& formats){
    }
  }
  Json report;report.put("schema_version",static_cast<std::int64_t>(1));report.put("experiment_id",cfg.experiment_id);
- if(cfg.policy_version=="v2")report.put("measurement_protocol_version",cfg.measurement_protocol_version);report.put("family",cfg.family);report.put("algorithm_a",cfg.a);report.put("algorithm_b",cfg.b);report.put("environment",Json::parse(s.environment()));report.put("summary",std::move(summary));
+ if(cfg.policy_version=="v2")report.put("measurement_protocol_version",cfg.measurement_protocol_version);
+ report.put("family",cfg.family);report.put("algorithm_a",cfg.a);report.put("algorithm_b",cfg.b);report.put("environment",Json::parse(s.environment()));report.put("summary",std::move(summary));
  auto* raw=json_object_new_array();std::ostringstream csv;csv<<"case_id,family,axis_value,holdout,algorithm,status,batch_ns,batch_iterations,work_units,block,cpu_ns,peak_rss_bytes,order_position,order_seed,output_digest,detail\n";
  std::uint64_t raw_size=0;bool truncated=false;
  const auto export_limit=cfg.max_report_bytes/2;
