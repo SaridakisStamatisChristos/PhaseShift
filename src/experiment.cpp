@@ -1819,9 +1819,14 @@ void minimize(const std::string& run,const std::string& id){
     minimal witness on the declared grid is x=threshold. */
  auto left_w=static_cast<std::uint64_t>(left+10);
  if(right!=cfg.base.threshold||left>=right||left_w==w)throw Error("candidate not an exact minimal synthetic boundary");
+ const auto artifacts=witness_output_root(run,id,cfg.policy_version);
+ if(fs::exists(artifacts/"witness.cpp")||fs::exists(artifacts/"witness.hex"))
+  throw Error("synthetic witness artifacts already exist; refusing to overwrite");
+ fs::create_directories(artifacts);
  s.add_case(c);s.witness(id,c.id,"MINIMIZED_CONFIRMED","Parameter minimization: threshold equals smallest value on high-work side; oracle revalidated");
  std::ostringstream o;o<<"#include <cstdint>\n#include <cassert>\nint main() { constexpr std::int64_t x="<<right<<", threshold="<<c.threshold<<"; const auto work=x<threshold?x+10:x+10000; assert(x==threshold && work=="<<w<<"); }\n";
- write_file(run+"/witness.cpp",o.str());write_file(run+"/witness.hex",hex_encode(c.bytes)+"\n");
+ write_file((artifacts/"witness.cpp").string(),o.str());
+ write_file((artifacts/"witness.hex").string(),hex_encode(c.bytes)+"\n");
  s.hypothesis(id,"MINIMIZED_CONFIRMED",axis,left,right,static_cast<double>(w),"Exact synthetic threshold witness, reproducible input and standalone C++ assertion");report(run);
  std::cout<<"Minimal fixture witness: x="<<right<<" case="<<c.id<<"\n";
 }
