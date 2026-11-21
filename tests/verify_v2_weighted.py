@@ -52,7 +52,12 @@ for run in (args.resumed, args.uninterrupted):
     assert len(phases) == len(decisions) == 12
     assert [p["virtual_index"] for p in phases] == decisions
     for event in phases:
-        assert event["accounting_model"] == "descriptive_v2_case_boundary_v1"
+        assert event["accounting_model"] == "descriptive_v2_case_boundary_v2"
+        assert event["cpu_accounting_scope"] in (
+            "linux_getrusage_per_case_proposal_and_worker", "unavailable")
+        if event["cpu_accounting_scope"] != "unavailable":
+            assert event["parent_process_cpu_ns"] >= 0
+            assert event["waited_child_cpu_ns"] >= 0
         assert event["proposal_wall_ns"] >= 0 and event["worker_invocation_wall_ns"] >= 0
         assert event["valid_timed_cpu_ns"] >= 0
         assert isinstance(event["timed_cpu_complete"], bool)

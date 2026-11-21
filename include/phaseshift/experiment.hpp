@@ -1,12 +1,15 @@
 #pragma once
 #include "phaseshift/store.hpp"
+#include "phaseshift/conditional_space_v2.hpp"
 namespace ps {
 struct Config {
  std::string experiment_id="experiment",family="calibration",a="calibration",b="",method="grid",axis="x",output="";
  Case base;
  std::map<std::string,std::vector<std::string>> axes;
  std::vector<std::map<std::string,std::vector<std::string>>> admissible_subspaces;
+ std::vector<ConditionalRuleV2> conditional_rules;
  std::map<std::string,std::map<std::string,double>> domain_priors; // v2 weighted_v2 only
+ bool persist_model_cache_v2=false;
  std::uint64_t seed=137,max_cases=128,max_bytes=64ULL*1024*1024,max_queue=10000,max_report_bytes=10000000,max_sampled_cpu_ns=0;
  int blocks=9,confirm_blocks=20,warmup=2,sample_ms=3000,rss_mb=1024,total_wall_s=600;
  double min_ratio=1.20,confirmation_confidence=0.99,fdr_q=0.05,exploration_fraction=0.20;
@@ -21,8 +24,10 @@ Config parse_config(const std::string& path);
 Config config_from_json(const Json& json);
 void explore(const Config& cfg,const std::string& out,std::size_t pause_after=0);
 void resume(const std::string& run,std::size_t pause_after=0);
+void verify_model_cache(const std::string& run);
 void ablate(const Config& cfg,const std::string& out);
 void intervene(const std::string& source,const std::string& out,const std::string& hypothesis_id="H1",int seed_pairs=9);
+void confirm_factorial(const std::string& run);
 void confirm(const std::string& run,const std::string& id="H1");
 void minimize(const std::string& run,const std::string& id="H1");
 void replay(const std::string& run,const std::string& case_id,const std::string& db="");

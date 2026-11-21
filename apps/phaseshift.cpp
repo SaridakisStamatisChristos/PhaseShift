@@ -16,9 +16,11 @@ Usage:
   phaseshift demo --out RUN_DIRECTORY
   phaseshift explore --config CONFIG --out RUN_DIRECTORY [--pause-after N]
   phaseshift resume --run RUN_DIRECTORY [--pause-after N]
+  phaseshift verify-model-cache --run RUN_DIRECTORY (v2, read-only authoritative evidence)
   phaseshift ablate --config CONFIG --out DIRECTORY
   phaseshift intervene --run RUN_DIRECTORY --out NEW_DIRECTORY [--hypothesis H1] [--pairs 9]
   phaseshift scaling --run RUN_DIRECTORY --out NEW_DIRECTORY [--seeds 3]
+  phaseshift confirm-interaction --run RUN_DIRECTORY (v2 exploratory holdout only)
   phaseshift confirm --run RUN_DIRECTORY [--hypothesis H1]
   phaseshift campaign-freeze --run RUN_DIRECTORY --manifest CAMPAIGN.json
   phaseshift campaign-finalize --run RUN_DIRECTORY --campaign CAMPAIGN_ID
@@ -48,8 +50,10 @@ int main(int argc,char** argv){
    const std::map<std::string,std::set<std::string>> allowed={
     {"validate",{"--config"}},{"demo",{"--out"}},
     {"explore",{"--config","--out","--pause-after"}},{"resume",{"--run","--pause-after"}},
+    {"verify-model-cache",{"--run"}},
     {"ablate",{"--config","--out"}},{"intervene",{"--run","--out","--hypothesis","--pairs"}},
     {"scaling",{"--run","--out","--seeds"}},{"confirm",{"--run","--hypothesis"}},
+    {"confirm-interaction",{"--run"}},
     {"minimize",{"--run","--hypothesis"}},
     {"campaign-freeze",{"--run","--manifest"}},
     {"campaign-finalize",{"--run","--campaign"}},{"minimize-case",{"--run","--case","--algorithm"}},
@@ -90,6 +94,7 @@ int main(int argc,char** argv){
   if(cmd=="ablate"){auto config=option("--config"),out=option("--out");if(config.empty()||out.empty())throw ps::Error("ablate requires --config and --out");ps::ablate(ps::parse_config(config),out);return 0;}
   if(cmd=="explore"){const auto config=option("--config"),out=option("--out");if(config.empty()||out.empty())throw ps::Error("explore requires --config and --out");ps::explore(ps::parse_config(config),out,pause_after());return 0;}
   if(cmd=="resume"){if(run.empty())throw ps::Error("resume requires --run");ps::resume(run,pause_after());return 0;}
+  if(cmd=="verify-model-cache"){if(run.empty())throw ps::Error("verify-model-cache requires --run");ps::verify_model_cache(run);return 0;}
   if(run.empty() && cmd!="compare" && cmd!="verify-bundle" && cmd!="import")throw ps::Error("command requires --run");
   if(cmd=="intervene"){
    const auto out=option("--out");if(out.empty())throw ps::Error("intervene requires --out");
@@ -97,6 +102,7 @@ int main(int argc,char** argv){
    if(chars!=raw.size())throw ps::Error("invalid --pairs");
    ps::intervene(run,out,option("--hypothesis","H1"),count);return 0;
   }
+  if(cmd=="confirm-interaction"){ps::confirm_factorial(run);return 0;}
   if(cmd=="confirm"){ps::confirm(run,option("--hypothesis","H1"));return 0;}
   if(cmd=="campaign-freeze"){
    const auto path=option("--manifest");

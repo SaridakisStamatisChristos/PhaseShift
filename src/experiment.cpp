@@ -9,6 +9,9 @@
 #include "phaseshift/lazy_search.hpp"
 #include "phaseshift/stratified_v2.hpp"
 #include "phaseshift/weighted_v2.hpp"
+#include "phaseshift/evidence_view_v2.hpp"
+#include "phaseshift/model_cache_v2.hpp"
+#include "phaseshift/cpu_usage_v2.hpp"
 #include "phaseshift/scheduler_v2.hpp"
 #include "phaseshift/hybrid_v2.hpp"
 #include "phaseshift/interaction_v2.hpp"
@@ -89,7 +92,7 @@ static std::int64_t axis_value(const Case& c,const std::string& axis);
 static Json config_json(const Config& c){
  Json j;j.put("schema_version",static_cast<std::int64_t>(1));j.put("experiment_id",c.experiment_id);j.put("problem_family",c.family);j.put("algorithm_a",c.a);j.put("algorithm_b",c.b);j.put("search_method",c.method);j.put("primary_axis",c.axis);j.put("seed",static_cast<std::int64_t>(c.seed));j.put("max_cases",static_cast<std::int64_t>(c.max_cases));j.put("max_case_bytes",static_cast<std::int64_t>(c.max_bytes));j.put("max_search_queue",static_cast<std::int64_t>(c.max_queue));j.put("max_report_bytes",static_cast<std::int64_t>(c.max_report_bytes));j.put("discovery_blocks",static_cast<std::int64_t>(c.blocks));j.put("confirm_blocks",static_cast<std::int64_t>(c.confirm_blocks));j.put("warmup",static_cast<std::int64_t>(c.warmup));j.put("sample_ms",static_cast<std::int64_t>(c.sample_ms));j.put("rss_mb",static_cast<std::int64_t>(c.rss_mb));j.put("total_wall_seconds",static_cast<std::int64_t>(c.total_wall_s));j.put("min_practical_ratio",c.min_ratio);j.put("confirmation_confidence",c.confirmation_confidence);j.put("fdr_q",c.fdr_q);j.put("multiple_testing",c.multiple_testing);j.put("exploration_fraction",c.exploration_fraction);j.put("minimum_batch_ms",static_cast<std::int64_t>(c.minimum_batch_ms));j.put("isolation_mode",c.isolation_mode);if(c.policy_version=="v2"){
    j.put("policy_version",c.policy_version);
-   if(c.replicate_count>1||!c.admissible_subspaces.empty()||!c.domain_priors.empty()){
+   if(c.replicate_count>1||!c.admissible_subspaces.empty()||!c.domain_priors.empty()||!c.conditional_rules.empty()||c.persist_model_cache_v2){
      Json search;
      if(c.replicate_count>1)search.put("replicates",static_cast<std::int64_t>(c.replicate_count));
      if(!c.admissible_subspaces.empty()){
@@ -114,6 +117,26 @@ static Json config_json(const Config& c){
        }
        search.put("domain_priors",std::move(prior_json));
       }
+      if(!c.conditional_rules.empty()){
+       auto* rules=json_object_new_array();
+       for(const auto& rule:c.conditional_rules){
+        Json item;
+        const auto add_clause=[&](const char* member,const std::string& axis,
+                                   const std::vector<std::string>& labels){
+         Json clause;clause.put("axis",axis);
+         auto* values=json_object_new_array();
+         for(const auto& label:labels)
+          json_object_array_add(values,json_object_new_string(label.c_str()));
+         json_object_object_add(clause.p,"values",values);
+         item.put(member,std::move(clause));
+        };
+        add_clause("when",rule.when_axis,rule.when_labels);
+        add_clause("require",rule.require_axis,rule.require_labels);
+        json_object_array_add(rules,json_object_get(item.p));
+       }
+       json_object_object_add(search.p,"conditional_rules",rules);
+      }
+      if(c.persist_model_cache_v2)search.put("persist_model_cache_v2",true);
       j.put("search",std::move(search));
     }
    if(c.detector_version!="boundary_v1"){Json detection;detection.put("detector_version",c.detector_version);j.put("detection",std::move(detection));}
@@ -151,9 +174,11 @@ static void validate_configuration_shape(const Json& j){
     if(!std::isfinite(json_object_get_double(value)))throw Error(field+" must be finite");
    }else if(strings.count(name)){
     if(kind!=json_type_string)throw Error(field+" must be a string");
+   }else if(scope=="search"&&name=="persist_model_cache_v2"){
+    if(kind!=json_type_boolean)throw Error(field+" must be a boolean");
    }else if(structures.count(name)){
     if(kind!=json_type_object&&!(name=="base_params"&&kind==json_type_string)&&
-       !(scope=="search"&&name=="admissible_subspaces"&&kind==json_type_array))
+       !(scope=="search"&&(name=="admissible_subspaces"||name=="conditional_rules")&&kind==json_type_array))
       throw Error(field+" must be an object or admissible subspace array");
    }else throw Error("unknown configuration parameter: "+field);
   }
@@ -183,7 +208,7 @@ static void validate_configuration_shape(const Json& j){
  check(top.p,"config",integer_top,real_top,text_top,obj_top);
  if(auto* v=j.get("objective");v&&std::string(json_object_get_string(v))!="discover_structural_performance_boundaries")
   throw Error("unsupported objective");
- if(auto* v=j.get("search"))check(v,"search",{"max_cases","replicates"},{"exploration_fraction"},{"method","policy_version"},{"admissible_subspaces","domain_priors"});
+ if(auto* v=j.get("search"))check(v,"search",{"max_cases","replicates"},{"exploration_fraction"},{"method","policy_version"},{"admissible_subspaces","domain_priors","conditional_rules"});
  if(auto* v=j.get("measurement"))check(v,"measurement",{"paired_discovery_blocks","paired_confirm_blocks","warmup_iterations","minimum_batch_ms"},{},{"primary_metric","isolation_mode","protocol_version"},{});
  if(auto* v=j.get("detection"))check(v,"detection",{},{"min_practical_ratio","confirmation_confidence","fdr_q"},{"multiple_testing","detector_version"},{});
  if(auto* v=j.get("limits"))check(v,"limits",{"total_wall_seconds","max_cases","max_case_bytes","max_worker_rss_mb","max_sample_wall_ms","max_report_bytes","max_search_queue","max_sampled_cpu_ns"},{},{},{});
@@ -236,7 +261,9 @@ Config config_from_json(const Json& j){
   const auto replicates=k.i("replicates",1);
   if(replicates<1||replicates>32)throw Error("v2 replicate count must be 1..32");
   c.replicate_count=static_cast<int>(replicates);
-  c.max_cases=static_cast<std::uint64_t>(k.i("max_cases",static_cast<std::int64_t>(c.max_cases)));c.exploration_fraction=k.d("exploration_fraction",c.exploration_fraction);}
+  c.max_cases=static_cast<std::uint64_t>(k.i("max_cases",static_cast<std::int64_t>(c.max_cases)));c.exploration_fraction=k.d("exploration_fraction",c.exploration_fraction);
+   if(auto* flag=k.get("persist_model_cache_v2"))
+    c.persist_model_cache_v2=json_object_get_boolean(flag);}
  c.axis=j.s("primary_axis",c.family=="calibration"?"x":c.family=="graph"?"edges":"n");
  c.seed=static_cast<std::uint64_t>(j.i("seed",137));c.max_cases=static_cast<std::uint64_t>(j.i("max_cases",static_cast<std::int64_t>(c.max_cases)));c.max_bytes=static_cast<std::uint64_t>(j.i("max_case_bytes",64*1024*1024));c.max_queue=static_cast<std::uint64_t>(j.i("max_search_queue",10000));c.max_report_bytes=static_cast<std::uint64_t>(j.i("max_report_bytes",10000000));c.blocks=static_cast<int>(j.i("discovery_blocks",9));c.confirm_blocks=static_cast<int>(j.i("confirm_blocks",20));c.warmup=static_cast<int>(j.i("warmup",2));c.sample_ms=static_cast<int>(j.i("sample_ms",3000));c.rss_mb=static_cast<int>(j.i("rss_mb",1024));c.total_wall_s=static_cast<int>(j.i("total_wall_seconds",600));c.min_ratio=j.d("min_practical_ratio",1.2);c.exploration_fraction=j.d("exploration_fraction",c.exploration_fraction);c.minimum_batch_ms=static_cast<int>(j.i("minimum_batch_ms",c.minimum_batch_ms));c.isolation_mode=j.s("isolation_mode",c.isolation_mode);
  if(auto* m=j.get("measurement")){Json x(json_object_get(m));require_field_type(x,"isolation_mode",false);
@@ -296,6 +323,52 @@ Config config_from_json(const Json& j){
    }
   }
  }
+ // Typed v2 implication rules: reject unknown nested keys and malformed
+ // values before compiling exact, pairwise-disjoint admissible rectangles.
+ if(auto* search=j.get("search")){
+  json_object* rules=nullptr;
+  if(json_object_object_get_ex(search,"conditional_rules",&rules)){
+   if(!rules||json_object_get_type(rules)!=json_type_array||
+      json_object_array_length(rules)==0||json_object_array_length(rules)>32)
+    throw Error("search.conditional_rules must contain 1..32 rules");
+   const auto parse_clause=[&](json_object* item,const char* key,
+                               std::string& axis,std::vector<std::string>& values){
+    json_object* clause=nullptr;
+    if(!json_object_object_get_ex(item,key,&clause)||!clause||
+       json_object_get_type(clause)!=json_type_object||
+       json_object_object_length(clause)!=2)
+     throw Error(std::string("v2 conditional clause requires axis and values: ")+key);
+    json_object* axis_json=nullptr,*labels=nullptr;
+    if(!json_object_object_get_ex(clause,"axis",&axis_json)||
+       !axis_json||json_object_get_type(axis_json)!=json_type_string||
+       !json_object_get_string(axis_json)[0]||
+       !json_object_object_get_ex(clause,"values",&labels)||
+       !labels||json_object_get_type(labels)!=json_type_array||
+       json_object_array_length(labels)==0)
+     throw Error(std::string("v2 conditional clause shape invalid: ")+key);
+    axis=json_object_get_string(axis_json);
+    for(std::size_t k=0;k<json_object_array_length(labels);++k){
+     auto* value=json_object_array_get_idx(labels,k);
+     if(!value||json_object_get_type(value)==json_type_object||
+        json_object_get_type(value)==json_type_array||
+        (json_object_get_type(value)==json_type_double&&
+         !std::isfinite(json_object_get_double(value))))
+      throw Error("invalid v2 conditional label");
+     values.push_back(value_string(value));
+    }
+   };
+   for(std::size_t i=0;i<json_object_array_length(rules);++i){
+    auto* rule=json_object_array_get_idx(rules,i);
+    if(!rule||json_object_get_type(rule)!=json_type_object||
+       json_object_object_length(rule)!=2)
+     throw Error("v2 conditional rule requires when and require");
+    ConditionalRuleV2 parsed;
+    parse_clause(rule,"when",parsed.when_axis,parsed.when_labels);
+    parse_clause(rule,"require",parsed.require_axis,parsed.require_labels);
+    c.conditional_rules.push_back(std::move(parsed));
+   }
+  }
+ }
  // Prior maps are opt-in and versioned; unspecified labels retain weight 1.
  if(auto* search=j.get("search")){
   json_object* prior_object=nullptr;
@@ -329,7 +402,9 @@ Config config_from_json(const Json& j){
    Json search(json_object_get(nested));
    if(search.get("replicates"))throw Error("v1 does not accept search.replicates");
    if(search.get("admissible_subspaces"))throw Error("v1 does not accept search.admissible_subspaces");
+    if(search.get("conditional_rules"))throw Error("v1 does not accept search.conditional_rules");
    if(search.get("domain_priors"))throw Error("v1 does not accept search.domain_priors");
+   if(search.get("persist_model_cache_v2"))throw Error("v1 does not accept persist_model_cache_v2");
   }
   if(auto* l=j.get("limits")){Json limits(json_object_get(l));if(limits.get("max_sampled_cpu_ns"))throw Error("v1 does not accept max_sampled_cpu_ns");}
   if(auto* m=j.get("measurement")){Json legacy(json_object_get(m));
@@ -395,6 +470,8 @@ Config config_from_json(const Json& j){
  if(c.policy_version=="v1")visit(0,c.base);
  else{
    const auto ordered_axes=std::vector<LazySearchSpace::Axis>(c.axes.begin(),c.axes.end());
+   c.admissible_subspaces=compile_conditional_rules_v2(ordered_axes,
+     c.admissible_subspaces,c.conditional_rules);
    (void)AdmissibleSearchSpace(ordered_axes,c.admissible_subspaces);
    if(c.method=="weighted_v2")
     (void)WeightedIndexSamplerV2(ordered_axes,c.admissible_subspaces,
@@ -486,8 +563,8 @@ static std::int64_t axis_value(const Case& c,const std::string& axis){
  if(axis=="max_weight")return c.max_weight;
  throw Error("unsupported structural axis: "+axis);
 }
-static std::optional<double> metric(Store& store,const Case& c,const Config& cfg,bool holdout){
- const auto obs=store.observations(c.id,holdout);
+static std::optional<double> metric_from_rows(
+ const std::vector<Observation>& obs,const Config& cfg){
  std::map<std::int64_t,std::vector<double>> a,b;
  for(const auto& o:obs){
   /* A case with *any* failed target execution is inadmissible. Otherwise a
@@ -512,6 +589,9 @@ static std::optional<double> metric(Store& store,const Case& c,const Config& cfg
  }
  if(paired.empty())return {};
  return sample_median(paired);
+}
+static std::optional<double> metric(Store& store,const Case& c,const Config& cfg,bool holdout){
+ return metric_from_rows(store.observations(c.id,holdout),cfg);
 }
 /* Group every non-primary axis by exact typed parameter values, not by the
    partially observed primary metric. Categorical dimensions are conditioned
@@ -833,6 +913,109 @@ static void v2_factorial_diagnostic(Store& store,const Config& cfg){
  store.event("v2_factorial_screen_discovery_only",record.str());
 }
 
+// Optional v2 experimental validation. Independent holdout inference is
+// intentionally NOT a globally CONFIRMED hypothesis: no population-wide
+// multiplicity claim is licensed until this cohort joins a frozen campaign.
+void confirm_factorial(const std::string& run){
+ Store source(run+"/run.sqlite",true);
+ const auto cfg=config_from_json(Json::parse(source.config()));
+ if(cfg.policy_version!="v2"||cfg.axes.size()!=2||cfg.replicate_count<3)
+  throw Error("factorial holdout requires an opt-in 2-axis v2 experiment");
+ auto first=cfg.axes.begin(),second=std::next(first);
+ if(first->second.size()!=2||second->second.size()!=2)
+  throw Error("factorial holdout requires two binary nominal factors");
+ std::vector<FactorialCellV2> discovery;
+ std::string ledger;
+ for(const auto& c:source.cases(false)){
+  const auto m=metric(source,c,cfg,false);
+  if(!m)throw Error("factorial discovery has invalid/failed samples");
+  discovery.push_back(FactorialCellV2{
+   axis_label(c,first->first),axis_label(c,second->first),c.seed,m,"ok"});
+  ledger+=c.id+";";
+ }
+ const std::array<std::string,2> a{first->second[0],first->second[1]};
+ const std::array<std::string,2> b{second->second[0],second->second[1]};
+ const auto discovered=screen_factorial_v2(
+  a,b,discovery,static_cast<std::size_t>(cfg.replicate_count),
+  std::log(cfg.min_ratio));
+ if(discovered.kind!="CONDITIONAL_PERFORMANCE_CANDIDATE")
+  throw Error("no complete discovery-only factorial performance interaction to validate");
+ constexpr std::uint64_t offset=500000000ULL;
+ constexpr std::uint64_t cohorts=20;
+ constexpr std::uint64_t max_seed=
+  static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max());
+ if(cfg.seed>max_seed-offset-(cohorts-1))
+  throw Error("independent factorial holdout seed window exceeds SQLite range");
+ const auto seed_start=cfg.seed+offset;
+ const int direction=discovered.median_contrast>0?1:-1;
+ const auto evidence_dir=fs::path(run)/"factorial_holdout";
+ if(fs::exists(evidence_dir))throw Error("factorial holdout already exists; immutable evidence cannot be overwritten");
+ fs::create_directories(evidence_dir);
+ Json frozen;
+ frozen.put("schema_version",static_cast<std::int64_t>(1));
+ frozen.put("source_config_sha256",sha256(source.config()));
+ frozen.put("discovery_case_ledger_sha256",sha256(ledger));
+ frozen.put("first_axis",first->first);frozen.put("second_axis",second->first);
+ frozen.put("fixed_cohorts",static_cast<std::int64_t>(cohorts));
+ frozen.put("seed_start",static_cast<std::int64_t>(seed_start));
+ frozen.put("predeclared_direction",static_cast<std::int64_t>(direction));
+ frozen.put("minimum_signed_log_effect",std::log(cfg.min_ratio));
+ frozen.put("one_sided_alpha",0.01);
+ frozen.put("publication_status","experimental; must still pass frozen multi-hypothesis campaign");
+ write_file((evidence_dir/"frozen_plan.json").string(),frozen.str());
+ Store holdout((evidence_dir/"holdout.sqlite").string());
+ holdout.experiment(source.config(),environment());
+ holdout.event("factorial_holdout_frozen_before_first_sample",frozen.str());
+ std::vector<FactorialCellV2> cells;
+ std::vector<std::uint64_t> discovery_seeds;
+ for(int i=0;i<cfg.replicate_count;++i)
+  discovery_seeds.push_back(cfg.seed+static_cast<std::uint64_t>(i));
+ const auto deadline=std::chrono::steady_clock::now()+
+  std::chrono::seconds(cfg.total_wall_s);
+ for(std::uint64_t i=0;i<cohorts;++i){
+  const auto seed=seed_start+i;
+  for(const auto& x:a)for(const auto& y:b){
+   if(std::chrono::steady_clock::now()>=deadline)
+    throw Error("factorial holdout wall deadline exhausted; partial raw evidence preserved");
+   Case raw=cfg.base;raw.seed=seed;
+   assign(raw,first->first,x);assign(raw,second->first,y);
+   const auto c=make_case(raw,cfg.max_bytes);
+   const auto names=cfg.b.empty()?std::vector<std::string>{cfg.a}:
+      std::vector<std::string>{cfg.a,cfg.b};
+   const auto measurements=measure(c,names,1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,
+     cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline,cfg.measurement_protocol_version);
+   holdout.exec("BEGIN IMMEDIATE");
+   try{
+    for(const auto& row:measurements)holdout.add_observation(c,row,true);
+    holdout.exec("COMMIT");
+   }catch(...){holdout.exec("ROLLBACK");throw;}
+   const auto estimated=metric(holdout,c,cfg,true);
+   std::string status="ok";
+   if(!estimated){
+    status="incomplete";
+    for(const auto& row:measurements)
+     if(row.algorithm==cfg.a&&row.status!="ok"){status=row.status;break;}
+   }
+   cells.push_back(FactorialCellV2{x,y,seed,estimated,status});
+  }
+ }
+ const auto result=fixed_factorial_holdout_v2(
+  a,b,cells,discovery_seeds,static_cast<std::size_t>(cohorts),
+  direction,std::log(cfg.min_ratio),0.01);
+ Json outcome;
+ outcome.put("state",result.state);
+ outcome.put("fixed_cohorts",static_cast<std::int64_t>(result.tested_cohorts));
+ outcome.put("consistent_sign_cohorts",static_cast<std::int64_t>(result.consistent_sign_cohorts));
+ outcome.put("median_signed_effect",result.median_signed_effect);
+ outcome.put("unadjusted_one_sided_p",result.unadjusted_one_sided_p);
+ outcome.put("supports_predeclared_effect",result.supports_predeclared_effect);
+ outcome.put("overall_confirmed",false);
+ outcome.put("reason","Independent single-factorial holdout only; no campaign seal or multiplicity control");
+ holdout.event("factorial_holdout_unsealed_verdict",outcome.str());
+ write_file((evidence_dir/"result.json").string(),outcome.str());
+ std::cout<<"factorial independent holdout "<<outcome.str()<<"\n";
+}
+
 // This detector is deliberately exploratory: a slope break is not a jump,
 // does not license v1 two-side confirmation, and has no p-value. Retain the
 // raw model and all selected cuts without manufacturing an HYPOTHESIZED claim.
@@ -880,7 +1063,8 @@ static void v2_slope_diagnostic(Store& store,const Config& cfg){
 
 // V2 uniform baseline: virtual candidate indices, no Cartesian materialization.
 // Case IDs and RNG are checked against the committed decision transcript.
-static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& store,std::size_t pause_after){
+static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& store,
+ std::size_t pause_after,bool verify_only=false){
  const AdmissibleSearchSpace space(std::vector<LazySearchSpace::Axis>(cfg.axes.begin(),cfg.axes.end()),cfg.admissible_subspaces);
  const auto replicas=static_cast<std::uint64_t>(cfg.replicate_count);
  if(space.cardinality()>static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())/replicas)
@@ -906,15 +1090,22 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
  const auto rng_state=[&](){return hybrid?hybrid->rng_state():
   (hierarchy?hierarchy->rng_state():
    (weighted?weighted->state():(stratified?stratified->state():sampler.state())));};
- const auto cpu_ms=[&](const Case& c){
-  double ms=0;
-  for(const auto& o:store.observations(c.id,false))
-   if(o.cpu_ns>0)ms+=static_cast<double>(o.cpu_ns)/1000000.;
-  return std::max(1.,ms);
- };
- auto add_evidence=[&](std::uint64_t i,const Case& c){
-  if(hierarchy)hierarchy->observe(static_cast<std::size_t>(i),metric(store,c,cfg,false),cpu_ms(c));
-  if(hybrid)hybrid->observe(i,metric(store,c,cfg,false),cpu_ms(c));
+ DiscoveryEvidenceViewV2 view(static_cast<std::size_t>(cfg.max_cases));
+ std::optional<ModelCheckpointCacheV2> model_cache;
+ if(cfg.persist_model_cache_v2)
+  model_cache.emplace((fs::path(out)/"model_cache_v2.sqlite").string(),
+    sha256(store.config()));
+ auto add_evidence=[&](std::uint64_t i,const Case& c,
+                       const std::vector<Observation>& committed_rows){
+  // No Store SQL queries within policy scoring: read once on replay, or use
+  // exactly the batch atomically persisted before this callback on exploration.
+  view.append_committed(c.id,committed_rows,metric_from_rows(committed_rows,cfg));
+  const auto& item=view.lookup(c.id);
+  if(model_cache)
+   model_cache->remember(view.size(),i,c.id,rng_state(),
+     item.metric,item.observed_cpu_ms,committed_rows);
+  if(hierarchy)hierarchy->observe(static_cast<std::size_t>(i),item.metric,item.observed_cpu_ms);
+  if(hybrid)hybrid->observe(i,item.metric,item.observed_cpu_ms);
  };
  auto next_valid=[&]()->std::optional<std::pair<std::uint64_t,Case>>{
   if(hybrid){
@@ -962,16 +1153,24 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
  };
  for(const auto& d:store.scheduler_decisions()){
   auto next=next_valid();
+  const auto regenerated=next?make_case(next->second,cfg.max_bytes):Case{};
   if(!next||d.pool_index<0||static_cast<std::uint64_t>(d.pool_index)!=next->first||
-     d.next_rng_state!=rng_state()||make_case(next->second,cfg.max_bytes).id!=d.case_id)
+     d.next_rng_state!=rng_state()||regenerated.id!=d.case_id)
    throw Error("v2 immutable scheduler replay mismatch");
-  add_evidence(next->first,make_case(next->second,cfg.max_bytes));
-  account_samples(store.observations(d.case_id,false));
+  const auto committed=store.observations(d.case_id,false);
+  add_evidence(next->first,regenerated,committed);
+  account_samples(committed);
   if(cfg.max_sampled_cpu_ns)
    store.verify_v2_budget_entry(d.pool_index,d.case_id,sampled_cpu_used,cfg.max_sampled_cpu_ns);
   ++completed;
  }
  if(completed>cfg.max_cases)throw Error("v2 persisted decisions exceed case budget");
+ if(model_cache)model_cache->verify_no_ahead(completed);
+ if(verify_only){
+  if(!model_cache)throw Error("v2 model cache verification requires opt-in");
+  if(sampled_cpu_unknown)throw Error("v2 cache replay encountered incomplete sampled CPU");
+  return; // no report, terminal hypothesis or source SQLite mutation
+ }
  if(sampled_cpu_unknown)throw Error("v2 sampled worker CPU budget is unaccountable: incomplete or invalid timed observations preserved");
  bool sampled_cpu_limit=cfg.max_sampled_cpu_ns>0&&sampled_cpu_used>=cfg.max_sampled_cpu_ns;
  // A finalized budget-capped experiment is terminal across subsequent resumes.
@@ -987,6 +1186,7 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
  bool budget_hit=false,exhausted=false;std::size_t this_call=0;
  while(completed<cfg.max_cases&&!sampled_cpu_limit&&(pause_after==0||this_call<pause_after)){
   if(std::chrono::steady_clock::now()>=deadline){budget_hit=true;break;}
+  const auto process_cpu_start=cpu_snapshot_v2();
   const auto proposal_started=std::chrono::steady_clock::now();
   auto next=next_valid();
   if(!next){exhausted=true;break;}
@@ -1004,6 +1204,7 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
   }
   const auto worker_wall_ns=std::chrono::duration_cast<std::chrono::nanoseconds>(
    std::chrono::steady_clock::now()-worker_started).count();
+  const auto process_cpu_usage=cpu_delta_v2(process_cpu_start,cpu_snapshot_v2());
   if(std::chrono::steady_clock::now()>=deadline){budget_hit=true;break;}
   account_samples(obs);
   // Descriptive, per-commit accounting. Neither clock is a parent-CPU or
@@ -1034,7 +1235,14 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
    phases.put("worker_invocation_wall_ns",static_cast<std::int64_t>(worker_wall_ns));
    phases.put("valid_timed_cpu_ns",timed_cpu);
    phases.put("timed_cpu_complete",timed_cpu_complete);
-   phases.put("accounting_model","descriptive_v2_case_boundary_v1");
+   phases.put("accounting_model","descriptive_v2_case_boundary_v2");
+   if(process_cpu_usage){
+    phases.put("parent_process_cpu_ns",process_cpu_usage->self_ns);
+    phases.put("waited_child_cpu_ns",process_cpu_usage->waited_child_ns);
+    phases.put("cpu_accounting_scope","linux_getrusage_per_case_proposal_and_worker");
+   }else{
+    phases.put("cpu_accounting_scope","unavailable");
+   }
    store.event("v2_phase_budget",phases.str());
    if(cfg.max_sampled_cpu_ns){
     Json cost;cost.put("sampled_cpu_ns",static_cast<std::int64_t>(sampled_cpu_used));
@@ -1044,7 +1252,7 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
    }
    store.exec("COMMIT");
   }catch(...){store.exec("ROLLBACK");throw;}
-  add_evidence(next->first,c);
+  add_evidence(next->first,c,obs);
   ++completed;++this_call;
   if(sampled_cpu_unknown){report(out);throw Error("v2 sampled worker CPU budget cannot account invalid/unknown timed samples; preserved");}
   if(cfg.max_sampled_cpu_ns&&sampled_cpu_used>=cfg.max_sampled_cpu_ns){
@@ -1165,6 +1373,15 @@ void explore(const Config& cfg,const std::string& out,std::size_t pause_after){
  if(fs::exists(out+"/run.sqlite"))throw Error("output run already exists (will not overwrite evidence)");
  fs::create_directories(out);Store s(out+"/run.sqlite");if(cfg.policy_version=="v2")s.upgrade_v2_schema();s.experiment(config_json(cfg).str(),environment());
  execute_schedule(cfg,out,s,pause_after);
+}
+void verify_model_cache(const std::string& run){
+ if(!fs::exists(run+"/run.sqlite"))throw Error("run database missing for model-cache verification");
+ Store source(run+"/run.sqlite",true);
+ const auto cfg=config_from_json(Json::parse(source.config()));
+ if(cfg.policy_version!="v2"||!cfg.persist_model_cache_v2)
+  throw Error("verify-model-cache requires an opt-in v2 experiment");
+ execute_lazy_v2(cfg,run,source,0,true);
+ std::cout<<"Verified and reconciled nonauthoritative model cache against immutable run evidence\n";
 }
 void resume(const std::string& run,std::size_t pause_after){
  if(!fs::exists(run+"/run.sqlite"))throw Error("run database missing for resume");
@@ -1536,6 +1753,25 @@ void ablate(const Config& cfg,const std::string& out){
  write_file(out+"/README.md","# Equal-budget search comparison\n\nRows summarize grid, random, stratified and adaptive runs with identical user-specified evaluation and wall budgets. `localization_error=NA` for real algorithms because no ground-truth boundary is assumed. Rows include actual discovery case counts to expose incomplete runs; equal requested budgets do not guarantee equal completed counts or CPU time. The worker_cpu_seconds column is the sum of sampled worker process CPU time when available, not scheduler CPU time or a hardware-normalized speedup. The scorecard reports positive discovery yield and deterministic-null false positives where a ground truth exists. Witness byte shrink is computed from persisted original/witness input bytes for independently minimized synthetic findings, and NA when no such reduction was run; no reduction is invented. All raw cases and timing measurements remain in each method subdirectory.\n");
  std::cout<<csv.str();
 }
+// Conditional and weighted-domain research may place only one side of a
+// proposed contrast in the frozen feasible set. Never label that as a valid
+// two-side performance witness merely because both generator calls succeed.
+static bool v2_witness_pair_admissible(const Config& cfg,const Case& proposed,
+ const std::string& axis,const std::string& left,const std::string& right){
+ if(cfg.policy_version!="v2")return true; // legacy witness contract untouched
+ Case low=proposed,high=proposed;
+ assign(low,axis,left);assign(high,axis,right);
+ std::vector<std::pair<std::string,std::string>> lo,hi;
+ for(const auto& [name,labels]:cfg.axes){
+  (void)labels;
+  lo.emplace_back(name,axis_label(low,name));
+  hi.emplace_back(name,axis_label(high,name));
+ }
+ return pair_in_admissible_space_v2(
+  std::vector<LazySearchSpace::Axis>(cfg.axes.begin(),cfg.axes.end()),
+  cfg.admissible_subspaces,lo,hi);
+}
+
 /* A performance witness is a *measured* predicate, unlike a wrong-answer
  * witness. Candidate selection and final validation use disjoint independent
  * seeds, and the original independent confirmation is never recycled. Raw
@@ -1582,6 +1818,11 @@ static void minimize_performance(const std::string& run,const std::string& id,
  auto check=[&](const Case& candidate,const std::string& stage)->bool{
   ++attempts;
   if(axis_value(candidate,axis)!=right || scope_key(candidate,cfg)!=scope)return false;
+  if(!v2_witness_pair_admissible(cfg,candidate,axis,
+      frozen_axis_value(cfg,left),frozen_axis_value(cfg,right))){
+   evidence.event("v2_conditional_witness_rejected",stage+" inadmissible paired scope");
+   return false;
+  }
   std::array<std::vector<double>,2> sides;
   std::vector<double> differences;
   /* Unique seed blocks per attempted candidate/stage: no data re-use for
@@ -1720,6 +1961,11 @@ static void minimize_categorical(const std::string& run,const std::string& id,St
  initial=make_case(initial,cfg.max_bytes);
  std::size_t attempts=0,successful=0;
  auto check=[&](const Case& parameters,const std::string& stage)->bool{
+  if(!v2_witness_pair_admissible(cfg,parameters,cfg.axis,
+     categorical_value(cfg,left),categorical_value(cfg,right))){
+   evidence.event("v2_conditional_witness_rejected",stage+" invalid categorical pair");
+   return false;
+  }
   if(std::chrono::steady_clock::now()>=deadline)throw Error("categorical witness total_wall_seconds budget exhausted");
   const auto nonce=attempts++;
   const int pair_count=20;

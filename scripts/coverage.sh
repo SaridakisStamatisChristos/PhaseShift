@@ -36,5 +36,14 @@ llvm-cov export "$build/phaseshift_tests" \
   -object="$build/phaseshift_v2_multi_witness_tests" \
   -object="$build/phaseshift_witness_paths_v2_tests" \
   -object="$build/phaseshift_block_drift_v2_tests" \
+  -object="$build/phaseshift_weighted_v2_tests" \
+  -object="$build/phaseshift_conditional_rule_v2_tests" \
+  -object="$build/phaseshift_v2_evidence_view_tests" \
+  -object="$build/phaseshift_cpu_usage_v2_tests" \
+  -object="$build/phaseshift_scheduler_heap_v2_tests" \
+  -object="$build/phaseshift_fixed_factorial_holdout_tests" \
+  -object="$build/phaseshift_model_cache_v2_tests" \
+  -object="$build/phaseshift_v2_noisy_detection_tests" \
+  -object="$build/phaseshift_v2_large_space_rss_tests" \
   > "$build/coverage.json"
 python3 "$root/scripts/coverage_gate.py" --root "$root" --min-line "$min_line" --input "$build/coverage.json"

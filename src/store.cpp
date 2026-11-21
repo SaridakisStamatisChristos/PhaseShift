@@ -532,7 +532,7 @@ Json Store::summary(){
    " WHERE holdout=0 AND status='ok' AND ns>0 AND batch>0"
    " ORDER BY case_id,algorithm,block");
   std::size_t scored=0,flagged=0,invalid=0;
-  double max_drift=0;
+  double max_drift=0,max_drift_noise_ratio=0,max_log_mad=0;
   std::vector<std::pair<int,double>> sample_blocks;
   std::string previous;
   auto flush=[&](){
@@ -541,6 +541,8 @@ Json Store::summary(){
    if(result.eligible){
     ++scored;if(result.flagged)++flagged;
     max_drift=std::max(max_drift,std::abs(result.log_ratio));
+    max_drift_noise_ratio=std::max(max_drift_noise_ratio,result.drift_to_noise_ratio);
+    max_log_mad=std::max(max_log_mad,result.global_log_mad);
    }else if(sample_blocks.size()>=6)++invalid;
    sample_blocks.clear();
   };
@@ -562,6 +564,8 @@ Json Store::summary(){
   drift.put("heuristic_flagged_groups",static_cast<std::int64_t>(flagged));
   drift.put("invalid_or_duplicate_groups",static_cast<std::int64_t>(invalid));
   drift.put("max_absolute_early_late_log_ratio",max_drift);
+  drift.put("max_drift_to_local_mad_ratio",max_drift_noise_ratio);
+  drift.put("max_global_log_mad",max_log_mad);
   drift.put("relative_heuristic_threshold",0.20);
   drift.put("statistical_claim","none, descriptive only, no false-positive calibration");
   json_object_object_add(report.p,"block_drift_v2",drift.p);drift.p=nullptr;
