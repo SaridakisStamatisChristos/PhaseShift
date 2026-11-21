@@ -98,4 +98,12 @@ compile_conditional_rules_v2(
  (void)AdmissibleSearchSpace(axes,current);
  return current;
 }
+inline bool pair_in_admissible_space_v2(
+ const std::vector<AdmissibleSearchSpace::Axis>& axes,
+ const std::vector<AdmissibleSearchSpace::Subspace>& subspaces,
+ const std::vector<std::pair<std::string,std::string>>& left,
+ const std::vector<std::pair<std::string,std::string>>& right){
+ const AdmissibleSearchSpace space(axes,subspaces);
+ return space.index_of(left).has_value()&&space.index_of(right).has_value();
+}
 } // namespace ps

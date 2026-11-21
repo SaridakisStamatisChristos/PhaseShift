@@ -1738,6 +1738,25 @@ void ablate(const Config& cfg,const std::string& out){
  write_file(out+"/README.md","# Equal-budget search comparison\n\nRows summarize grid, random, stratified and adaptive runs with identical user-specified evaluation and wall budgets. `localization_error=NA` for real algorithms because no ground-truth boundary is assumed. Rows include actual discovery case counts to expose incomplete runs; equal requested budgets do not guarantee equal completed counts or CPU time. The worker_cpu_seconds column is the sum of sampled worker process CPU time when available, not scheduler CPU time or a hardware-normalized speedup. The scorecard reports positive discovery yield and deterministic-null false positives where a ground truth exists. Witness byte shrink is computed from persisted original/witness input bytes for independently minimized synthetic findings, and NA when no such reduction was run; no reduction is invented. All raw cases and timing measurements remain in each method subdirectory.\n");
  std::cout<<csv.str();
 }
+// Conditional and weighted-domain research may place only one side of a
+// proposed contrast in the frozen feasible set. Never label that as a valid
+// two-side performance witness merely because both generator calls succeed.
+static bool v2_witness_pair_admissible(const Config& cfg,const Case& proposed,
+ const std::string& axis,const std::string& left,const std::string& right){
+ if(cfg.policy_version!="v2")return true; // legacy witness contract untouched
+ Case low=proposed,high=proposed;
+ assign(low,axis,left);assign(high,axis,right);
+ std::vector<std::pair<std::string,std::string>> lo,hi;
+ for(const auto& [name,labels]:cfg.axes){
+  (void)labels;
+  lo.emplace_back(name,axis_label(low,name));
+  hi.emplace_back(name,axis_label(high,name));
+ }
+ return pair_in_admissible_space_v2(
+  std::vector<LazySearchSpace::Axis>(cfg.axes.begin(),cfg.axes.end()),
+  cfg.admissible_subspaces,lo,hi);
+}
+
 /* A performance witness is a *measured* predicate, unlike a wrong-answer
  * witness. Candidate selection and final validation use disjoint independent
  * seeds, and the original independent confirmation is never recycled. Raw
@@ -1784,6 +1803,11 @@ static void minimize_performance(const std::string& run,const std::string& id,
  auto check=[&](const Case& candidate,const std::string& stage)->bool{
   ++attempts;
   if(axis_value(candidate,axis)!=right || scope_key(candidate,cfg)!=scope)return false;
+  if(!v2_witness_pair_admissible(cfg,candidate,axis,
+      frozen_axis_value(cfg,left),frozen_axis_value(cfg,right))){
+   evidence.event("v2_conditional_witness_rejected",stage+" inadmissible paired scope");
+   return false;
+  }
   std::array<std::vector<double>,2> sides;
   std::vector<double> differences;
   /* Unique seed blocks per attempted candidate/stage: no data re-use for
@@ -1922,6 +1946,11 @@ static void minimize_categorical(const std::string& run,const std::string& id,St
  initial=make_case(initial,cfg.max_bytes);
  std::size_t attempts=0,successful=0;
  auto check=[&](const Case& parameters,const std::string& stage)->bool{
+  if(!v2_witness_pair_admissible(cfg,parameters,cfg.axis,
+     categorical_value(cfg,left),categorical_value(cfg,right))){
+   evidence.event("v2_conditional_witness_rejected",stage+" invalid categorical pair");
+   return false;
+  }
   if(std::chrono::steady_clock::now()>=deadline)throw Error("categorical witness total_wall_seconds budget exhausted");
   const auto nonce=attempts++;
   const int pair_count=20;

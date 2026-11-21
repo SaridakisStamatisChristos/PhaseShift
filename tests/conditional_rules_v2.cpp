@@ -31,6 +31,20 @@ int main(){
   CHECK(rank.has_value()==valid);
   if(rank){CHECK(ranks.insert(*rank).second);CHECK(legal.at(*rank)==coords);}
  }
+ CHECK(pair_in_admissible_space_v2(
+  axes,compiled,full.at(0),full.at(1))==
+  (legal.index_of(full.at(0)).has_value()&&
+   legal.index_of(full.at(1)).has_value()));
+ // One endpoint is a valid standalone coordinate, but the other endpoint
+ // is excluded by conditional rules. Never accept it as a paired witness.
+ std::vector<std::pair<std::string,std::string>> inside,outside;
+ for(std::uint64_t i=0;i<full.cardinality();++i){
+  if(inside.empty()&&legal.index_of(full.at(i)))inside=full.at(i);
+  if(outside.empty()&&!legal.index_of(full.at(i)))outside=full.at(i);
+ }
+ CHECK(!inside.empty()&&!outside.empty());
+ CHECK(!pair_in_admissible_space_v2(axes,compiled,inside,outside));
+ CHECK(pair_in_admissible_space_v2(axes,compiled,inside,inside));
  CHECK(ranks.size()==6);
  CHECK(compile_conditional_rules_v2(axes,{},rules)==compiled);
  // Rule compiler must be stable when applied to an already restricted union:
