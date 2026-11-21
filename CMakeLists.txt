@@ -418,3 +418,13 @@ set_tests_properties(v2_real_minimize_multi_hypothesis_artifact_isolation PROPER
 add_executable(phaseshift_block_drift_v2_tests tests/measurement_drift_v2.cpp)
 target_link_libraries(phaseshift_block_drift_v2_tests PRIVATE phaseshift_core)
 add_test(NAME v2_descriptive_block_drift_oracle COMMAND phaseshift_block_drift_v2_tests)
+
+# Weighted v2 prior policy: lazy admissible subspaces, no-replacement
+# property oracle, immutable selection and SQLite replay in a real worker run.
+add_executable(phaseshift_weighted_v2_tests tests/weighted_v2.cpp)
+target_link_libraries(phaseshift_weighted_v2_tests PRIVATE phaseshift_core)
+add_test(NAME weighted_v2_no_replacement_oracle COMMAND phaseshift_weighted_v2_tests)
+configure_file(tests/run_v2_weighted.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_weighted.cmake @ONLY)
+add_test(NAME weighted_v2_resume_admissible
+ COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_weighted.cmake)
+set_tests_properties(weighted_v2_resume_admissible PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
