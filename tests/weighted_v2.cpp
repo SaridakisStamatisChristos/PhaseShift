@@ -56,8 +56,8 @@ int main(){
  CHECK(large.size()==64 && sparse.resident_entries()<600);
 
  const auto rejects=[&](const Sampler::Priors& bad,
-                        const std::vector<Scope>& allowed=scopes){
-  try{(void)Sampler(axes,allowed,bad,1,9);}
+                        const std::vector<Scope>& allowed=std::vector<Scope>{}){
+  try{(void)Sampler(axes,allowed.empty()?scopes:allowed,bad,1,9);}
   catch(const ps::Error&){return true;}
   return false;
  };
