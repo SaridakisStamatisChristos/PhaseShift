@@ -848,6 +848,8 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
    throw Error("v2 immutable scheduler replay mismatch");
   add_evidence(next->first,make_case(next->second,cfg.max_bytes));
   account_samples(store.observations(d.case_id,false));
+  if(cfg.max_sampled_cpu_ns)
+   store.verify_v2_budget_entry(d.pool_index,d.case_id,sampled_cpu_used,cfg.max_sampled_cpu_ns);
   ++completed;
  }
  if(completed>cfg.max_cases)throw Error("v2 persisted decisions exceed case budget");
@@ -1033,7 +1035,7 @@ void resume(const std::string& run,std::size_t pause_after){
    const auto step=sqlite3_step(check);
    const bool terminal=step==SQLITE_ROW&&sqlite3_column_int(check,0)==2;
    sqlite3_finalize(check);
-   if(terminal){report(run);return;}
+   if(terminal){execute_lazy_v2(cfg,run,s,0);return;}
   }
   throw Error("experiment has finalized hypothesis; resume would overwrite evidence");
  }

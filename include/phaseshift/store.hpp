@@ -12,6 +12,8 @@ public:
  void upgrade_v2_schema();
  void record_v2_budget_entry(const std::string& case_id,std::uint64_t cumulative_sampled_cpu_ns,
    std::uint64_t max_sampled_cpu_ns,bool accounting_complete);
+ void verify_v2_budget_entry(std::int64_t pool_index,const std::string& case_id,
+   std::uint64_t expected_cumulative_cpu_ns,std::uint64_t expected_limit_ns);
  void experiment(const std::string& config,const std::string& env);
  void add_case(const Case& c);
  void add_observation(const Case& c,const Observation& s,bool holdout);

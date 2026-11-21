@@ -178,6 +178,27 @@ void Store::record_v2_budget_entry(const std::string& case_id,
  stmt.done();
  if(sqlite3_changes(db_)!=1)throw Error("unlinked v2 CPU budget decision");
 }
+void Store::verify_v2_budget_entry(std::int64_t pool_index,const std::string& case_id,
+ std::uint64_t expected_cpu,std::uint64_t expected_limit){
+ if(pool_index<0||expected_cpu>static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())||
+    expected_limit==0||expected_limit>static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
+  throw Error("invalid v2 budget replay bound");
+ Statement q(db_,R"SQL(
+ SELECT b.case_id,b.cumulative_sampled_cpu_ns,b.max_sampled_cpu_ns,b.accounting_complete
+ FROM scheduler_decisions d JOIN budget_ledger b ON b.decision_seq=d.seq
+ WHERE d.pool_index=? AND d.case_id=?
+ )SQL");
+ q.integer(1,pool_index);q.text(2,case_id);
+ const auto rc=sqlite3_step(q.p);
+ if(rc!=SQLITE_ROW||sqlite3_column_type(q.p,0)!=SQLITE_TEXT||
+    case_id!=reinterpret_cast<const char*>(sqlite3_column_text(q.p,0))||
+    sqlite3_column_int64(q.p,1)!=static_cast<std::int64_t>(expected_cpu)||
+    sqlite3_column_int64(q.p,2)!=static_cast<std::int64_t>(expected_limit)||
+    sqlite3_column_int(q.p,3)!=1)
+  throw Error("v2 CPU budget ledger disagrees with immutable sample/decision transcript");
+ if(sqlite3_step(q.p)!=SQLITE_DONE)
+  throw Error("duplicate v2 budget rows for one scheduler decision");
+}
 Store::~Store(){if(db_)sqlite3_close(db_);}
 void Store::exec(const std::string& sql){char* err=nullptr;int rc=sqlite3_exec(db_,sql.c_str(),nullptr,nullptr,&err);if(rc!=SQLITE_OK){std::string msg=err?err:"unknown sqlite error";sqlite3_free(err);throw Error("SQL: "+msg);}}
 void Store::experiment(const std::string& config,const std::string& env){

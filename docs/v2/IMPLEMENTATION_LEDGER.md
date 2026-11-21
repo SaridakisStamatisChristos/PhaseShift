@@ -81,3 +81,6 @@ The v2 workflow now calls `Store::upgrade_v2_schema()` explicitly before writing
 
 ## M7 registry slice — frozen family/SQLite v9 (21 Nov 2026)
 Predeclared, one-family-per-v2-run immutable campaign manifest and Holm outcome table implemented with explicit positive seal+p-value requirements, conservative p=1 for negative members, re-freeze/re-finalize refusal, and independent schema-v9 migration tests. Execution from CLI and complete multi-hypothesis lifecycle remain separate verification gates. No global FWER/SOTA claim.
+
+### M9 replay-ledger falsification and repair
+V2 sampled-CPU replay now checks each persisted scheduler decision's foreign-keyed `budget_ledger` cumulative CPU, declared limit, and accounting-completeness flag against values independently reconstructed from raw measurements. A fully finalized budget-limited run still executes this read-only proof path on `resume`, rather than short-circuiting straight to report generation. The CLI test now uses a transactionally backed-up corrupted copy with the cumulative CPU incremented by 1 ns and requires fail-closed rejection; noncorrupted repeated resume remains idempotent. Legacy v1 unaffected. Exact SHA CI required.

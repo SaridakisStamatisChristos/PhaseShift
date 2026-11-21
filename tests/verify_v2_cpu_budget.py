@@ -20,6 +20,18 @@ with sqlite3.connect(pathlib.Path(a.run)/"run.sqlite") as db:
  n2=db.execute("SELECT COUNT(*) FROM scheduler_decisions").fetchone()[0]
  complete2=db.execute("SELECT COUNT(*) FROM events WHERE event='search_complete'").fetchone()[0]
  assert (n2,complete2)==(n,complete),(n2,complete2)
+# A fully finalized, apparently idempotent run must still validate its
+# exact sample-derived CPU ledger. Tamper a transactionally backed-up copy.
+with tempfile.TemporaryDirectory() as corrupt_root:
+ bad_run=pathlib.Path(corrupt_root)/"bad"
+ bad_run.mkdir()
+ with sqlite3.connect(bad_run/"run.sqlite") as copy_db:
+  db.backup(copy_db)
+  copy_db.execute("UPDATE budget_ledger SET cumulative_sampled_cpu_ns=cumulative_sampled_cpu_ns+1")
+  copy_db.commit()
+ tamper=subprocess.run([a.binary,"resume","--run",str(bad_run)],
+                       capture_output=True,text=True,timeout=20)
+ assert tamper.returncode!=0 and "budget ledger" in tamper.stderr.lower(),(tamper.stdout,tamper.stderr)
 base=json.loads(pathlib.Path(a.config).read_text())
 with tempfile.TemporaryDirectory() as temp:
  def bad(edit):
