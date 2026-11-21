@@ -1112,10 +1112,10 @@ void confirm(const std::string& run,const std::string& id){
    }
    sqlite3_bind_text(family,1,id.c_str(),-1,SQLITE_TRANSIENT);
    const auto row=sqlite3_step(family);
-   const bool frozen=row==SQLITE_ROW&&
+   const bool campaign_is_frozen=row==SQLITE_ROW&&
      std::string(reinterpret_cast<const char*>(sqlite3_column_text(family,0)))=="FROZEN";
    sqlite3_finalize(family);
-   if(!frozen)throw Error("v2 multi-hypothesis confirmation requires frozen campaign membership");
+   if(!campaign_is_frozen)throw Error("v2 multi-hypothesis confirmation requires frozen campaign membership");
   }
  }
  /* Preserve the original candidate's frozen failure subtype/scope when
