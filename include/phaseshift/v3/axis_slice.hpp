@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <iterator>
 #include <map>
 #include <optional>
 #include <set>
@@ -174,13 +175,16 @@ public:
    return issue(target->index,"ordered_slice_refinement",target->score);
   return global();
  }
- void on_committed(std::uint64_t index,Cohort cohort,std::optional<double> metric,
+ void on_committed(std::uint64_t index,Cohort cohort,
+                   const std::string& status,std::optional<double> metric,
                    double observed_cost_ms) {
   if(cohort!=Cohort::Discovery)
    throw Error("v3 sealed holdout cannot feed acquisition model");
-  if((metric&&!std::isfinite(*metric))||
+  if(status.empty() || status.size()>128 ||
+     (status!="ok" && metric.has_value()) ||
+     (metric&&!std::isfinite(*metric)) ||
      !std::isfinite(observed_cost_ms)||observed_cost_ms<0)
-   throw Error("v3 invalid committed-only policy observation");
+   throw Error("v3 invalid status/metric or committed-only observation");
   const auto found=pending_.find(index);
   if(found==pending_.end())throw Error("v3 unissued/duplicate committed observation");
   if(found->second.indexed) {

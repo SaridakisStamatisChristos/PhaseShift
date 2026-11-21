@@ -51,9 +51,9 @@ static void legal_finite_domain_exhaustive(){
   CHECK(observed.insert(p->virtual_index).second);
   if(p->origin=="legal_global_exploration")++global;
   const auto effect=std::optional<double>(i%3==0?0.0:1.5);
-  must_throw([&]{first.on_committed(p->virtual_index,Cohort::Confirmation,effect,1.);});
-  first.on_committed(p->virtual_index,Cohort::Discovery,effect,1.);
-  second.on_committed(q->virtual_index,Cohort::Discovery,effect,1.);
+  must_throw([&]{first.on_committed(p->virtual_index,Cohort::Confirmation,"ok",effect,1.);});
+  first.on_committed(p->virtual_index,Cohort::Discovery,"ok",effect,1.);
+  second.on_committed(q->virtual_index,Cohort::Discovery,"ok",effect,1.);
   CHECK(first.global_rng_state()==second.global_rng_state());
  }
  CHECK(global>=2); // explicit global exploration, even with local contrast
@@ -61,7 +61,7 @@ static void legal_finite_domain_exhaustive(){
  CHECK(!first.next() && !second.next());
  CHECK(first.pending_count()==0);
  CHECK(first.tracked_contexts()==2);
- must_throw([&]{first.on_committed(0,Cohort::Discovery,0.0,1.);});
+ must_throw([&]{first.on_committed(0,Cohort::Discovery,"ok",0.0,1.);});
 }
 static void censored_and_finite_fail_closed(){
  std::vector<LazySearchSpace::Axis> axes{{"x",names(16)}};
@@ -69,16 +69,19 @@ static void censored_and_finite_fail_closed(){
  AxisSlicePolicyV3 search(space,axes,"x",3,8,16);
  const auto p=search.next();
  CHECK(p.has_value());
- must_throw([&]{search.on_committed(p->virtual_index,Cohort::Discovery,
+ must_throw([&]{search.on_committed(p->virtual_index,Cohort::Discovery,"ok",
         std::numeric_limits<double>::quiet_NaN(),1.);});
  CHECK(search.pending_count()==1);
- must_throw([&]{search.on_committed(p->virtual_index,Cohort::Discovery,1.,-1.);});
+ must_throw([&]{search.on_committed(p->virtual_index,Cohort::Discovery,"ok",1.,-1.);});
  CHECK(search.pending_count()==1);
- search.on_committed(p->virtual_index,Cohort::Discovery,std::nullopt,1.);
+ must_throw([&]{search.on_committed(p->virtual_index,Cohort::Discovery,
+       "wrong_answer",0.5,1.);});
+ CHECK(search.pending_count()==1);
+ search.on_committed(p->virtual_index,Cohort::Discovery,"no_sample",std::nullopt,1.);
  CHECK(search.pending_count()==0);
  for(int i=1;i<16;++i){
   auto next=search.next();CHECK(next.has_value());
-  search.on_committed(next->virtual_index,Cohort::Discovery,
+  search.on_committed(next->virtual_index,Cohort::Discovery,"no_sample",
                      std::nullopt,10.);
  }
  CHECK(search.issued_count()==16);
@@ -102,7 +105,7 @@ static void billion_virtual_without_materialization(){
   CHECK(next->virtual_index<space.cardinality());
   const auto coords=space.at(next->virtual_index);
   CHECK(space.index_of(coords).value()==next->virtual_index);
-  search.on_committed(next->virtual_index,Cohort::Discovery,
+  search.on_committed(next->virtual_index,Cohort::Discovery,"ok",
                       std::optional<double>{static_cast<double>(i%11)},1.);
  }
  CHECK(search.issued_count()==48);
