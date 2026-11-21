@@ -58,3 +58,19 @@ Main/source baseline: `93b47590c7e44eaf062d97995e9c5cd33274a7a2`; target PR: htt
 - Full GCC/Clang build matrix, sanitizer, coverage and CTest status on **the latest branch revision** remains PENDING at this ledger edition. The full draft PR is not eligible to merge until those hard gates pass.
 - There is **no** executed external benchmark or statistically defensible full SOTA uplift claim.
 - Outstanding milestone-critical features remain M6 measurement protocol, M7 persistent campaign family/holdout control, M8 v2 witness minimization, M9 additive crash-safe migration, M10 external/equal actual-budget evaluation, and adversarial/end-to-end M11 gates.
+
+## R7 continuation (21 Nov 2026): algorithmic improvements and repairs
+
+| Revision | Implementation | Verification boundary |
+|---|---|---|
+| `0887ffec` | Assert side effects repaired for Release | 46/46 CTests, GCC/Clang, sanitizers, 95.97% production line coverage |
+| `1fc3e77` | M2 indexed non-overlapping admissible Cartesian subspaces | **48/48 CTests; 95.93% production line / 70.84% descriptive branch**, coverage run 44873253216; GCC/Clang and sanitizers successful |
+| `433738d` | M3 lazy seeded primary-axis stratification | Superseded by independent SQL query repair |
+| `5aa334e` | Stratified SQLite replay audit corrected to order by actual seq | Exact revision workflows required |
+| `04ae1ea` | M5 PELT with constrained exact-DP fallback | GCC compiler failure: declaration outside namespace; unreleased |
+| `d2569d4` | Move PELT declaration inside namespace ps | New exact-revision CI required |
+| New PELT smoke commit | Real worker/Python diagnostic test and coverage object; this ledger | Verification pending |
+
+**F-v2-002:** GCC Release failed on `04ae1ea` with `MultiChangeFitV2 does not name a type` in `boundary_v2.hpp`. Cause: accidentally appended PELT declaration after the namespace closed. Repaired with `d2569d4`; CI exact-revision revalidation is required. Earliest invalidated phase: INTEGRATE (header/API scope).
+
+**Remaining hard requirements:** M1 indexed evidence cache / actual budget ledger; M3 calibrated cost/uncertainty hybrid; M4 conditional independent confirmation; M6 distinct verified measurement protocols; M7 sealed predeclared campaign family Holm control; M8 v2 causal witness minimization; M9 additive v7→v8 migration; M10 genuine equal worker CPU+wall budgets and held-out external SOTA comparison. V1 default and historical evidence remain invariant; no SOTA or release claim until executed.

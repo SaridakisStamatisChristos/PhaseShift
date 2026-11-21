@@ -305,3 +305,8 @@ add_executable(phaseshift_pelt_v2_tests tests/pelt_v2.cpp)
 target_link_libraries(phaseshift_pelt_v2_tests PRIVATE phaseshift_core)
 add_test(NAME pelt_v2_differential COMMAND phaseshift_pelt_v2_tests)
 set_tests_properties(pelt_v2_differential PROPERTIES TIMEOUT 90)
+
+# PELT opt-in CLI/worker/SQLite smoke, under same oracle and H1 gates.
+configure_file(tests/run_v2_pelt.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_pelt.cmake @ONLY)
+add_test(NAME v2_pelt_worker_smoke COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_pelt.cmake)
+set_tests_properties(v2_pelt_worker_smoke PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)

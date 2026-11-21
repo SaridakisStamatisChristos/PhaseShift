@@ -19,3 +19,10 @@
 | G14 external SOTA | UNVERIFIED | no executed matched external tools |
 
 States are deliberately strict; no intermediate green workflow grants final-branch or SOTA approval.
+
+## R7 continuation gates (draft branch)
+
+- M2 exact indexed admissible-union sampler: **CI_VERIFIED at `1fc3e77`**, with 48/48 CTests, GCC/Clang, ASan/UBSan and 95.93% production line coverage.
+- M3 `stratified_v2`: implemented, per-primary-stratum replay + real SQLite smoke, latest CI to verify.
+- M5 `multi_change_pelt_v2`: pruned exact squared-error detector with hard K fallback, exhaustive independent DP differential test + real worker ground truth smoke. Not called CI_VERIFIED until latest revision passes.
+- M7/M9/M10: predeclared campaign family, additive schema migration and fair equal-CPU/wall + external baselines remain UNVERIFIED. No family-wise error or SOTA certification.
