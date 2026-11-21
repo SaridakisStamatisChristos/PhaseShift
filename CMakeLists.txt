@@ -315,3 +315,8 @@ set_tests_properties(v2_pelt_worker_smoke PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
 configure_file(benchmarks/v2/run_policy_challenge.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/v2_policy_challenge.cmake @ONLY)
 add_test(NAME v2_four_policy_cliff_null_challenge COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/v2_policy_challenge.cmake)
 set_tests_properties(v2_four_policy_cliff_null_challenge PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
+
+# Timed-region CPU budget: per-case bound with replay-stable terminal state.
+configure_file(tests/run_v2_cpu_budget.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_cpu_budget.cmake @ONLY)
+add_test(NAME v2_sampled_cpu_budget_resume COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_cpu_budget.cmake)
+set_tests_properties(v2_sampled_cpu_budget_resume PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)

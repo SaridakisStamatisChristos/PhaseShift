@@ -20,3 +20,8 @@ Before claiming a v2 uplift: independent training and sealed evaluation splits, 
 `python3 benchmarks/v2/policy_challenge.py --binary ./build/phaseshift --out /tmp/phaseshift-four-policy --seeds 31,47,83 --cases 20`
 
 Tests the v1 adaptive control and v2 uniform, stratified and hierarchical search on both a planted single-cliff calibration and a constant null, with every seed/policy retained. Writes a SHA-256 stamped plan before measurements, per-run SQLite/CLI evidence, CPU/wall time, localization, confirmation and false-positive status. Refuses to overwrite the output directory. CI runs one seed as a real-worker smoke. Equal case ceilings **do not** equalize CPU/wall budgets; no external SOTA or population error-rate claim is justified.
+
+
+## Experimental measured timed-region CPU budget (M1/M10 incremental)
+
+Opt-in `limits.max_sampled_cpu_ns` (integer >0, v2-only) stops **at a committed discovery-case boundary** when the cumulative sum of stored valid timed-region worker `cpu_ns` reaches or exceeds the cap. Each case transaction contains a cumulative budget-ledger event; pause/resume replays raw measurements and stops after a terminal `search_complete`, without adding cases on repeated resume. Unknown or invalid sampled CPU costs fail closed with retained evidence and no invented zero cost. Budget may be exceeded by **one whole case** and does not include worker startup, input generation, parent wall overhead, or full-process CPU time. This is a diagnostic fixed sampled-timing CPU budget, **not** proof of equal full-system CPU/wall cost or a fair SOTA comparison. Legacy v1 rejects this option and remains unchanged.

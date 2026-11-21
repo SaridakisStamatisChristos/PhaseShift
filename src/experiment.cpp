@@ -102,6 +102,7 @@ static Json config_json(const Config& c){
      j.put("search",std::move(search));
     }
    if(c.detector_version!="boundary_v1"){Json detection;detection.put("detector_version",c.detector_version);j.put("detection",std::move(detection));}
+   if(c.max_sampled_cpu_ns){Json limits;limits.put("max_sampled_cpu_ns",static_cast<std::int64_t>(c.max_sampled_cpu_ns));j.put("limits",std::move(limits));}
   }
   j.put("base_params",case_params(c.base));
  Json axes;for(const auto& [name,values]:c.axes){auto* arr=json_object_new_array();for(const auto& val:values)json_object_array_add(arr,json_object_new_string(val.c_str()));json_object_object_add(axes.p,name.c_str(),arr);}j.put("axes",std::move(axes));return j;
@@ -123,9 +124,9 @@ static void validate_configuration_shape(const Json& j){
    if(integers.count(name)){
     if(kind!=json_type_int)throw Error(field+" must be an integer");
     const auto n=json_object_get_int64(value);
-    if(n<0 && (name=="seed"||name=="max_cases"||name=="max_case_bytes"||name=="max_worker_rss_mb"||name=="max_sample_wall_ms"||name=="max_report_bytes"||name=="max_search_queue"||name=="total_wall_seconds"||name=="schema_version"))throw Error(field+" cannot be negative");
+    if(n<0 && (name=="seed"||name=="max_cases"||name=="max_case_bytes"||name=="max_worker_rss_mb"||name=="max_sample_wall_ms"||name=="max_report_bytes"||name=="max_search_queue"||name=="total_wall_seconds"||name=="max_sampled_cpu_ns"||name=="schema_version"))throw Error(field+" cannot be negative");
     /* The runtime's integer-valued measurement/budget fields are signed 32-bit. */
-    if(name!="seed"&&name!="max_case_bytes"&&name!="max_search_queue"&&name!="max_report_bytes"&&name!="max_cases"&&n>2147483647LL)throw Error(field+" is too large");
+    if(name!="seed"&&name!="max_case_bytes"&&name!="max_search_queue"&&name!="max_report_bytes"&&name!="max_cases"&&name!="max_sampled_cpu_ns"&&n>2147483647LL)throw Error(field+" is too large");
    }else if(reals.count(name)){
     if(kind!=json_type_int&&kind!=json_type_double)throw Error(field+" must be a finite number");
     if(!std::isfinite(json_object_get_double(value)))throw Error(field+" must be finite");
@@ -166,7 +167,7 @@ static void validate_configuration_shape(const Json& j){
  if(auto* v=j.get("search"))check(v,"search",{"max_cases","replicates"},{"exploration_fraction"},{"method","policy_version"},{"admissible_subspaces"});
  if(auto* v=j.get("measurement"))check(v,"measurement",{"paired_discovery_blocks","paired_confirm_blocks","warmup_iterations","minimum_batch_ms"},{},{"primary_metric","isolation_mode"},{});
  if(auto* v=j.get("detection"))check(v,"detection",{},{"min_practical_ratio","confirmation_confidence","fdr_q"},{"multiple_testing","detector_version"},{});
- if(auto* v=j.get("limits"))check(v,"limits",{"total_wall_seconds","max_cases","max_case_bytes","max_worker_rss_mb","max_sample_wall_ms","max_report_bytes","max_search_queue"},{},{},{});
+ if(auto* v=j.get("limits"))check(v,"limits",{"total_wall_seconds","max_cases","max_case_bytes","max_worker_rss_mb","max_sample_wall_ms","max_report_bytes","max_search_queue","max_sampled_cpu_ns"},{},{},{});
  if(auto* v=j.get("fixed"))if(json_object_get_type(v)!=json_type_object)throw Error("fixed must be an object");
  if(auto* v=j.get("base_params")){
   if(json_object_get_type(v)==json_type_string){auto parsed=Json::parse(json_object_get_string(v));if(!parsed.p||json_object_get_type(parsed.p)!=json_type_object)throw Error("base_params serialized value must be object");}
@@ -231,7 +232,7 @@ Config config_from_json(const Json& j){
    throw Error("minimum_batch_ms must be integral");
   c.blocks=static_cast<int>(x.i("paired_discovery_blocks",c.blocks));c.confirm_blocks=static_cast<int>(x.i("paired_confirm_blocks",c.confirm_blocks));c.warmup=static_cast<int>(x.i("warmup_iterations",c.warmup));c.minimum_batch_ms=static_cast<int>(x.i("minimum_batch_ms",c.minimum_batch_ms));c.isolation_mode=x.s("isolation_mode",c.isolation_mode);}
  if(auto* d=j.get("detection")){Json x(json_object_get(d));c.min_ratio=x.d("min_practical_ratio",c.min_ratio);c.confirmation_confidence=x.d("confirmation_confidence",c.confirmation_confidence);c.fdr_q=x.d("fdr_q",c.fdr_q);c.multiple_testing=x.s("multiple_testing",c.multiple_testing);c.detector_version=x.s("detector_version",c.detector_version);}
- if(auto* l=j.get("limits")){Json x(json_object_get(l));c.total_wall_s=static_cast<int>(x.i("total_wall_seconds",c.total_wall_s));c.max_cases=static_cast<std::uint64_t>(x.i("max_cases",static_cast<std::int64_t>(c.max_cases)));c.max_bytes=static_cast<std::uint64_t>(x.i("max_case_bytes",static_cast<std::int64_t>(c.max_bytes)));c.rss_mb=static_cast<int>(x.i("max_worker_rss_mb",c.rss_mb));c.sample_ms=static_cast<int>(x.i("max_sample_wall_ms",c.sample_ms));c.max_queue=static_cast<std::uint64_t>(x.i("max_search_queue",static_cast<std::int64_t>(c.max_queue)));c.max_report_bytes=static_cast<std::uint64_t>(x.i("max_report_bytes",static_cast<std::int64_t>(c.max_report_bytes)));}
+ if(auto* l=j.get("limits")){Json x(json_object_get(l));c.total_wall_s=static_cast<int>(x.i("total_wall_seconds",c.total_wall_s));c.max_cases=static_cast<std::uint64_t>(x.i("max_cases",static_cast<std::int64_t>(c.max_cases)));c.max_bytes=static_cast<std::uint64_t>(x.i("max_case_bytes",static_cast<std::int64_t>(c.max_bytes)));c.rss_mb=static_cast<int>(x.i("max_worker_rss_mb",c.rss_mb));c.sample_ms=static_cast<int>(x.i("max_sample_wall_ms",c.sample_ms));c.max_queue=static_cast<std::uint64_t>(x.i("max_search_queue",static_cast<std::int64_t>(c.max_queue)));c.max_report_bytes=static_cast<std::uint64_t>(x.i("max_report_bytes",static_cast<std::int64_t>(c.max_report_bytes)));c.max_sampled_cpu_ns=static_cast<std::uint64_t>(x.i("max_sampled_cpu_ns",0));}
  c.base.family=c.family;c.base.seed=c.seed;
  if(auto* base=j.get("base_params")){Json p=json_object_get_type(base)==json_type_string?Json::parse(json_object_get_string(base)):Json(json_object_get(base));
   if(!p.get("generator_version"))c.base.generator_version=1; /* v0.1 manifest compatibility */
@@ -286,6 +287,7 @@ Config config_from_json(const Json& j){
    if(search.get("replicates"))throw Error("v1 does not accept search.replicates");
    if(search.get("admissible_subspaces"))throw Error("v1 does not accept search.admissible_subspaces");
   }
+  if(auto* l=j.get("limits")){Json limits(json_object_get(l));if(limits.get("max_sampled_cpu_ns"))throw Error("v1 does not accept max_sampled_cpu_ns");}
   if(c.method!="grid"&&c.method!="random"&&c.method!="stratified"&&c.method!="adaptive_partition")throw Error("unknown search method");
  }else if(c.policy_version=="v2"){
   if(c.method!="uniform_v2"&&c.method!="hierarchical_boundary_v2"&&c.method!="stratified_v2")throw Error("unsupported v2 search method");
@@ -815,18 +817,42 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
   return std::nullopt;
  };
  std::size_t completed=0;
+ std::uint64_t sampled_cpu_used=0;
+ bool sampled_cpu_unknown=false;
+ const auto account_samples=[&](const std::vector<Observation>& observations){
+  if(!cfg.max_sampled_cpu_ns)return;
+  for(const auto& o:observations){
+   if(o.status!="ok"||o.cpu_ns<0){sampled_cpu_unknown=true;continue;}
+   const auto charge=static_cast<std::uint64_t>(o.cpu_ns);
+   if(charge>static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())-sampled_cpu_used)
+    throw Error("v2 sampled worker CPU budget accounting overflow");
+   sampled_cpu_used+=charge;
+  }
+ };
  for(const auto& d:store.scheduler_decisions()){
   auto next=next_valid();
   if(!next||d.pool_index<0||static_cast<std::uint64_t>(d.pool_index)!=next->first||
      d.next_rng_state!=rng_state()||make_case(next->second,cfg.max_bytes).id!=d.case_id)
    throw Error("v2 immutable scheduler replay mismatch");
   add_evidence(next->first,make_case(next->second,cfg.max_bytes));
+  account_samples(store.observations(d.case_id,false));
   ++completed;
  }
  if(completed>cfg.max_cases)throw Error("v2 persisted decisions exceed case budget");
+ if(sampled_cpu_unknown)throw Error("v2 sampled worker CPU budget is unaccountable: incomplete or invalid timed observations preserved");
+ bool sampled_cpu_limit=cfg.max_sampled_cpu_ns>0&&sampled_cpu_used>=cfg.max_sampled_cpu_ns;
+ // A finalized budget-capped experiment is terminal across subsequent resumes.
+ if(sampled_cpu_limit){
+  sqlite3_stmt* stmt=nullptr;
+  if(sqlite3_prepare_v2(store.raw(),"SELECT 1 FROM events WHERE event='search_complete' LIMIT 1",-1,&stmt,nullptr)!=SQLITE_OK)
+   throw Error("cannot inspect v2 budget-complete evidence");
+  const bool already_completed=sqlite3_step(stmt)==SQLITE_ROW;
+  sqlite3_finalize(stmt);
+  if(already_completed){report(out);return;}
+ }
  const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(cfg.total_wall_s);
  bool budget_hit=false,exhausted=false;std::size_t this_call=0;
- while(completed<cfg.max_cases&&(pause_after==0||this_call<pause_after)){
+ while(completed<cfg.max_cases&&!sampled_cpu_limit&&(pause_after==0||this_call<pause_after)){
   if(std::chrono::steady_clock::now()>=deadline){budget_hit=true;break;}
   auto next=next_valid();
   if(!next){exhausted=true;break;}
@@ -840,18 +866,29 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
    throw;
   }
   if(std::chrono::steady_clock::now()>=deadline){budget_hit=true;break;}
+  account_samples(obs);
   store.exec("BEGIN IMMEDIATE");
   try{
    for(const auto& o:obs)store.add_observation(c,o,false);
    store.record_decision(static_cast<std::size_t>(next->first),c.id,rng_state());
    if(hierarchy)store.event("v2_acquisition",std::to_string(next->first)+";origin="+hierarchy->origin());
    if(stratified)store.event("v2_acquisition",std::to_string(next->first)+";origin=stratified_primary_axis");
+   if(cfg.max_sampled_cpu_ns){
+    Json cost;cost.put("sampled_cpu_ns",static_cast<std::int64_t>(sampled_cpu_used));
+    cost.put("limit_ns",static_cast<std::int64_t>(cfg.max_sampled_cpu_ns));
+    cost.put("accounting_complete",!sampled_cpu_unknown);
+    store.event("v2_sampled_cpu_budget_ledger",cost.str());
+   }
    store.exec("COMMIT");
   }catch(...){store.exec("ROLLBACK");throw;}
   add_evidence(next->first,c);
   ++completed;++this_call;
+  if(sampled_cpu_unknown){report(out);throw Error("v2 sampled worker CPU budget cannot account invalid/unknown timed samples; preserved");}
+  if(cfg.max_sampled_cpu_ns&&sampled_cpu_used>=cfg.max_sampled_cpu_ns){
+   sampled_cpu_limit=true;break;
+  }
  }
- if(completed==cfg.max_cases||exhausted){
+ if(completed==cfg.max_cases||exhausted||sampled_cpu_limit){
   v2_factorial_diagnostic(store,cfg);
   std::optional<Detection> selected=detect(store,cfg);
   if(cfg.detector_version=="multi_change_v2"||cfg.detector_version=="multi_change_pelt_v2"){
@@ -878,6 +915,8 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
     "V2 uniform discovery; independent holdout required",d->kind,d->frozen_params);
   }else store.hypothesis("H1","NO_CONFIRMED_BOUNDARY",cfg.axis,0,0,0,
     "No convincing isolated structural discontinuity under declared thresholds");
+  if(sampled_cpu_limit)store.event("v2_sampled_cpu_limit_reached",
+   std::to_string(sampled_cpu_used)+";limit="+std::to_string(cfg.max_sampled_cpu_ns));
   store.event("search_complete",std::to_string(completed));
  }else{
   store.event("search_paused",std::to_string(completed));

@@ -26,3 +26,5 @@ States are deliberately strict; no intermediate green workflow grants final-bran
 - M3 `stratified_v2`: implemented, per-primary-stratum replay + real SQLite smoke, latest CI to verify.
 - M5 `multi_change_pelt_v2`: pruned exact squared-error detector with hard K fallback, exhaustive independent DP differential test + real worker ground truth smoke. Not called CI_VERIFIED until latest revision passes.
 - M7/M9/M10: predeclared campaign family, additive schema migration and fair equal-CPU/wall + external baselines remain UNVERIFIED. No family-wise error or SOTA certification.
+
+- M1 opt-in measured timed-region CPU stopping limit: per-case ledger, crash/resume raw-cost derivation, v1 isolation and invalid-cost refusal; only partial full experiment-budget contract. Full CPU/wall accounting and equal-budget SOTA still outstanding.
