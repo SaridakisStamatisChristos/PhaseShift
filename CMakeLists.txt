@@ -310,3 +310,8 @@ set_tests_properties(pelt_v2_differential PROPERTIES TIMEOUT 90)
 configure_file(tests/run_v2_pelt.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_pelt.cmake @ONLY)
 add_test(NAME v2_pelt_worker_smoke COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_pelt.cmake)
 set_tests_properties(v2_pelt_worker_smoke PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+
+# Predeclared four-policy real-worker cliff and constant-null calibration.
+configure_file(benchmarks/v2/run_policy_challenge.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/v2_policy_challenge.cmake @ONLY)
+add_test(NAME v2_four_policy_cliff_null_challenge COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/v2_policy_challenge.cmake)
+set_tests_properties(v2_four_policy_cliff_null_challenge PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)

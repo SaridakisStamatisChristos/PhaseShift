@@ -13,3 +13,10 @@ It runs **real PHASESHIFT worker/SQLite/confirmation** for both original `adapti
 Scenario families: single/multiple cliff, smooth/no-signal, categorical, rare XOR interaction, invalid-status boundary, sorting/Top-K/graph actual workloads. Metric vector: confirmed true boundaries, localization error, false positives, complete seed-matched case count, actual CPU and wall cost, resident memory, scheduler overhead, and reproducible logical replay.
 
 Before claiming a v2 uplift: independent training and sealed evaluation splits, >=20 independent heldout seeds where feasible, real equal wall/worker-CPU stopping conditions, null campaigns, resource status controls, external PELT/ruptures and fair performance-fuzzing comparisons on genuinely matching objectives. No such complete external campaign has yet been executed. Negative results will remain in the ledger and summary.
+
+
+## Four-policy cliff/null frozen challenge
+
+`python3 benchmarks/v2/policy_challenge.py --binary ./build/phaseshift --out /tmp/phaseshift-four-policy --seeds 31,47,83 --cases 20`
+
+Tests the v1 adaptive control and v2 uniform, stratified and hierarchical search on both a planted single-cliff calibration and a constant null, with every seed/policy retained. Writes a SHA-256 stamped plan before measurements, per-run SQLite/CLI evidence, CPU/wall time, localization, confirmation and false-positive status. Refuses to overwrite the output directory. CI runs one seed as a real-worker smoke. Equal case ceilings **do not** equalize CPU/wall budgets; no external SOTA or population error-rate claim is justified.

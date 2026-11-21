@@ -15,8 +15,8 @@ import subprocess
 import time
 
 
-def config(policy, seed, count):
-    modern = policy == "hierarchical_boundary_v2"
+def config(policy, seed, count, negative=False):
+    modern = policy in ("hierarchical_boundary_v2", "uniform_v2", "stratified_v2")
     return {
         "schema_version": 1,
         "experiment_id": f"frozen-calibration-{policy}-{seed}",
@@ -25,7 +25,7 @@ def config(policy, seed, count):
         "seed": seed,
         "primary_axis": "x",
         "axes": {"x": {"values": list(range(64))}},
-        "fixed": {"threshold": 24},
+        "fixed": {"threshold": 24, **({"negative": True} if negative else {})},
         "search": {
             "method": policy,
             "max_cases": count,
@@ -40,12 +40,12 @@ def config(policy, seed, count):
     }
 
 
-def run(binary, root, policy, seed, count):
+def run(binary, root, policy, seed, count, negative=False):
     folder = root / f"{policy}_{seed}"
     if folder.exists():
         raise RuntimeError(f"refusing to overwrite prior benchmark: {folder}")
     conf = root / f"config_{policy}_{seed}.json"
-    conf.write_text(json.dumps(config(policy, seed, count), indent=2) + "\n")
+    conf.write_text(json.dumps(config(policy, seed, count, negative), indent=2) + "\n")
     start = time.perf_counter_ns()
     explored = subprocess.run(
         [str(binary), "explore", "--config", str(conf), "--out", str(folder)],
