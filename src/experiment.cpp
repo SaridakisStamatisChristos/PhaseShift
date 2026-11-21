@@ -1,5 +1,6 @@
 #include "phaseshift/experiment.hpp"
 #include "phaseshift/campaign_v2.hpp"
+#include "phaseshift/confirmation_seeds_v2.hpp"
 #include "phaseshift/statistics.hpp"
 #include "phaseshift/morphology.hpp"
 #include "phaseshift/minimize.hpp"
@@ -1101,6 +1102,11 @@ void confirm(const std::string& run,const std::string& id){
    throw Error("v2 hypothesis rank out of predeclared bounds");
   hypothesis_seed_offset=(rank-1)*1000000000ULL;
  }
+ // Reject unsafe negative-control and paired holdout seeds without mutating
+ // a frozen hypothesis or retaining an incomplete overflowed population.
+ if(cfg.policy_version=="v2")
+  validate_v2_confirmation_seed_space(cfg.seed,
+   hypothesis_seed_offset/1000000000ULL+1ULL,cfg.confirm_blocks);
  const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(cfg.total_wall_s);
  const auto prescribed_seeds=[&](bool failure){
   std::vector<std::uint64_t> seeds;

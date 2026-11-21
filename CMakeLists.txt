@@ -392,3 +392,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   COMMAND phaseshift_v2_os_crash_tests ${CMAKE_CURRENT_BINARY_DIR}/ctest_v2_os_kill)
  set_tests_properties(v2_sigkill_transaction_recovery PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
 endif()
+
+add_executable(phaseshift_confirmation_seed_bounds_v2_tests tests/confirmation_seed_bounds_v2.cpp)
+target_link_libraries(phaseshift_confirmation_seed_bounds_v2_tests PRIVATE phaseshift_core)
+add_test(NAME v2_confirmation_seed_window_overflow COMMAND phaseshift_confirmation_seed_bounds_v2_tests)
