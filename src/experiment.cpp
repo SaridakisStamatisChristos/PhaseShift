@@ -8,6 +8,7 @@
 #include "phaseshift/reproducer.hpp"
 #include "phaseshift/lazy_search.hpp"
 #include "phaseshift/stratified_v2.hpp"
+#include "phaseshift/weighted_v2.hpp"
 #include "phaseshift/scheduler_v2.hpp"
 #include "phaseshift/hybrid_v2.hpp"
 #include "phaseshift/interaction_v2.hpp"
@@ -88,7 +89,7 @@ static std::int64_t axis_value(const Case& c,const std::string& axis);
 static Json config_json(const Config& c){
  Json j;j.put("schema_version",static_cast<std::int64_t>(1));j.put("experiment_id",c.experiment_id);j.put("problem_family",c.family);j.put("algorithm_a",c.a);j.put("algorithm_b",c.b);j.put("search_method",c.method);j.put("primary_axis",c.axis);j.put("seed",static_cast<std::int64_t>(c.seed));j.put("max_cases",static_cast<std::int64_t>(c.max_cases));j.put("max_case_bytes",static_cast<std::int64_t>(c.max_bytes));j.put("max_search_queue",static_cast<std::int64_t>(c.max_queue));j.put("max_report_bytes",static_cast<std::int64_t>(c.max_report_bytes));j.put("discovery_blocks",static_cast<std::int64_t>(c.blocks));j.put("confirm_blocks",static_cast<std::int64_t>(c.confirm_blocks));j.put("warmup",static_cast<std::int64_t>(c.warmup));j.put("sample_ms",static_cast<std::int64_t>(c.sample_ms));j.put("rss_mb",static_cast<std::int64_t>(c.rss_mb));j.put("total_wall_seconds",static_cast<std::int64_t>(c.total_wall_s));j.put("min_practical_ratio",c.min_ratio);j.put("confirmation_confidence",c.confirmation_confidence);j.put("fdr_q",c.fdr_q);j.put("multiple_testing",c.multiple_testing);j.put("exploration_fraction",c.exploration_fraction);j.put("minimum_batch_ms",static_cast<std::int64_t>(c.minimum_batch_ms));j.put("isolation_mode",c.isolation_mode);if(c.policy_version=="v2"){
    j.put("policy_version",c.policy_version);
-   if(c.replicate_count>1||!c.admissible_subspaces.empty()){
+   if(c.replicate_count>1||!c.admissible_subspaces.empty()||!c.domain_priors.empty()){
      Json search;
      if(c.replicate_count>1)search.put("replicates",static_cast<std::int64_t>(c.replicate_count));
      if(!c.admissible_subspaces.empty()){
@@ -104,7 +105,16 @@ static Json config_json(const Config& c){
       }
       json_object_object_add(search.p,"admissible_subspaces",array);
      }
-     j.put("search",std::move(search));
+     if(!c.domain_priors.empty()){
+       Json prior_json;
+       for(const auto& [axis,prior]:c.domain_priors){
+        Json labels;
+        for(const auto& [label,weight]:prior)labels.put(label.c_str(),weight);
+        prior_json.put(axis.c_str(),std::move(labels));
+       }
+       search.put("domain_priors",std::move(prior_json));
+      }
+      j.put("search",std::move(search));
     }
    if(c.detector_version!="boundary_v1"){Json detection;detection.put("detector_version",c.detector_version);j.put("detection",std::move(detection));}
    if(c.max_sampled_cpu_ns){Json limits;limits.put("max_sampled_cpu_ns",static_cast<std::int64_t>(c.max_sampled_cpu_ns));j.put("limits",std::move(limits));}
@@ -173,7 +183,7 @@ static void validate_configuration_shape(const Json& j){
  check(top.p,"config",integer_top,real_top,text_top,obj_top);
  if(auto* v=j.get("objective");v&&std::string(json_object_get_string(v))!="discover_structural_performance_boundaries")
   throw Error("unsupported objective");
- if(auto* v=j.get("search"))check(v,"search",{"max_cases","replicates"},{"exploration_fraction"},{"method","policy_version"},{"admissible_subspaces"});
+ if(auto* v=j.get("search"))check(v,"search",{"max_cases","replicates"},{"exploration_fraction"},{"method","policy_version"},{"admissible_subspaces","domain_priors"});
  if(auto* v=j.get("measurement"))check(v,"measurement",{"paired_discovery_blocks","paired_confirm_blocks","warmup_iterations","minimum_batch_ms"},{},{"primary_metric","isolation_mode","protocol_version"},{});
  if(auto* v=j.get("detection"))check(v,"detection",{},{"min_practical_ratio","confirmation_confidence","fdr_q"},{"multiple_testing","detector_version"},{});
  if(auto* v=j.get("limits"))check(v,"limits",{"total_wall_seconds","max_cases","max_case_bytes","max_worker_rss_mb","max_sample_wall_ms","max_report_bytes","max_search_queue","max_sampled_cpu_ns"},{},{},{});
@@ -286,7 +296,30 @@ Config config_from_json(const Json& j){
    }
   }
  }
- 
+ // Prior maps are opt-in and versioned; unspecified labels retain weight 1.
+ if(auto* search=j.get("search")){
+  json_object* prior_object=nullptr;
+  if(json_object_object_get_ex(search,"domain_priors",&prior_object)){
+   if(!prior_object||json_object_get_type(prior_object)!=json_type_object||
+      json_object_object_length(prior_object)==0)
+    throw Error("search.domain_priors must be a nonempty object");
+   json_object_object_foreach(prior_object,axis,weights){
+    if(!weights||json_object_get_type(weights)!=json_type_object||
+       json_object_object_length(weights)==0)
+     throw Error(std::string("v2 prior axis requires nonempty weight map: ")+axis);
+    json_object_object_foreach(weights,label,weight){
+     if(!weight||(json_object_get_type(weight)!=json_type_int&&
+                  json_object_get_type(weight)!=json_type_double))
+      throw Error(std::string("v2 prior must be numeric: ")+axis+"="+label);
+     const auto value=json_object_get_double(weight);
+     if(!std::isfinite(value)||value<1.e-6||value>1.e6)
+      throw Error(std::string("v2 prior weight out of bounds: ")+axis+"="+label);
+     c.domain_priors[axis][label]=value;
+    }
+   }
+  }
+ }
+
  if(c.policy_version=="v1"){
   if(auto* detector=j.get("detection")){
    Json policy(json_object_get(detector));
@@ -296,6 +329,7 @@ Config config_from_json(const Json& j){
    Json search(json_object_get(nested));
    if(search.get("replicates"))throw Error("v1 does not accept search.replicates");
    if(search.get("admissible_subspaces"))throw Error("v1 does not accept search.admissible_subspaces");
+   if(search.get("domain_priors"))throw Error("v1 does not accept search.domain_priors");
   }
   if(auto* l=j.get("limits")){Json limits(json_object_get(l));if(limits.get("max_sampled_cpu_ns"))throw Error("v1 does not accept max_sampled_cpu_ns");}
   if(auto* m=j.get("measurement")){Json legacy(json_object_get(m));
@@ -303,7 +337,11 @@ Config config_from_json(const Json& j){
   }
   if(c.method!="grid"&&c.method!="random"&&c.method!="stratified"&&c.method!="adaptive_partition")throw Error("unknown search method");
  }else if(c.policy_version=="v2"){
-  if(c.method!="uniform_v2"&&c.method!="hierarchical_boundary_v2"&&c.method!="stratified_v2"&&c.method!="hybrid_mixed_v2")throw Error("unsupported v2 search method");
+  if(c.method!="uniform_v2"&&c.method!="hierarchical_boundary_v2"&&c.method!="stratified_v2"&&c.method!="hybrid_mixed_v2"&&c.method!="weighted_v2")throw Error("unsupported v2 search method");
+  if(c.method!="weighted_v2"&&!c.domain_priors.empty())
+   throw Error("domain_priors are only valid for weighted_v2");
+  if(c.method=="weighted_v2"&&c.domain_priors.empty())
+   throw Error("weighted_v2 requires search.domain_priors");
   if(c.measurement_protocol_version!="legacy_retained_outputs_v1"&&
      c.measurement_protocol_version!="calibrated_batch_v2")
    throw Error("unsupported v2 measurement protocol; kernel_only_v2 is unavailable");
@@ -355,7 +393,13 @@ Config config_from_json(const Json& j){
   for(const auto& value:dims[index].second){Case next=candidate;assign(next,dims[index].first,value);visit(index+1,next);}
  };
  if(c.policy_version=="v1")visit(0,c.base);
- else (void)AdmissibleSearchSpace(std::vector<LazySearchSpace::Axis>(c.axes.begin(),c.axes.end()),c.admissible_subspaces);
+ else{
+   const auto ordered_axes=std::vector<LazySearchSpace::Axis>(c.axes.begin(),c.axes.end());
+   (void)AdmissibleSearchSpace(ordered_axes,c.admissible_subspaces);
+   if(c.method=="weighted_v2")
+    (void)WeightedIndexSamplerV2(ordered_axes,c.admissible_subspaces,
+      c.domain_priors,static_cast<std::uint64_t>(c.replicate_count),c.seed);
+  }
  return c;
 }
 Config parse_config(const std::string& path){return config_from_json(Json::file(path));}
@@ -844,6 +888,10 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
  const auto virtual_count=space.cardinality()*replicas;
  SparsePermutation sampler(virtual_count,cfg.seed^0xb7d2f937c4abULL);
  std::optional<StratifiedIndexSamplerV2> stratified;
+ std::optional<WeightedIndexSamplerV2> weighted;
+ if(cfg.method=="weighted_v2")
+  weighted.emplace(std::vector<LazySearchSpace::Axis>(cfg.axes.begin(),cfg.axes.end()),
+    cfg.admissible_subspaces,cfg.domain_priors,replicas,cfg.seed^0x47c11bf25eb49a0dULL);
  if(cfg.method=="stratified_v2")
   stratified.emplace(std::vector<LazySearchSpace::Axis>(cfg.axes.begin(),cfg.axes.end()),
     cfg.admissible_subspaces,cfg.axis,replicas,cfg.seed^0xb4ad19f14acULL);
@@ -855,7 +903,9 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
  std::optional<HierarchicalPolicyV2> hierarchy;
  if(cfg.method=="hierarchical_boundary_v2")
   hierarchy.emplace(static_cast<std::size_t>(space.cardinality()),cfg.seed^0xd9af2e13ULL,cfg.exploration_fraction);
- const auto rng_state=[&](){return hybrid?hybrid->rng_state():(hierarchy?hierarchy->rng_state():(stratified?stratified->state():sampler.state()));};
+ const auto rng_state=[&](){return hybrid?hybrid->rng_state():
+  (hierarchy?hierarchy->rng_state():
+   (weighted?weighted->state():(stratified?stratified->state():sampler.state())));};
  const auto cpu_ms=[&](const Case& c){
   double ms=0;
   for(const auto& o:store.observations(c.id,false))
@@ -886,13 +936,15 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
    validate_case_schema(c,cfg.max_bytes);
    return std::pair<std::uint64_t,Case>{static_cast<std::uint64_t>(*pos),std::move(c)};
   }
-  for(std::size_t attempts=0;attempts<10000&&(stratified?stratified->has_next():sampler.has_next());++attempts){
-   auto index=stratified?stratified->next():sampler.next();Case c=cfg.base;c.seed=cfg.seed+(index%replicas);
+  for(std::size_t attempts=0;attempts<10000&&
+      (weighted?weighted->has_next():(stratified?stratified->has_next():sampler.has_next()));++attempts){
+   auto index=weighted?weighted->next():(stratified?stratified->next():sampler.next());Case c=cfg.base;c.seed=cfg.seed+(index%replicas);
    for(const auto& [axis,value]:space.at(index/replicas))assign(c,axis,value);
    try{validate_case_schema(c,cfg.max_bytes);}catch(const Error&){continue;}
    return std::pair<std::uint64_t,Case>{index,std::move(c)};
   }
-  if(stratified?stratified->has_next():sampler.has_next())throw Error("v2 exceeded deterministic invalid-proposal cap");
+  if(weighted?weighted->has_next():(stratified?stratified->has_next():sampler.has_next()))
+   throw Error("v2 exceeded deterministic invalid-proposal cap");
   return std::nullopt;
  };
  std::size_t completed=0;
@@ -957,6 +1009,7 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
    if(hierarchy)store.event("v2_acquisition",std::to_string(next->first)+";origin="+hierarchy->origin());
    if(hybrid)store.event("v2_acquisition",std::to_string(next->first)+";origin="+hybrid->origin());
    if(stratified)store.event("v2_acquisition",std::to_string(next->first)+";origin=stratified_primary_axis");
+   if(weighted)store.event("v2_acquisition",std::to_string(next->first)+";origin=weighted_domain_prior");
    if(cfg.max_sampled_cpu_ns){
     Json cost;cost.put("sampled_cpu_ns",static_cast<std::int64_t>(sampled_cpu_used));
     cost.put("limit_ns",static_cast<std::int64_t>(cfg.max_sampled_cpu_ns));
