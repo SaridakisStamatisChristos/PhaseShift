@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "document_id": "PHASESHIFT-V3-SOTA-ARCH-001",
+  "baseline_branch": "main",
+  "baseline_commit": "279a8c65ad7ec3741a727ff49aa7f84e0628a6f1",
+  "baseline_tree": "0b312826c387078663343156172d1fc16d274f92",
+  "verified_from": "GitHub repository HEAD and Actions API, 2026-11-21",
+  "matched_directive_baseline": true,
+  "workflows": [
+    {
+      "name": "build-test",
+      "run_id": 44940163331,
+      "event": "push",
+      "conclusion": "success"
+    },
+    {
+      "name": "sanitizers",
+      "run_id": 44940163373,
+      "event": "push",
+      "conclusion": "success"
+    },
+    {
+      "name": "production-line-coverage",
+      "run_id": 44940163319,
+      "event": "push",
+      "conclusion": "success"
+    }
+  ],
+  "v2_expensive_heldout_postmerge": "NOT_OBSERVED",
+  "local_build_at_v3_start": "NOT_EXECUTED",
+  "v3_sota_claim": "UNVERIFIED",
+  "limitations": [
+    "GitHub green status is historical baseline evidence, not v3 code verification",
+    "Holdout run on exact merged main not established"
+  ]
+}
