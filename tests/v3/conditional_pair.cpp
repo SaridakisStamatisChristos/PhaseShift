@@ -126,6 +126,18 @@ static void billion_virtual_rss(){
  }
  CHECK(policy.tracked_contexts()<=12);
  CHECK(policy.resident_global_entries()<500);
+ // Independent adversarial cap: a huge universe with a *tiny* context
+ // allowance must stop drawing new unseen global indices after saturation.
+ // The retained contexts still permit independent discovery/replication.
+ ConditionalPairPortfolio bounded(legal,axes,"x",{},971,40,1.2,2);
+ for(int i=0;i<40;++i){
+  const auto p=bounded.next();CHECK(p);
+  CHECK(legal.index_of(p->left)&&legal.index_of(p->right));
+  bounded.on_committed(*p,Cohort::Discovery,static_cast<double>(i%7)/10.);
+ }
+ CHECK(bounded.tracked_contexts()==2);
+ CHECK(bounded.resident_global_entries()<=2); // state cannot scale with rejections
+
 #ifdef __linux__
  CHECK(getrusage(RUSAGE_SELF,&after)==0);
  CHECK(after.ru_maxrss-before.ru_maxrss<65536); // <64 MiB additional RSS
