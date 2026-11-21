@@ -1719,7 +1719,10 @@ void minimize(const std::string& run,const std::string& id){
    }
    /* Crash/timeout/OOM witnesses require exact failure-mode preservation.
       Never turn censored failures into synthetic large timing values. */
-   if(fs::exists(run+"/witness.json"))throw Error("witness artifacts already exist");
+   const auto artifacts=witness_output_root(run,id,cfg.policy_version).string();
+   if(fs::exists(artifacts+"/witness.json")||fs::exists(artifacts+"/witness.hex"))
+    throw Error("witness artifacts already exist");
+   fs::create_directories(artifacts);
    const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(std::min(120,cfg.total_wall_s));
    auto predicate=[&](const Case& input)->bool{
     if(std::chrono::steady_clock::now()>deadline)throw Error("failure shrink time budget exhausted");
