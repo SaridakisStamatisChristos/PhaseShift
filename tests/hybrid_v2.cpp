@@ -18,6 +18,28 @@ int main(){
  CHECK(selected);
  CHECK(targeted.origin()=="hybrid_matched_interval");
  CHECK(*selected==idx("a","3")||*selected==idx("b","3"));
+ // An observed matched structural contrast must request two NEW
+ // observations with the same seed, not independent unrelated seeds.
+ HybridMixedPolicyV2 paired(axes,{},"x",3,2026,0.,true);
+ for(const auto p:std::vector<std::pair<std::uint64_t,double>>{
+     {idx("a","0"),1.},{idx("a","7"),10.},
+     {idx("b","0"),1.},{idx("b","7"),1.}})
+  paired.observe(p.first*3,p.second,2.);
+ const auto left_replicate=paired.next();
+ CHECK(left_replicate&&*left_replicate==idx("a","0")*3+1);
+ CHECK(paired.origin()=="hybrid_paired_replication");
+ paired.observe(*left_replicate,1.,2.);
+ const auto right_replicate=paired.next();
+ CHECK(right_replicate&&*right_replicate==idx("a","7")*3+1);
+ CHECK(paired.origin()=="hybrid_paired_replication");
+ CHECK(*left_replicate%3==*right_replicate%3);
+ CHECK(*left_replicate/3!=*right_replicate/3);
+ paired.observe(*right_replicate,10.,2.);
+ HybridMixedPolicyV2 null_pair(axes,{},"x",3,2026,0.,true);
+ for(const auto i:{idx("a","0"),idx("a","7"),idx("b","0"),idx("b","7")})
+  null_pair.observe(i*3,1.,2.);
+ CHECK(null_pair.next());
+ CHECK(null_pair.origin()!="hybrid_paired_replication");
  HybridMixedPolicyV2 a(axes,{},"x",2,12,0.25,true),b(axes,{},"x",2,12,0.25,true);
  std::set<std::uint64_t> seen;
  for(int k=0;k<32;++k){
