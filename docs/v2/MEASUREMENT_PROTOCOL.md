@@ -7,3 +7,8 @@
 V2 still includes algorithm output allocation, copying and release within the measured operation; it is not kernel-only. The unsafe shortcut of subtracting output allocation/copy cost is prohibited. No optimization/precision benefit or equivalence to v1 is asserted without held-out measurement.
 
 Unknown versions, including kernel_only_v2, fail closed. Status failures, timeouts, and wrong-answer results never become valid performance measurements. The new protocol is CPU-only.
+
+
+## Opt-in configuration and persisted identification
+
+Use `measurement.protocol_version` with value `calibrated_batch_v2` only inside an explicitly v2 search configuration. Absent this value, both v1 and v2 retain the historical legacy protocol. The frozen experiment manifest records the measurement version and generated report JSON exposes it. Each v2 calibrated sample's raw SQLite `detail` field also contains its protocol, measured pilot wall time and pilot iteration count, including failed samples when available. Independent CLI tests validate the new protocol, resume consistency and rejection of unsupported/kernel-only modes.

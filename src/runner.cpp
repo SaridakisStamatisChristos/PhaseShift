@@ -334,7 +334,8 @@ std::vector<Observation> measure(const Case& c,const std::vector<std::string>& n
   }
   if(result.empty())throw Error("empty worker response");
  }catch(const std::exception& e){
-  result.clear();for(const auto& n:names){Observation s;s.algorithm=n;s.detail=e.what();s.status="infrastructure_error";result.push_back(s);}
+  result.clear();for(const auto& n:names){Observation s;s.algorithm=n;s.detail=e.what();s.status="infrastructure_error";
+   s.measurement_protocol_version=measurement_protocol_version;result.push_back(s);}
  }
  if(in[1]>=0)close(in[1]);
  close(out[0]);int status=0;

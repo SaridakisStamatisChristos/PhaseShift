@@ -104,6 +104,10 @@ static Json config_json(const Config& c){
     }
    if(c.detector_version!="boundary_v1"){Json detection;detection.put("detector_version",c.detector_version);j.put("detection",std::move(detection));}
    if(c.max_sampled_cpu_ns){Json limits;limits.put("max_sampled_cpu_ns",static_cast<std::int64_t>(c.max_sampled_cpu_ns));j.put("limits",std::move(limits));}
+   if(c.measurement_protocol_version!="legacy_retained_outputs_v1"){
+    Json m;m.put("protocol_version",c.measurement_protocol_version);
+    j.put("measurement",std::move(m));
+   }
   }
   j.put("base_params",case_params(c.base));
  Json axes;for(const auto& [name,values]:c.axes){auto* arr=json_object_new_array();for(const auto& val:values)json_object_array_add(arr,json_object_new_string(val.c_str()));json_object_object_add(axes.p,name.c_str(),arr);}j.put("axes",std::move(axes));return j;
@@ -166,7 +170,7 @@ static void validate_configuration_shape(const Json& j){
  if(auto* v=j.get("objective");v&&std::string(json_object_get_string(v))!="discover_structural_performance_boundaries")
   throw Error("unsupported objective");
  if(auto* v=j.get("search"))check(v,"search",{"max_cases","replicates"},{"exploration_fraction"},{"method","policy_version"},{"admissible_subspaces"});
- if(auto* v=j.get("measurement"))check(v,"measurement",{"paired_discovery_blocks","paired_confirm_blocks","warmup_iterations","minimum_batch_ms"},{},{"primary_metric","isolation_mode"},{});
+ if(auto* v=j.get("measurement"))check(v,"measurement",{"paired_discovery_blocks","paired_confirm_blocks","warmup_iterations","minimum_batch_ms"},{},{"primary_metric","isolation_mode","protocol_version"},{});
  if(auto* v=j.get("detection"))check(v,"detection",{},{"min_practical_ratio","confirmation_confidence","fdr_q"},{"multiple_testing","detector_version"},{});
  if(auto* v=j.get("limits"))check(v,"limits",{"total_wall_seconds","max_cases","max_case_bytes","max_worker_rss_mb","max_sample_wall_ms","max_report_bytes","max_search_queue","max_sampled_cpu_ns"},{},{},{});
  if(auto* v=j.get("fixed"))if(json_object_get_type(v)!=json_type_object)throw Error("fixed must be an object");
@@ -223,7 +227,7 @@ Config config_from_json(const Json& j){
  c.seed=static_cast<std::uint64_t>(j.i("seed",137));c.max_cases=static_cast<std::uint64_t>(j.i("max_cases",static_cast<std::int64_t>(c.max_cases)));c.max_bytes=static_cast<std::uint64_t>(j.i("max_case_bytes",64*1024*1024));c.max_queue=static_cast<std::uint64_t>(j.i("max_search_queue",10000));c.max_report_bytes=static_cast<std::uint64_t>(j.i("max_report_bytes",10000000));c.blocks=static_cast<int>(j.i("discovery_blocks",9));c.confirm_blocks=static_cast<int>(j.i("confirm_blocks",20));c.warmup=static_cast<int>(j.i("warmup",2));c.sample_ms=static_cast<int>(j.i("sample_ms",3000));c.rss_mb=static_cast<int>(j.i("rss_mb",1024));c.total_wall_s=static_cast<int>(j.i("total_wall_seconds",600));c.min_ratio=j.d("min_practical_ratio",1.2);c.exploration_fraction=j.d("exploration_fraction",c.exploration_fraction);c.minimum_batch_ms=static_cast<int>(j.i("minimum_batch_ms",c.minimum_batch_ms));c.isolation_mode=j.s("isolation_mode",c.isolation_mode);
  if(auto* m=j.get("measurement")){Json x(json_object_get(m));require_field_type(x,"isolation_mode",false);
   if(json_object_get_type(m)!=json_type_object)throw Error("measurement must be an object");
-  static const std::set<std::string> accepted={"paired_discovery_blocks","paired_confirm_blocks","warmup_iterations","minimum_batch_ms","primary_metric","isolation_mode"};
+  static const std::set<std::string> accepted={"paired_discovery_blocks","paired_confirm_blocks","warmup_iterations","minimum_batch_ms","primary_metric","isolation_mode","protocol_version"};
   json_object_object_foreach(m,key,value){(void)value;if(!accepted.count(key))throw Error(std::string("unsupported measurement key: ")+key);}
   if(x.get("primary_metric")){
    if(json_object_get_type(x.get("primary_metric"))!=json_type_string||x.s("primary_metric")!="wall_ns_per_operation")
@@ -231,7 +235,8 @@ Config config_from_json(const Json& j){
   }
   if(const auto* v=x.get("minimum_batch_ms");v&&json_object_get_type(v)!=json_type_int)
    throw Error("minimum_batch_ms must be integral");
-  c.blocks=static_cast<int>(x.i("paired_discovery_blocks",c.blocks));c.confirm_blocks=static_cast<int>(x.i("paired_confirm_blocks",c.confirm_blocks));c.warmup=static_cast<int>(x.i("warmup_iterations",c.warmup));c.minimum_batch_ms=static_cast<int>(x.i("minimum_batch_ms",c.minimum_batch_ms));c.isolation_mode=x.s("isolation_mode",c.isolation_mode);}
+  c.blocks=static_cast<int>(x.i("paired_discovery_blocks",c.blocks));c.confirm_blocks=static_cast<int>(x.i("paired_confirm_blocks",c.confirm_blocks));c.warmup=static_cast<int>(x.i("warmup_iterations",c.warmup));c.minimum_batch_ms=static_cast<int>(x.i("minimum_batch_ms",c.minimum_batch_ms));c.isolation_mode=x.s("isolation_mode",c.isolation_mode);
+  c.measurement_protocol_version=x.s("protocol_version",c.measurement_protocol_version);}
  if(auto* d=j.get("detection")){Json x(json_object_get(d));c.min_ratio=x.d("min_practical_ratio",c.min_ratio);c.confirmation_confidence=x.d("confirmation_confidence",c.confirmation_confidence);c.fdr_q=x.d("fdr_q",c.fdr_q);c.multiple_testing=x.s("multiple_testing",c.multiple_testing);c.detector_version=x.s("detector_version",c.detector_version);}
  if(auto* l=j.get("limits")){Json x(json_object_get(l));c.total_wall_s=static_cast<int>(x.i("total_wall_seconds",c.total_wall_s));c.max_cases=static_cast<std::uint64_t>(x.i("max_cases",static_cast<std::int64_t>(c.max_cases)));c.max_bytes=static_cast<std::uint64_t>(x.i("max_case_bytes",static_cast<std::int64_t>(c.max_bytes)));c.rss_mb=static_cast<int>(x.i("max_worker_rss_mb",c.rss_mb));c.sample_ms=static_cast<int>(x.i("max_sample_wall_ms",c.sample_ms));c.max_queue=static_cast<std::uint64_t>(x.i("max_search_queue",static_cast<std::int64_t>(c.max_queue)));c.max_report_bytes=static_cast<std::uint64_t>(x.i("max_report_bytes",static_cast<std::int64_t>(c.max_report_bytes)));c.max_sampled_cpu_ns=static_cast<std::uint64_t>(x.i("max_sampled_cpu_ns",0));}
  c.base.family=c.family;c.base.seed=c.seed;
@@ -289,9 +294,15 @@ Config config_from_json(const Json& j){
    if(search.get("admissible_subspaces"))throw Error("v1 does not accept search.admissible_subspaces");
   }
   if(auto* l=j.get("limits")){Json limits(json_object_get(l));if(limits.get("max_sampled_cpu_ns"))throw Error("v1 does not accept max_sampled_cpu_ns");}
+  if(auto* m=j.get("measurement")){Json legacy(json_object_get(m));
+   if(legacy.get("protocol_version"))throw Error("v1 does not accept measurement.protocol_version");
+  }
   if(c.method!="grid"&&c.method!="random"&&c.method!="stratified"&&c.method!="adaptive_partition")throw Error("unknown search method");
  }else if(c.policy_version=="v2"){
   if(c.method!="uniform_v2"&&c.method!="hierarchical_boundary_v2"&&c.method!="stratified_v2")throw Error("unsupported v2 search method");
+  if(c.measurement_protocol_version!="legacy_retained_outputs_v1"&&
+     c.measurement_protocol_version!="calibrated_batch_v2")
+   throw Error("unsupported v2 measurement protocol; kernel_only_v2 is unavailable");
   if(c.detector_version!="boundary_v1"&&c.detector_version!="multi_change_v2"&&c.detector_version!="multi_change_pelt_v2")
    throw Error("unsupported v2 detector version");
   if((c.detector_version=="multi_change_v2"||c.detector_version=="multi_change_pelt_v2")&&!numeric_axis(c.axis))
@@ -861,7 +872,7 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
   try{
    obs=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},
     cfg.blocks,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,
-    cfg.isolation_mode=="per_sample",deadline);
+    cfg.isolation_mode=="per_sample",deadline,cfg.measurement_protocol_version);
   }catch(const Error& e){
    if(std::string(e.what()).find("total_wall_seconds budget exhausted")!=std::string::npos){budget_hit=true;break;}
    throw;
@@ -973,7 +984,7 @@ static void execute_schedule(const Config& cfg,const std::string& out,Store& sto
   auto c=make_case(choices[index],cfg.max_bytes);
   std::vector<Observation> obs;
   try{
-   obs=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},cfg.blocks,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",hard_deadline);
+   obs=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},cfg.blocks,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",hard_deadline,cfg.measurement_protocol_version);
   }catch(const Error& error){
    if(std::string(error.what()).find("total_wall_seconds budget exhausted")!=std::string::npos){budget_hit=true;break;}
    throw;
@@ -1110,7 +1121,7 @@ void confirm(const std::string& run,const std::string& id){
     c.seed=seed;c=make_case(c,cfg.max_bytes);
     if(prior.count(c.id)){all_valid=false;break;}
     auto observations=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:
-       std::vector<std::string>{cfg.a,cfg.b},1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline);
+       std::vector<std::string>{cfg.a,cfg.b},1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline,cfg.measurement_protocol_version);
     int count=0;
     for(const auto& observation:observations){
      store.add_observation(c,observation,true);
@@ -1134,7 +1145,7 @@ void confirm(const std::string& run,const std::string& id){
    else{
     const auto control_rows=measure(control,cfg.b.empty()?std::vector<std::string>{cfg.a}:
       std::vector<std::string>{cfg.a,cfg.b},1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,
-      cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline);
+      cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline,cfg.measurement_protocol_version);
     for(const auto& row:control_rows){
      store.add_observation(control,row,true);
      if(row.status!="ok")all_valid=false;
@@ -1163,7 +1174,7 @@ void confirm(const std::string& run,const std::string& id){
    if(std::chrono::steady_clock::now()>=deadline)throw Error("total_wall_seconds budget exhausted during confirmation");
    Case c=frozen;assign(c,axis,frozen_axis_value(cfg,side==0?left:right));c.seed=seed;c=make_case(c,cfg.max_bytes);
    if(discovery_ids.count(c.id)){reject("Held-out input overlaps discovery: confirmation invalid");return;}
-   auto obs=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline);
+   auto obs=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline,cfg.measurement_protocol_version);
    for(const auto& o:obs)store.add_observation(c,o,true);
    auto result=metric(store,c,cfg,true);
    if(!result){reject("Insufficient holdout measurement or correctness/worker failure");return;}
@@ -1233,7 +1244,7 @@ void confirm(const std::string& run,const std::string& id){
    confirmed=false;detail<<"; negative-control invalid: discovery overlap";
   }else{
    const auto observations=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},
-     1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline);
+     1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline,cfg.measurement_protocol_version);
    for(const auto& o:observations)store.add_observation(c,o,true);
    const auto valid=metric(store,c,cfg,true).has_value();
    if(!valid)confirmed=false;
@@ -1383,7 +1394,7 @@ static void minimize_performance(const std::string& run,const std::string& id,
     c.seed=base_seed+static_cast<std::uint64_t>(block)*97ULL;
     try{c=make_case(c,cfg.max_bytes);}catch(const Error&){return false;}
     auto observations=measure(c,cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b},
-                              1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline);
+                              1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline,cfg.measurement_protocol_version);
     for(const auto& o:observations)evidence.add_observation(c,o,true);
     const auto m=metric(evidence,c,cfg,true);
     if(!m){evidence.event("minimization_invalid",stage+" worker or oracle invalid case="+c.id);return false;}
@@ -1517,7 +1528,7 @@ static void minimize_categorical(const std::string& run,const std::string& id,St
     c=make_case(c,cfg.max_bytes);
     const auto names=cfg.b.empty()?std::vector<std::string>{cfg.a}:std::vector<std::string>{cfg.a,cfg.b};
     const auto obs=measure(c,names,1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,
-      cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline);
+      cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline,cfg.measurement_protocol_version);
     bool admissible=obs.size()==(cfg.b.empty()?1U:4U);
     bool seen_primary=false;
     for(const auto& row:obs){
@@ -1636,7 +1647,7 @@ void minimize(const std::string& run,const std::string& id){
    const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(std::min(120,cfg.total_wall_s));
    auto predicate=[&](const Case& input)->bool{
     if(std::chrono::steady_clock::now()>deadline)throw Error("failure shrink time budget exhausted");
-    const auto obs=measure(input,{cfg.a},1,0,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline);
+    const auto obs=measure(input,{cfg.a},1,0,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline,cfg.measurement_protocol_version);
     return obs.size()==1&&obs[0].status==subtype;
    };
    ShrinkResult shrunk;shrunk.original=*original;shrunk.smallest=*original;
@@ -1733,7 +1744,7 @@ void minimize_failure_case(const std::string& run,const std::string& case_id,con
  auto predicate=[&](const Case& candidate){
   if(std::chrono::steady_clock::now()>deadline)throw Error("witness minimization wall budget exhausted");
   /* Worker validation includes oracle comparison before collecting timing. */
-  const auto result=measure(candidate,{algorithm},1,0,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline);
+  const auto result=measure(candidate,{algorithm},1,0,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline,cfg.measurement_protocol_version);
   return result.size()==1&&result[0].status=="wrong_answer";
  };
  /* A crash is NOT automatically a wrong answer: only repeatable semantic
@@ -1823,7 +1834,8 @@ void report(const std::string& run,const std::string& formats){
     }
    }
  }
- Json report;report.put("schema_version",static_cast<std::int64_t>(1));report.put("experiment_id",cfg.experiment_id);report.put("family",cfg.family);report.put("algorithm_a",cfg.a);report.put("algorithm_b",cfg.b);report.put("environment",Json::parse(s.environment()));report.put("summary",std::move(summary));
+ Json report;report.put("schema_version",static_cast<std::int64_t>(1));report.put("experiment_id",cfg.experiment_id);
+ if(cfg.policy_version=="v2")report.put("measurement_protocol_version",cfg.measurement_protocol_version);report.put("family",cfg.family);report.put("algorithm_a",cfg.a);report.put("algorithm_b",cfg.b);report.put("environment",Json::parse(s.environment()));report.put("summary",std::move(summary));
  auto* raw=json_object_new_array();std::ostringstream csv;csv<<"case_id,family,axis_value,holdout,algorithm,status,batch_ns,batch_iterations,work_units,block,cpu_ns,peak_rss_bytes,order_position,order_seed,output_digest,detail\n";
  std::uint64_t raw_size=0;bool truncated=false;
  const auto export_limit=cfg.max_report_bytes/2;
@@ -1984,7 +1996,7 @@ void intervene(const std::string& source,const std::string& out,const std::strin
    std::vector<Observation> observations;
    try{
     observations=measure(generated[static_cast<std::size_t>(side)],algorithms,
-     1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline);
+     1,cfg.warmup,cfg.sample_ms,cfg.rss_mb,cfg.minimum_batch_ms,cfg.isolation_mode=="per_sample",deadline,cfg.measurement_protocol_version);
    }catch(const Error& error){
     if(std::string(error.what()).find("total_wall_seconds budget exhausted")!=std::string::npos){
      budget_exhausted=true;break;
