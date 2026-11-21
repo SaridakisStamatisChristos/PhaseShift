@@ -49,9 +49,14 @@ def main():
     shutil.rmtree(a.out,ignore_errors=True)
     a.out.mkdir(parents=True)
     first=run(a.binary.resolve(),a.out,"threshold",False)
+    repeated=run(a.binary.resolve(),a.out,"threshold_repeat",False)
     other=run(a.binary.resolve(),a.out,"negative",True)
-    assert first==other,(first,other)
-    print("PASS cliff-bracketing threshold 23..24, null rejection, deterministic CLI provenance")
+    # An adaptive policy MUST be permitted to change its decision sequence
+    # when the observed performance signal changes. Determinism compares
+    # equal experiments, not a planted cliff with an independent null.
+    assert first==repeated,(first,repeated)
+    assert len(other)==8 and len(set(other))==8,other
+    print("PASS cliff-bracketing threshold 23..24, null rejection, same-signal deterministic CLI replay")
 
 if __name__=="__main__":
     main()
