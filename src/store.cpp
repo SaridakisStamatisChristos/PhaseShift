@@ -11,6 +11,7 @@
 #include <sstream>
 #include <array>
 #include <cstdint>
+#include <limits>
 namespace ps {
 static void check(int rc,sqlite3* db,const std::string& what){if(rc!=SQLITE_OK&&rc!=SQLITE_DONE&&rc!=SQLITE_ROW)throw Error(what+": "+sqlite3_errmsg(db));}
 struct Statement {
@@ -39,7 +40,7 @@ Store::Store(const std::string& path,bool readonly){
  }
  check(sqlite3_open_v2(readonly?uri.c_str():path.c_str(),&db_,readonly?SQLITE_OPEN_READONLY|SQLITE_OPEN_URI:SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE,nullptr),db_,"SQL open");
  if(!readonly)exec("PRAGMA foreign_keys=ON;PRAGMA journal_mode=WAL;PRAGMA busy_timeout=5000;");
- auto old=sqlite3_get_autocommit(db_);(void)old;Statement st(db_,"PRAGMA user_version");auto rc=sqlite3_step(st.p);check(rc,db_,"schema version");auto version=sqlite3_column_int(st.p,0);if(version>7|| (readonly&&version!=6&&version!=7))throw Error("unsupported database schema version");
+ auto old=sqlite3_get_autocommit(db_);(void)old;Statement st(db_,"PRAGMA user_version");auto rc=sqlite3_step(st.p);check(rc,db_,"schema version");auto version=sqlite3_column_int(st.p,0);if(version>8|| (readonly&&version!=6&&version!=7&&version!=8))throw Error("unsupported database schema version");
  if(version==0&&!readonly){exec(R"SQL(
  BEGIN;
  CREATE TABLE IF NOT EXISTS experiments(id INTEGER PRIMARY KEY CHECK(id=1),config TEXT NOT NULL,config_hash TEXT NOT NULL,environment TEXT NOT NULL,created_at TEXT NOT NULL);
@@ -123,6 +124,50 @@ Store::Store(const std::string& path,bool readonly){
  PRAGMA user_version=7;
  COMMIT;
  )SQL");}
+}
+void Store::upgrade_v2_schema(){
+ Statement version(db_,"PRAGMA user_version");
+ if(sqlite3_step(version.p)!=SQLITE_ROW)throw Error("cannot read v2 schema version");
+ const auto current=sqlite3_column_int(version.p,0);
+ if(current==8)return;
+ if(current!=7)throw Error("v2 schema migration requires current v7 evidence");
+ // DDL and version bit flip form one transaction; old records are never rewritten.
+ exec(R"SQL(
+ BEGIN IMMEDIATE;
+ CREATE TABLE IF NOT EXISTS policy_versions(
+   id TEXT PRIMARY KEY,storage_schema INTEGER NOT NULL CHECK(storage_schema=8),
+   registered_at TEXT NOT NULL);
+ INSERT OR IGNORE INTO policy_versions(id,storage_schema,registered_at)
+  VALUES('v2',8,datetime('now'));
+ CREATE TABLE IF NOT EXISTS budget_ledger(
+   decision_seq INTEGER PRIMARY KEY REFERENCES scheduler_decisions(seq),
+   case_id TEXT NOT NULL REFERENCES cases(case_id),
+   max_sampled_cpu_ns INTEGER NOT NULL CHECK(max_sampled_cpu_ns>0),
+   cumulative_sampled_cpu_ns INTEGER NOT NULL CHECK(cumulative_sampled_cpu_ns>=0),
+   accounting_complete INTEGER NOT NULL CHECK(accounting_complete IN (0,1)),
+   recorded_at TEXT NOT NULL);
+ CREATE INDEX IF NOT EXISTS idx_v2_budget_ledger_case ON budget_ledger(case_id);
+ PRAGMA user_version=8;
+ COMMIT;
+ )SQL");
+}
+void Store::record_v2_budget_entry(const std::string& case_id,
+ std::uint64_t cumulative_sampled_cpu_ns,std::uint64_t max_sampled_cpu_ns,bool accounting_complete){
+ if(max_sampled_cpu_ns==0||
+    max_sampled_cpu_ns>static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())||
+    cumulative_sampled_cpu_ns>static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max()))
+  throw Error("out-of-range v2 persisted CPU budget");
+ // Called in the SAME transaction as add_observation and record_decision.
+ // The SELECT cannot silently create evidence for another CaseID.
+ Statement stmt(db_,"INSERT INTO budget_ledger(decision_seq,case_id,max_sampled_cpu_ns,"
+   "cumulative_sampled_cpu_ns,accounting_complete,recorded_at)"
+   " SELECT seq,case_id,?,?,?,? FROM scheduler_decisions"
+   " WHERE case_id=? ORDER BY seq DESC LIMIT 1");
+ stmt.integer(1,static_cast<std::int64_t>(max_sampled_cpu_ns));
+ stmt.integer(2,static_cast<std::int64_t>(cumulative_sampled_cpu_ns));
+ stmt.integer(3,accounting_complete?1:0);stmt.text(4,now_utc());stmt.text(5,case_id);
+ stmt.done();
+ if(sqlite3_changes(db_)!=1)throw Error("unlinked v2 CPU budget decision");
 }
 Store::~Store(){if(db_)sqlite3_close(db_);}
 void Store::exec(const std::string& sql){char* err=nullptr;int rc=sqlite3_exec(db_,sql.c_str(),nullptr,nullptr,&err);if(rc!=SQLITE_OK){std::string msg=err?err:"unknown sqlite error";sqlite3_free(err);throw Error("SQL: "+msg);}}

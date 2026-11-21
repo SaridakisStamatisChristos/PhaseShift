@@ -4,6 +4,7 @@ p=argparse.ArgumentParser()
 p.add_argument("--run",required=True);p.add_argument("--binary",required=True);p.add_argument("--config",required=True)
 a=p.parse_args()
 with sqlite3.connect(pathlib.Path(a.run)/"run.sqlite") as db:
+ assert db.execute("PRAGMA user_version").fetchone()[0]==8
  n=db.execute("SELECT COUNT(*) FROM scheduler_decisions").fetchone()[0]
  limits=db.execute("SELECT detail FROM events WHERE event='v2_sampled_cpu_limit_reached'").fetchall()
  events=db.execute("SELECT detail FROM events WHERE event='v2_sampled_cpu_budget_ledger'").fetchall()
@@ -11,6 +12,8 @@ with sqlite3.connect(pathlib.Path(a.run)/"run.sqlite") as db:
  assert n==1,(n,limits)
  assert len(limits)==1 and complete==1,(limits,complete)
  assert len(events)==1 and json.loads(events[0][0])["accounting_complete"],events
+ ledger=db.execute("SELECT cumulative_sampled_cpu_ns,max_sampled_cpu_ns,accounting_complete FROM budget_ledger").fetchall()
+ assert len(ledger)==1 and ledger[0][0]>=ledger[0][1] and ledger[0][2]==1,ledger
  before=(n,limits,complete)
  result=subprocess.run([a.binary,"resume","--run",a.run],capture_output=True,text=True,timeout=20)
  assert result.returncode==0,(result.stdout,result.stderr)

@@ -871,6 +871,8 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
   try{
    for(const auto& o:obs)store.add_observation(c,o,false);
    store.record_decision(static_cast<std::size_t>(next->first),c.id,rng_state());
+   if(cfg.max_sampled_cpu_ns)
+    store.record_v2_budget_entry(c.id,sampled_cpu_used,cfg.max_sampled_cpu_ns,!sampled_cpu_unknown);
    if(hierarchy)store.event("v2_acquisition",std::to_string(next->first)+";origin="+hierarchy->origin());
    if(stratified)store.event("v2_acquisition",std::to_string(next->first)+";origin=stratified_primary_axis");
    if(cfg.max_sampled_cpu_ns){
@@ -980,12 +982,12 @@ static void execute_schedule(const Config& cfg,const std::string& out,Store& sto
 }
 void explore(const Config& cfg,const std::string& out,std::size_t pause_after){
  if(fs::exists(out+"/run.sqlite"))throw Error("output run already exists (will not overwrite evidence)");
- fs::create_directories(out);Store s(out+"/run.sqlite");s.experiment(config_json(cfg).str(),environment());
+ fs::create_directories(out);Store s(out+"/run.sqlite");if(cfg.policy_version=="v2")s.upgrade_v2_schema();s.experiment(config_json(cfg).str(),environment());
  execute_schedule(cfg,out,s,pause_after);
 }
 void resume(const std::string& run,std::size_t pause_after){
  if(!fs::exists(run+"/run.sqlite"))throw Error("run database missing for resume");
- Store s(run+"/run.sqlite");const auto cfg=config_from_json(Json::parse(s.config()));
+ Store s(run+"/run.sqlite");const auto cfg=config_from_json(Json::parse(s.config()));if(cfg.policy_version=="v2")s.upgrade_v2_schema();
  sqlite3_stmt* st=nullptr;
  if(sqlite3_prepare_v2(s.raw(),"SELECT COUNT(*) FROM hypotheses",-1,&st,nullptr)!=SQLITE_OK)throw Error("hypothesis lookup failed");
  auto rc=sqlite3_step(st);const auto done=rc==SQLITE_ROW?sqlite3_column_int64(st,0):0;sqlite3_finalize(st);

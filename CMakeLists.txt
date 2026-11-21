@@ -320,3 +320,8 @@ set_tests_properties(v2_four_policy_cliff_null_challenge PROPERTIES TIMEOUT 120 
 configure_file(tests/run_v2_cpu_budget.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_cpu_budget.cmake @ONLY)
 add_test(NAME v2_sampled_cpu_budget_resume COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_cpu_budget.cmake)
 set_tests_properties(v2_sampled_cpu_budget_resume PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+
+# Explicit opt-in v7->v8 migration; legacy v1 v7 left bitwise untouched.
+add_executable(phaseshift_v2_schema_migration_tests tests/v2_schema_migration.cpp)
+target_link_libraries(phaseshift_v2_schema_migration_tests PRIVATE phaseshift_core)
+add_test(NAME v2_schema8_non_destructive_migration COMMAND phaseshift_v2_schema_migration_tests ${CMAKE_CURRENT_BINARY_DIR}/ctest_v2_schema_migration)
