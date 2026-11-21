@@ -1,6 +1,7 @@
 #include "phaseshift/boundary_v2.hpp"
 #include "phaseshift/core.hpp"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 namespace ps {
@@ -141,3 +142,52 @@ MultiChangeFitV2 fit_multi_change_pelt_v2(std::span<const double> y,
  return fit;
 }
 }
+
+namespace ps {
+// Robust local-shape diagnostic; screens raw exploratory segmentation only.
+// Three-point medians reject a one-bin impulse. A locally prominent step
+// distinguishes abrupt jumps from a broad, approximately smooth trend.
+// Positive screening is NOT statistical confirmation: frozen holdout remains
+// mandatory before a hypothesis may be labelled CONFIRMED.
+std::optional<PersistentJumpEvidenceV2> screen_persistent_jump_v2(
+ std::span<const double> values,std::size_t cut,double minimum_log_effect){
+ if(!std::isfinite(minimum_log_effect)||minimum_log_effect<=0)
+  throw Error("invalid v2 persistent-jump effect threshold");
+ if(cut==0||cut>=values.size())
+  throw Error("invalid v2 persistent-jump cut index");
+ for(const double y:values)
+  if(!std::isfinite(y))throw Error("nonfinite v2 persistent-jump observation");
+ if(cut<3||values.size()-cut<3)return std::nullopt;
+ const auto median_three=[](double a,double b,double c){
+  std::array<double,3> data{a,b,c};
+  std::sort(data.begin(),data.end());
+  return data[1];
+ };
+ const double before=median_three(values[cut-3],values[cut-2],values[cut-1]);
+ const double after=median_three(values[cut],values[cut+1],values[cut+2]);
+ const double persistence=after-before;
+ const double edge=values[cut]-values[cut-1];
+ if(!std::isfinite(persistence)||!std::isfinite(edge))
+  throw Error("persistent-jump difference cannot be represented");
+ std::vector<double> background;
+ background.reserve(values.size()-2);
+ for(std::size_t i=1;i<values.size();++i)if(i!=cut){
+  const double delta=std::abs(values[i]-values[i-1]);
+  if(!std::isfinite(delta))throw Error("persistent-jump gradient overflow");
+  background.push_back(delta);
+ }
+ std::sort(background.begin(),background.end());
+ const std::size_t middle=background.size()/2;
+ const double median=background.size()%2?background[middle]:
+  0.5*background[middle-1]+0.5*background[middle];
+ if(!std::isfinite(median))throw Error("persistent-jump background overflow");
+ const double magnitude=std::abs(persistence);
+ // Strict inequalities reject a continuous trend with no discrete jump.
+ if(!(persistence*edge>0.)||!(magnitude>=minimum_log_effect)||
+    !(magnitude>=0.5*std::abs(edge))||
+    !(std::abs(edge)>=minimum_log_effect)||
+    !(std::abs(edge)>3.*median))
+  return std::nullopt;
+ return PersistentJumpEvidenceV2{magnitude,std::abs(edge),median};
+}
+} // namespace ps

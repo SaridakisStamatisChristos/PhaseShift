@@ -420,9 +420,9 @@ Config config_from_json(const Json& j){
   if(c.measurement_protocol_version!="legacy_retained_outputs_v1"&&
      c.measurement_protocol_version!="calibrated_batch_v2")
    throw Error("unsupported v2 measurement protocol; kernel_only_v2 is unavailable");
-  if(c.detector_version!="boundary_v1"&&c.detector_version!="multi_change_v2"&&c.detector_version!="multi_change_pelt_v2"&&c.detector_version!="multi_slope_v2")
+  if(c.detector_version!="boundary_v1"&&c.detector_version!="multi_change_v2"&&c.detector_version!="multi_change_pelt_v2"&&c.detector_version!="multi_change_jump_v2"&&c.detector_version!="multi_slope_v2")
    throw Error("unsupported v2 detector version");
-  if((c.detector_version=="multi_change_v2"||c.detector_version=="multi_change_pelt_v2"||c.detector_version=="multi_slope_v2")&&!numeric_axis(c.axis))
+  if((c.detector_version=="multi_change_v2"||c.detector_version=="multi_change_pelt_v2"||c.detector_version=="multi_change_jump_v2"||c.detector_version=="multi_slope_v2")&&!numeric_axis(c.axis))
    throw Error("multi_change_v2 requires an ordered numeric primary axis");
   if(c.max_cases>c.max_queue)throw Error("v2 candidate budget exceeds memory bound");
   if(c.seed>static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())-static_cast<std::uint64_t>(c.replicate_count-1))
@@ -814,11 +814,17 @@ static std::vector<Detection> detect_multi_v2(Store& store,const Config& cfg){
   const auto fit=cfg.detector_version=="multi_change_pelt_v2"?
    fit_multi_change_pelt_v2(y,2,3,penalty):fit_multi_change_v2(y,2,3,penalty);
   for(const auto at:fit.changes){
-   const auto effect=std::abs(y[at]-y[at-1]);
-   std::vector<double> alternatives;
-   for(std::size_t j=1;j<y.size();++j)if(j!=at)alternatives.push_back(std::abs(y[j]-y[j-1]));
-   const auto background=sample_median(alternatives);
-   if(effect<std::log(cfg.min_ratio)||effect<2.5*background)continue;
+   double effect=std::abs(y[at]-y[at-1]);
+   if(cfg.detector_version=="multi_change_jump_v2"){
+    const auto screened=screen_persistent_jump_v2(y,at,std::log(cfg.min_ratio));
+    if(!screened)continue;
+    effect=screened->absolute_persistent_shift;
+   }else{
+    std::vector<double> alternatives;
+    for(std::size_t j=1;j<y.size();++j)if(j!=at)alternatives.push_back(std::abs(y[j]-y[j-1]));
+    const auto background=sample_median(alternatives);
+    if(effect<std::log(cfg.min_ratio)||effect<2.5*background)continue;
+   }
    found.push_back(Detection{x[at-1],x[at],effect,
     cfg.family=="calibration"?"SYNTHETIC_CALIBRATION":"PERFORMANCE_CLIFF",
     case_params(representatives.at(scope)),scope,""});
@@ -1263,8 +1269,14 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
   v2_factorial_diagnostic(store,cfg);
   if(cfg.detector_version=="multi_slope_v2")v2_slope_diagnostic(store,cfg);
   std::optional<Detection> selected=detect(store,cfg);
+  // The explicitly opt-in persistent-jump screen must not be bypassed by
+  // the legacy single-cut performance candidate. Status/correctness and
+  // crossover discoveries remain eligible under the existing protocol.
+  if(cfg.detector_version=="multi_change_jump_v2"&&selected&&
+     (selected->kind=="PERFORMANCE_CLIFF"||selected->kind=="SYNTHETIC_CALIBRATION"))
+   selected.reset();
   std::vector<Detection> ranked_multi;
-  if(cfg.detector_version=="multi_change_v2"||cfg.detector_version=="multi_change_pelt_v2"){
+  if(cfg.detector_version=="multi_change_v2"||cfg.detector_version=="multi_change_pelt_v2"||cfg.detector_version=="multi_change_jump_v2"){
    ranked_multi=detect_multi_v2(store,cfg);
    std::size_t rank=0;
    for(const auto& c:ranked_multi){

@@ -23,7 +23,7 @@ int main(int argc,char** argv){
  CHECK(raw.good());
  raw<<"scenario,seed,index,value\n";
  rows<<"scenario,seed,true_cut_1,true_cut_2,dp_changes,pelt_changes,dp_sse,pelt_sse,localization_error,model_version\n";
- struct Aggregate {int campaigns=0,with_any=0,near_truth=0;};
+ struct Aggregate {int campaigns=0,with_any=0,near_truth=0,screened=0,screened_near_truth=0;};
  std::map<std::string,Aggregate> summary;
  constexpr int N=48;
  for(int seed=0;seed<20;++seed){
@@ -55,6 +55,16 @@ int main(int argc,char** argv){
    ++agg.campaigns;
    if(!fit.changes.empty())++agg.with_any;
    if(cut1>=0&&nearest<=2)++agg.near_truth;
+   bool screened_any=false,screened_near=false;
+   for(const auto at:fit.changes){
+    const auto accepted=ps::screen_persistent_jump_v2(y,at,std::log(1.2));
+    if(accepted){
+     screened_any=true;
+     if(cut1>=0&&std::abs(static_cast<int>(at)-cut1)<=2)screened_near=true;
+    }
+   }
+   if(screened_any)++agg.screened;
+   if(screened_near)++agg.screened_near_truth;
    rows<<scenario<<","<<seed<<","<<cut1<<","<<cut2<<","
        <<fit.changes.size()<<","<<pruned.changes.size()<<","
        <<fit.penalized_sse<<","<<pruned.penalized_sse<<","
@@ -94,11 +104,30 @@ int main(int argc,char** argv){
   first=false;
   report<<"    \""<<label<<"\": {\"campaigns\": "<<a.campaigns
         <<", \"nonempty_detection\": "<<a.with_any
-        <<", \"near_planted_boundary\": "<<a.near_truth<<"}";
+        <<", \"near_planted_boundary\": "<<a.near_truth
+        <<", \"persistent_jump_screened\": "<<a.screened
+        <<", \"persistent_jump_near_truth\": "<<a.screened_near_truth<<"}";
  }
  report<<"\n  }\n}\n";
  CHECK(report.good());
  CHECK(summary.size()==6);
  for(const auto& [label,a]:summary){(void)label;CHECK(a.campaigns==20);}
+ // A shaped candidate is not a confirmed discovery, but the frozen 20-seed
+ // screen must reject these controls without tuning on their outcomes.
+ CHECK(summary["0"].screened==0); // constant null
+ CHECK(summary["3"].screened==0); // smooth trend, no level discontinuity
+ CHECK(summary["4"].screened==0); // single-bin impulse, not a persistent jump
+ CHECK(summary["1"].screened_near_truth>=18); // planted single cliff
+ CHECK(summary["2"].screened_near_truth>=18); // two independent cliffs
+ // Adversarial inputs: strict validation, short flank, nonfinite observation.
+ CHECK(!ps::screen_persistent_jump_v2(std::vector<double>{0.,0.,1.,1.},2,0.1));
+ bool rejected=false;
+ try{(void)ps::screen_persistent_jump_v2(std::vector<double>{0.,0.,0.,1.,1.,1.},3,0.);}
+ catch(const ps::Error&){rejected=true;}
+ CHECK(rejected);
+ rejected=false;
+ try{(void)ps::screen_persistent_jump_v2(std::vector<double>{0.,0.,0.,INFINITY,1.,1.},3,0.1);}
+ catch(const ps::Error&){rejected=true;}
+ CHECK(rejected);
  return 0;
 }
