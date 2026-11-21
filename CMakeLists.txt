@@ -408,3 +408,9 @@ configure_file(benchmarks/v2/run_sampled_cpu_challenge.cmake.in ${CMAKE_CURRENT_
 add_test(NAME v2_sampled_worker_cpu_four_policy_challenge
  COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/v2_sampled_cpu_challenge.cmake)
 set_tests_properties(v2_sampled_worker_cpu_four_policy_challenge PROPERTIES TIMEOUT 150 RUN_SERIAL TRUE)
+
+add_executable(phaseshift_v2_multi_witness_tests tests/v2_multi_witness.cpp)
+target_link_libraries(phaseshift_v2_multi_witness_tests PRIVATE phaseshift_core)
+add_test(NAME v2_real_minimize_multi_hypothesis_artifact_isolation
+ COMMAND phaseshift_v2_multi_witness_tests ${CMAKE_CURRENT_BINARY_DIR}/ctest_v2_multi_witness)
+set_tests_properties(v2_real_minimize_multi_hypothesis_artifact_isolation PROPERTIES TIMEOUT 70 RUN_SERIAL TRUE)
