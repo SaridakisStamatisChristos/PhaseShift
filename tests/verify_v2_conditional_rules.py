@@ -71,6 +71,8 @@ change("unavailable_constraint",lambda c:c["search"].update(
     conditional_rules=[
         {"when":{"axis":"negative","values":[True]},
          "require":{"axis":"x","values":[0]}},
+        {"when":{"axis":"negative","values":[True]},
+         "require":{"axis":"x","values":[1]}},
         {"when":{"axis":"negative","values":[False]},
          "require":{"axis":"negative","values":[True]}}
     ]))
