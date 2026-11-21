@@ -338,3 +338,10 @@ target_link_libraries(phaseshift_campaign_cli_fixture PRIVATE phaseshift_core)
 configure_file(tests/run_v2_campaign_cli.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_campaign_cli.cmake @ONLY)
 add_test(NAME v2_campaign_cli_lifecycle COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_campaign_cli.cmake)
 set_tests_properties(v2_campaign_cli_lifecycle PROPERTIES TIMEOUT 35 RUN_SERIAL TRUE)
+
+# Fixed-family two-hypothesis full CPU-worker/independent-holdout campaign.
+add_executable(phaseshift_campaign_worker_fixture tests/campaign_worker_fixture.cpp)
+target_link_libraries(phaseshift_campaign_worker_fixture PRIVATE phaseshift_core)
+configure_file(tests/run_v2_campaign_worker.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_campaign_worker.cmake @ONLY)
+add_test(NAME v2_campaign_two_real_worker_hypotheses COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_campaign_worker.cmake)
+set_tests_properties(v2_campaign_two_real_worker_hypotheses PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
