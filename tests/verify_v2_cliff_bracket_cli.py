@@ -29,7 +29,7 @@ def run(binary, root, name, negative):
         if result.returncode:
             raise AssertionError(f"{command} exited {result.returncode}: {result.stderr}")
     with sqlite3.connect(folder/"run.sqlite") as db:
-        decisions=db.execute("SELECT pool_index FROM scheduler_decisions ORDER BY decision_index").fetchall()
+        decisions=db.execute("SELECT pool_index FROM scheduler_decisions ORDER BY seq").fetchall()
         hypothesis=db.execute("SELECT status,left_value,right_value FROM hypotheses WHERE id='H1'").fetchone()
     assert len(decisions)==8,decisions
     assert len({x[0] for x in decisions})==8,decisions
