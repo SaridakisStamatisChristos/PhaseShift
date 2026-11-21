@@ -516,3 +516,13 @@ add_test(NAME v2_typed_ordered_axis_contract
  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/verify_v2_axis_contract.py
  --binary ${CMAKE_CURRENT_BINARY_DIR}/phaseshift)
 set_tests_properties(v2_typed_ordered_axis_contract PROPERTIES TIMEOUT 90)
+
+# Additional opt-in cliff-bracket search-policy acceptance.
+add_executable(phaseshift_cliff_bracket_v2_tests tests/cliff_bracket_v2.cpp)
+target_link_libraries(phaseshift_cliff_bracket_v2_tests PRIVATE phaseshift_core)
+add_test(NAME v2_cliff_bracketing_full_threshold_oracle COMMAND phaseshift_cliff_bracket_v2_tests)
+set_tests_properties(v2_cliff_bracketing_full_threshold_oracle PROPERTIES TIMEOUT 20)
+add_test(NAME v2_cliff_bracketing_cli_holdout_contract
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/verify_v2_cliff_bracket_cli.py
+ --binary $<TARGET_FILE:phaseshift> --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_cliff_bracket_v2)
+set_tests_properties(v2_cliff_bracketing_cli_holdout_contract PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)

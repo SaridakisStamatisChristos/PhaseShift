@@ -412,7 +412,7 @@ Config config_from_json(const Json& j){
   }
   if(c.method!="grid"&&c.method!="random"&&c.method!="stratified"&&c.method!="adaptive_partition")throw Error("unknown search method");
  }else if(c.policy_version=="v2"){
-  if(c.method!="uniform_v2"&&c.method!="hierarchical_boundary_v2"&&c.method!="stratified_v2"&&c.method!="hybrid_mixed_v2"&&c.method!="weighted_v2")throw Error("unsupported v2 search method");
+  if(c.method!="uniform_v2"&&c.method!="hierarchical_boundary_v2"&&c.method!="cliff_bracket_v2"&&c.method!="stratified_v2"&&c.method!="hybrid_mixed_v2"&&c.method!="weighted_v2")throw Error("unsupported v2 search method");
   if(c.method!="weighted_v2"&&!c.domain_priors.empty())
    throw Error("domain_priors are only valid for weighted_v2");
   if(c.method=="weighted_v2"&&c.domain_priors.empty())
@@ -427,9 +427,9 @@ Config config_from_json(const Json& j){
   if(c.max_cases>c.max_queue)throw Error("v2 candidate budget exceeds memory bound");
   if(c.seed>static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())-static_cast<std::uint64_t>(c.replicate_count-1))
    throw Error("v2 replicate seeds overflow signed persistence");
-  if(c.method=="hierarchical_boundary_v2"&&(c.axes.size()!=1||!numeric_axis(c.axis)||c.replicate_count!=1||!c.admissible_subspaces.empty()))
+  if((c.method=="hierarchical_boundary_v2"||c.method=="cliff_bracket_v2")&&(c.axes.size()!=1||!numeric_axis(c.axis)||c.replicate_count!=1||!c.admissible_subspaces.empty()))
    throw Error("hierarchical_boundary_v2 currently requires one ordered numeric axis");
-  if((c.method=="hierarchical_boundary_v2"||c.method=="hybrid_mixed_v2")&&numeric_axis(c.axis)){
+  if((c.method=="hierarchical_boundary_v2"||c.method=="cliff_bracket_v2"||c.method=="hybrid_mixed_v2")&&numeric_axis(c.axis)){
    std::optional<std::int64_t> previous;
    for(const auto& label:c.axes.at(c.axis)){
     Case sample=c.base;assign(sample,c.axis,label);
@@ -1091,8 +1091,9 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
    cfg.admissible_subspaces,cfg.axis,replicas,cfg.seed^0x827d391bULL,
    cfg.exploration_fraction,numeric_axis(cfg.axis));
  std::optional<HierarchicalPolicyV2> hierarchy;
- if(cfg.method=="hierarchical_boundary_v2")
-  hierarchy.emplace(static_cast<std::size_t>(space.cardinality()),cfg.seed^0xd9af2e13ULL,cfg.exploration_fraction);
+ if(cfg.method=="hierarchical_boundary_v2"||cfg.method=="cliff_bracket_v2")
+  hierarchy.emplace(static_cast<std::size_t>(space.cardinality()),cfg.seed^0xd9af2e13ULL,
+    cfg.exploration_fraction,cfg.method=="cliff_bracket_v2");
  const auto rng_state=[&](){return hybrid?hybrid->rng_state():
   (hierarchy?hierarchy->rng_state():
    (weighted?weighted->state():(stratified?stratified->state():sampler.state())));};

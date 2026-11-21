@@ -23,6 +23,7 @@ class HierarchicalPolicyV2 {
   }
  };
  std::size_t count_;double random_fraction_;SparsePermutation random_;
+ bool prefer_contrast_=false;
  std::map<std::size_t,Summary> observed_;std::string origin_="endpoint";
  std::priority_queue<Gap> gaps_;
  void push_gap(std::map<std::size_t,Summary>::const_iterator left,
@@ -33,12 +34,20 @@ class HierarchicalPolicyV2 {
   const double contrast=both?std::min(2.,std::abs(*left->second.metric-*right->second.metric)):0.;
   const double uncertainty=left->second.metric.has_value()!=right->second.metric.has_value()?1.:0.2;
   const double cost=1.+0.5*(left->second.cpu_ms+right->second.cpu_ms);
-  const double score=(0.2+contrast+uncertainty)*static_cast<double>(span)/std::sqrt(cost);
+  // Existing hierarchical_v2 score is immutable for replay compatibility.
+  // Opt-in cliff bracketing instead prefers measured opposite-side contrasts
+  // and uses width only to break ambiguity or search yet-unproven regions.
+  // This is an acquisition heuristic, not a calibrated jump probability.
+  const double score=prefer_contrast_?
+   contrast+static_cast<double>(span)/static_cast<double>(count_):
+   (0.2+contrast+uncertainty)*static_cast<double>(span)/std::sqrt(cost);
   gaps_.push(Gap{score,left->first,right->first});
  }
 public:
- HierarchicalPolicyV2(std::size_t n,std::uint64_t seed,double fraction)
- :count_(n),random_fraction_(fraction),random_(n,seed){
+ HierarchicalPolicyV2(std::size_t n,std::uint64_t seed,double fraction,
+                      bool prefer_cliff_contrast=false)
+ :count_(n),random_fraction_(fraction),random_(n,seed),
+  prefer_contrast_(prefer_cliff_contrast){
   if(!n||!std::isfinite(fraction)||fraction<0||fraction>1)
    throw Error("invalid hierarchical v2 policy configuration");
  }
@@ -76,7 +85,7 @@ public:
       std::next(left)!=right){
     gaps_.pop();continue;
    }
-   origin_="hierarchical_interval";
+   origin_=prefer_contrast_?"cliff_bracket_interval":"hierarchical_interval";
    return gap.left+(gap.right-gap.left)/2;
   }
   origin_="random_fallback";return unseen_random();
