@@ -114,6 +114,21 @@ def run_one(binary, root, policy, fixture, seed, cases, cpu_budget_ns,
             break
         with sqlite3.connect(folder / "run.sqlite") as db:
             reached = db.execute("SELECT COUNT(*) FROM scheduler_decisions").fetchone()[0]
+            terminal = bool(db.execute(
+                "SELECT EXISTS(SELECT 1 FROM events WHERE event='search_complete')"
+            ).fetchone()[0])
+        if terminal:
+            # A completed search may exhaust its legal structural candidate
+            # universe before the caller's larger case ceiling. Never call
+            # resume on a finalized hypothesis just to manufacture a failure.
+            if reached < pre_case_count or reached-pre_case_count>1:
+                stopped = "terminal_transcript_inconsistent"
+                had_failure = True
+            elif reached>=cases:
+                stopped = "case_ceiling"
+            else:
+                stopped = "search_space_exhausted_or_engine_completed"
+            break
         if reached <= pre_case_count:
             stopped = "no_new_case_or_exhausted"
             break
