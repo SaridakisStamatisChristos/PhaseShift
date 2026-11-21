@@ -74,15 +74,20 @@ public:
   }
   try{
    exec("PRAGMA journal_mode=WAL;PRAGMA busy_timeout=5000;");
-   const auto version=prepare("PRAGMA user_version");
-   if(sqlite3_step(version.get())!=SQLITE_ROW)
-    throw Error("v2 model cache user_version unavailable");
-   const auto n=sqlite3_column_int(version.get(),0);
+   int n=0;
+   {
+    auto version=prepare("PRAGMA user_version");
+    if(sqlite3_step(version.get())!=SQLITE_ROW)
+     throw Error("v2 model cache user_version unavailable");
+    n=sqlite3_column_int(version.get(),0);
+   }
    if(n!=0&&n!=1)throw Error("unsupported v2 model cache version");
    if(n==0){
-    const auto tables=prepare("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
-    if(sqlite3_step(tables.get())!=SQLITE_ROW||sqlite3_column_int64(tables.get(),0)!=0)
-     throw Error("v2 model cache version-zero file is not empty");
+    {
+     auto tables=prepare("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
+     if(sqlite3_step(tables.get())!=SQLITE_ROW||sqlite3_column_int64(tables.get(),0)!=0)
+      throw Error("v2 model cache version-zero file is not empty");
+    }
     exec("BEGIN IMMEDIATE;"
      "CREATE TABLE cache_identity("
       "id INTEGER PRIMARY KEY CHECK(id=1),config_sha256 TEXT NOT NULL);"

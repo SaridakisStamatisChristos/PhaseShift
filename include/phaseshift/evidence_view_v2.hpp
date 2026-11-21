@@ -38,7 +38,8 @@ public:
   for(const auto& o:samples){
    if(o.status=="ok")++summary.valid_samples;
    else ++summary.failed_samples;
-   if(o.cpu_ns>=0)cpu_ns+=static_cast<long double>(o.cpu_ns);
+   if(o.status=="ok"&&o.cpu_ns>=0)
+    cpu_ns+=static_cast<long double>(o.cpu_ns);
    else ++summary.missing_cpu;
    if(o.peak_rss_bytes>=0)
     summary.peak_rss_bytes=std::max(summary.peak_rss_bytes,o.peak_rss_bytes);

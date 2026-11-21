@@ -9,6 +9,7 @@ struct Config {
  std::vector<std::map<std::string,std::vector<std::string>>> admissible_subspaces;
  std::vector<ConditionalRuleV2> conditional_rules;
  std::map<std::string,std::map<std::string,double>> domain_priors; // v2 weighted_v2 only
+ bool persist_model_cache_v2=false;
  std::uint64_t seed=137,max_cases=128,max_bytes=64ULL*1024*1024,max_queue=10000,max_report_bytes=10000000,max_sampled_cpu_ns=0;
  int blocks=9,confirm_blocks=20,warmup=2,sample_ms=3000,rss_mb=1024,total_wall_s=600;
  double min_ratio=1.20,confirmation_confidence=0.99,fdr_q=0.05,exploration_fraction=0.20;
