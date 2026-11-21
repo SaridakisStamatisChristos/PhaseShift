@@ -1,3 +1,5 @@
+> **Latest verified code checkpoint:** `60be88bd`, with GitHub GCC/Clang/sanitizer 73/73 CTests each and LLVM production line coverage 95.11% (4902/5154). See [CONTINUATION_STATUS.md](CONTINUATION_STATUS.md#r7-continuation-checkpoint--21-november-2026-verified-code-revision-60be88bd) for exact workflow IDs, new commits and M0–M12 remaining hard gates. This documentation-only commit requires its own CI; older checkpoint records below remain historic.
+
 > **Status notice (R7 continuation, 21 November 2026):** This file contains historical checkpoint observations; consult [CONTINUATION_STATUS.md](CONTINUATION_STATUS.md) for the current exact-revision evidence and open hard gates. Earlier “pending latest CI” statements describe older revisions, not the current branch head.
 
 # PHASESHIFT v2 — R7 implementation ledger

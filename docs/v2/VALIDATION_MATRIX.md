@@ -1,3 +1,5 @@
+> **Latest verified code checkpoint:** `60be88bd`: GCC 73/73 CTests, Clang 73/73, ASan/UBSan 73/73, coverage 73/73 and 95.11% production executable line coverage (4902/5154), all GitHub-hosted workflows green on this **code SHA**. Current docs revision is not automatically covered. H2+ nested witness bundles and matched-contrast heuristic replication are now implemented and tested, but statistical calibration, genuine equal end-to-end CPU/wall budgets, and external SOTA comparison remain open. See [CONTINUATION_STATUS.md](CONTINUATION_STATUS.md).
+
 > **Status notice (R7 continuation, 21 November 2026):** This file contains historical checkpoint observations; consult [CONTINUATION_STATUS.md](CONTINUATION_STATUS.md) for the current exact-revision evidence and open hard gates. Earlier “pending latest CI” statements describe older revisions, not the current branch head.
 
 # PHASESHIFT v2 — Validation Matrix (provisional; not a release gate pass)
