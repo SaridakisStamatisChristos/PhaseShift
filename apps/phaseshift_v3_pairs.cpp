@@ -5,7 +5,6 @@
 #include "phaseshift/v3/replicate_planner.hpp"
 #include "phaseshift/v3/adaptive_pair.hpp"
 #include "phaseshift/v3/conditional_pair.hpp"
-#include "phaseshift/conditional_space_v2.hpp"
 #include <sqlite3.h>
 #include <algorithm>
 #include <chrono>
@@ -174,11 +173,10 @@ Plan make_adaptive_plan(const std::string& source,int count){
 }
 std::vector<AdmissibleSearchSpace::Subspace>
 conditional_scopes(const Plan& plan){
- const auto axes=ordered_axes(plan.config);
- return plan.implication?
-  compile_conditional_rules_v2(axes,plan.config.admissible_subspaces,
-                               plan.config.conditional_rules):
-  plan.config.admissible_subspaces;
+ // config_from_json has already compiled implication rules through the
+ // canonical v2 path. A second compilation would alter bounded strata
+ // decomposition and needlessly duplicate the source of legal truth.
+ return plan.config.admissible_subspaces;
 }
 Plan make_conditional_plan(const std::string& source,int count,bool implication=false){
  const auto cfg=config_from_json(Json::parse(source));
