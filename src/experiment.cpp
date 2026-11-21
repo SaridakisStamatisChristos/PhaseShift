@@ -805,8 +805,8 @@ static void v2_slope_diagnostic(Store& store,const Config& cfg){
   }
   std::vector<double> differences;
   for(std::size_t i=1;i<y.size();++i)
-   differences.push_back(std::abs((y[i]-y[i-1])/
-    static_cast<double>(x[i]-x[i-1])));
+   differences.push_back(std::abs(static_cast<long double>(y[i]-y[i-1])/
+    (static_cast<long double>(x[i])-static_cast<long double>(x[i-1]))));
   const auto noise=sample_median(differences);
   const auto penalty=std::max(1e-8,noise*noise*
    std::log(static_cast<double>(y.size())));

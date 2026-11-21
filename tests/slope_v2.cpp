@@ -38,7 +38,7 @@ static double brute(const std::vector<std::int64_t>& x,
 }
 int main(){
  const std::vector<std::int64_t> x={0,1,2,3,4,5,6,7,8};
- const std::vector<double> y={0,1,2,3,4,5,8,11,14};
+ const std::vector<double> y={0,1,2,3,4,5,20,23,26};
  const auto fit=ps::fit_multi_slope_v2(x,y,3,2,0.01);
  CHECK((fit.changes==std::vector<std::size_t>{6}));
  CHECK(std::abs(fit.segments[0].slope-1.)<1e-10);
