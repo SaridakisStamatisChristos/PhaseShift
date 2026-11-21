@@ -90,6 +90,31 @@ def main():
     with sqlite3.connect(str(tampered / "run.sqlite")) as db:
         db.execute("UPDATE v3_pairs SET seed=seed+1000 WHERE pair_number=0")
     invoke(args.binary, "verify", "--run", tampered, expect=2)
+    # A stored summary is not authoritative over independently reconstructed
+    # raw worker observations. SQL CHECK cannot detect a finite effect forged
+    # without changing its 'ok' status.
+    forged_effect = root / "forged_effect"
+    shutil.copytree(normal, forged_effect)
+    with sqlite3.connect(str(forged_effect / "run.sqlite")) as db:
+        db.execute("UPDATE v3_pairs SET log_contrast=log_contrast+0.5 WHERE pair_number=0")
+    invoke(args.binary, "verify", "--run", forged_effect, expect=2)
+    forged_raw = root / "forged_raw"
+    shutil.copytree(normal, forged_raw)
+    with sqlite3.connect(str(forged_raw / "run.sqlite")) as db:
+        db.execute("UPDATE v3_samples SET ns=ns*2 WHERE pair_number=0 AND side=0")
+    invoke(args.binary, "verify", "--run", forged_raw, expect=2)
+    # Removing one record leaves a gap that cannot silently become a full pair.
+    missing_sample = root / "missing_sample"
+    shutil.copytree(normal, missing_sample)
+    with sqlite3.connect(str(missing_sample / "run.sqlite")) as db:
+        db.execute("DELETE FROM v3_samples WHERE pair_number=0 AND side=0")
+    invoke(args.binary, "verify", "--run", missing_sample, expect=2)
+    # Reject corrupted configuration bytes even if the worker rows are untouched.
+    forged_config = root / "forged_config"
+    shutil.copytree(normal, forged_config)
+    with sqlite3.connect(str(forged_config / "run.sqlite")) as db:
+        db.execute("UPDATE v3_plan SET source_sha256='not-a-real-hash'")
+    invoke(args.binary, "verify", "--run", forged_config, expect=2)
     # Invalid promoted status must be vetoed even if an ns field was left behind.
     bad_status = root / "bad_status"
     shutil.copytree(normal, bad_status)

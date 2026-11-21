@@ -198,6 +198,8 @@ Case materialize(const Plan& plan,const std::string& value,std::uint64_t seed){
  apply_axis(c,plan.axis,value);
  return make_case(c,plan.config.max_bytes);
 }
+std::optional<double> per_side_metric(const std::vector<Observation>& rows,
+ const std::string& main,const std::string& competitor);
 std::size_t replay(Sqlite& db,const Plan& plan,ReplicatePlanner& planner){
  Statement rows(db,"SELECT pair_number,seed,left_first,left_case_id,right_case_id,status,log_contrast,pair_wall_ns FROM v3_pairs ORDER BY pair_number");
  std::size_t completed=0;
@@ -225,22 +227,40 @@ std::size_t replay(Sqlite& db,const Plan& plan,ReplicatePlanner& planner){
     (c.bytes.empty()||std::memcmp(sqlite3_column_blob(source.stmt,4),c.bytes.data(),c.bytes.size())==0),
     "case bytes/provenance replay mismatch");
   }
+  std::vector<std::vector<Observation>> persisted(2);
   for(int side=0;side<2;++side){
-   Statement sample(db,"SELECT status,ns,case_id FROM v3_samples WHERE pair_number=? AND side=? ORDER BY ordinal");
+   Statement sample(db,"SELECT status,ns,case_id,batch,algorithm,ordinal FROM v3_samples WHERE pair_number=? AND side=? ORDER BY ordinal");
    sample.bind(1,static_cast<std::int64_t>(completed));
    sample.bind(2,static_cast<std::int64_t>(side));
    const auto expected=static_cast<std::size_t>(plan.config.blocks)*(plan.config.b.empty()?1U:4U);
    std::size_t seen=0;
    while(sample.row()){
     require(sample.str(2)==(side==0?a.id:b.id),"sample linked to wrong seed/structure");
+    require(sample.number(5)==static_cast<std::int64_t>(seen),"v3 raw observation ordinal gap");
     const auto valid=sample.str(0)=="ok";
     require(valid==(sqlite3_column_type(sample.stmt,1)!=SQLITE_NULL),
       "failed sample promoted to a time metric");
-    require(status!="ok"||valid,
-      "pair positive contrast conflicts with raw failing worker status");
+    require(valid==(sqlite3_column_type(sample.stmt,3)!=SQLITE_NULL),
+      "timing and batch validity mismatch");
+    Observation raw;
+    raw.status=sample.str(0);raw.algorithm=sample.str(4);
+    raw.ns=valid?sample.number(1):0;raw.batch=valid?sample.number(3):0;
+    persisted[static_cast<std::size_t>(side)].push_back(std::move(raw));
     ++seen;
    }
    require(seen==expected,"incomplete persisted real-worker observation batch");
+  }
+  const auto left_metric=per_side_metric(persisted[0],plan.config.a,plan.config.b);
+  const auto right_metric=per_side_metric(persisted[1],plan.config.a,plan.config.b);
+  const auto recalculated=left_metric&&right_metric?
+   std::optional<double>{*right_metric-*left_metric}:std::nullopt;
+  require((status=="ok")==recalculated.has_value(),
+   "pair status contradicts raw worker evidence");
+  if(recalculated){
+   const double stored=sqlite3_column_double(rows.stmt,6);
+   require(std::isfinite(stored)&&
+    std::abs(stored-*recalculated)<=1e-12*(1.+std::abs(*recalculated)),
+    "stored pair contrast differs from independent raw sample reconstruction");
   }
   ++completed;
  }
