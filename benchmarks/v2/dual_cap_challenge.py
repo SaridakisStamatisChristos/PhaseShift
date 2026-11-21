@@ -149,12 +149,16 @@ def run_one(binary, root, policy, fixture, seed, cases, cpu_budget_ns,
                 stopped = "confirmation_command_failed"
 
     status = "NO_HYPOTHESIS"
+    h1_kind = None
+    h1_left = h1_right = None
     seals = holdout_samples = valid = invalid = 0
     if (folder / "run.sqlite").exists():
         with sqlite3.connect(folder / "run.sqlite") as db:
-            value = db.execute("SELECT status FROM hypotheses WHERE id='H1'").fetchone()
+            value = db.execute(
+                "SELECT status,kind,left_value,right_value FROM hypotheses WHERE id='H1'"
+            ).fetchone()
             if value:
-                status = value[0]
+                status,h1_kind,h1_left,h1_right = value
             seals = db.execute("SELECT COUNT(*) FROM confirmation_seals").fetchone()[0]
             holdout_samples = db.execute(
                 "SELECT COUNT(*) FROM samples WHERE holdout=1").fetchone()[0]
@@ -177,6 +181,13 @@ def run_one(binary, root, policy, fixture, seed, cases, cpu_budget_ns,
         "invalid_samples":invalid, "confirmation_attempted":confirm_attempted,
         "holdout_samples":holdout_samples, "confirmation_seals":seals,
         "final_h1_status":status,
+        "h1_kind":h1_kind,"h1_left":h1_left,"h1_right":h1_right,
+        "synthetic_known_threshold_correct":int(
+            fixture=="single_cliff" and h1_left is not None and
+            h1_right is not None and h1_left < 24 <= h1_right),
+        "synthetic_false_positive_confirmed":int(
+            fixture=="constant_null" and within and
+            not had_failure and status=="CONFIRMED" and seals>0),
         "eligible_confirmed_under_budget":int(
             within and not had_failure and status=="CONFIRMED" and seals>0),
         "verified_sota_claim":False,

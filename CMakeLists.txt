@@ -474,3 +474,8 @@ configure_file(benchmarks/v2/run_real_family_dual_cap.cmake.in
 add_test(NAME v2_real_sorting_topk_graph_dual_cap
  COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_real_family_dual_cap.cmake)
 set_tests_properties(v2_real_sorting_topk_graph_dual_cap PROPERTIES TIMEOUT 240 RUN_SERIAL TRUE)
+
+add_test(NAME v2_dual_cap_scorecard_falsification
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/summarize_dual_cap_v2.py)
+set_tests_properties(v2_dual_cap_scorecard_falsification PROPERTIES
+ ENVIRONMENT "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/v2" TIMEOUT 30)
