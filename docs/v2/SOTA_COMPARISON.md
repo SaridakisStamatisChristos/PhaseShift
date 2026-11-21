@@ -13,3 +13,7 @@ The R7 directive explicitly separates implementation, independent correctness, r
 | PerfGen | Analytics benchmark generation | Not executed; shared target yet to be defined | **Pending** |
 
 The master plan's >=20% time-to-confirmation and >=15% localization/recall targets remain **hypotheses**, not results. No claim of "beats all competitors" or "SOTA" is supported.
+
+## Current claim status (21 November 2026)
+
+R7 has added a fixed-family campaign, seed-isolated confirmation, PELT, separate calibrated pilot, and budget replay verification to the draft v2 branch. The last fully verified campaign checkpoint is `c2cb1fb` (58/58 CTests, 95.62% production line, GCC/Clang, ASan/UBSan); later changes **must** pass their own exact-revision CI. The synthetic four-policy cliff/null comparison uses equal candidate ceilings and is not equal total CPU or wall. External SOTA comparisons, independent multi-seed held-out evaluation, and general positive uplift remain **UNVERIFIED**. Do not promote to release or SOTA status.

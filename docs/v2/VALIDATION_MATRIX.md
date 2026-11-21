@@ -9,11 +9,11 @@
 | G4 search correctness | PARTIAL | unit tests, quotas, seed replay; conditional feasible-space and adaptive pairing pending |
 | G5 multi changes | PARTIAL | exact DP brute-force oracle and opt-in worker fixture; noisy null/sealed trials pending |
 | G6 conditional interaction | PARTIAL | 2x2 matched cohort, status separation, real worker event; higher-order and full isolation pending |
-| G7 campaign holdout | UNVERIFIED FOR V2 FAMILIES | v1 H1 sealed holdout preserved; Holm primitive is not campaign integration |
-| G8 measurement protocols | UNIMPLEMENTED | v1 semantics preserved |
-| G9 minimization | UNIMPLEMENTED V2 | v1 evidence unchanged |
+| G7 campaign holdout | PARTIAL VERIFIED | M7 fixed-family two-hypothesis real-worker test and CLI/SQLite Holm finalization passed 58/58 at c2cb1fb; no broad calibrated familywise error claim |
+| G8 measurement protocols | PARTIAL / PENDING LATEST SHA | Legacy v1 retained; opt-in calibrated_batch_v2 separated pilot/measurement, strict mode validation, worker unit and real resume test added; independent latest CI pending |
+| G9 minimization | PARTIAL | Legacy oracle-preserving minimizers retained; conditional/multi-boundary v2 witness and independent seed provenance still incomplete |
 | G10 CI | PENDING FINAL SHA | Track PR #4 exact SHA |
-| G11 95% line coverage | VERIFIED INTERMEDIATE ONLY | `2318928b`: 41/41 CTests, line 96.08%, branch 71.02%; later SHA pending |
+| G11 95% line coverage | VERIFIED INTERMEDIATE ONLY | `c2cb1fb`: 58/58 CTests, line 95.62%, GCC/Clang and ASan/UBSan green; latest M6/M9 revisions pending |
 | G12 benchmark fairness | PARTIAL | actual worker/CPU/wall scorecard, equal case budget; equal CPU+wall budget missing |
 | G13 research uplift | UNVERIFIED | no held-out uplift claim |
 | G14 external SOTA | UNVERIFIED | no executed matched external tools |
@@ -34,3 +34,7 @@ States are deliberately strict; no intermediate green workflow grants final-bran
 - M5/M7 ranked multiple candidates: up to 16 distinct geometric, HYPOTHESIZED-only H1..H16 with explicit frozen candidate data; unique v2 holdout seed streams. Provisional until a real multi-change/real-worker campaign passes and family correction is sealed.
 
 - M6 separate calibrated worker pilot: pilot correctness, final timed output validation and noninterference with legacy timing implemented. End-to-end CLI and per-run version selector remain the next verification step; no precision gain established.
+
+## Exact revision gates — continuation
+
+Latest source changes include calibrated timing, seed-isolated campaign seals, dependency-aware null stress and budget-ledger cross-validation. These are **PENDING exact-SHA CI**; do not infer passing from the prior green 58/58 run. The separate synthetic null test does not constitute empirical engine-wide familywise error calibration. No equal full CPU / wall budget comparison or external matched competitor has been performed.

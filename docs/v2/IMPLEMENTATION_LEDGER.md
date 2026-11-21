@@ -11,15 +11,15 @@ Preserve historical generator bytes/IDs, v1 CLI behavior, SQLite v7 evidence, na
 | Requirement | State | Evidence or gap |
 |---|---|---|
 | G0 main pinned | VERIFIED | SHA above and successful original push CI |
-| M0 frozen SOTA benchmark contract | PARTIAL | Scenario inventory only; equal-budget runs outstanding |
-| M2 lazy mixed-radix index and uniform sparse sampler | PARTIAL | Opt-in uniform_v2 CLI+resume added, CI verification pending; independent per-coordinate replicate cohorts added to uniform_v2 (not adaptive); conditional subspaces remain unimplemented |
-| M1 explicit policy version | PARTIAL | v1 default, v2 opt-in; cached evidence/budget ledger pending |
-| M5 multi-change model | PARTIAL | Exact K-bounded DP and brute-force differential test; opt-in multi_change_v2 now emits ranked discovery-only candidate events and selects best H1 for fresh confirmation; no PELT, noisy held-out validation or campaign correction |
-| M3 hierarchical boundary policy | PARTIAL | Opt-in single ordered-axis midpoint prioritization, contrast/cost heuristics, deterministic exploration/replay and persisted selection origin; no calibrated uncertainty, independent paired replication, mixed interactions or held-out superiority |
-| M7 multi-hypothesis correction | PARTIAL | Holm FWER fixed-family primitive + reference/negative tests; campaign sealing and selection-family persistence not implemented |
-| M10 frozen calibration comparison harness | PARTIAL | Added independently executed two-policy CTest smoke, fixed seed/budget, actual worker CPU and wall logging, negative results preserved. Not equal CPU budgets, not sufficient repeats, no external SOTA |
+| M0 frozen SOTA benchmark contract | PARTIAL | Frozen scenario inventory and real-worker four-policy cliff/null diagnostic completed; equal worker-CPU/wall and external baselines outstanding |
+| M2 lazy mixed-radix index and uniform sparse sampler | PARTIAL | Uniform, exact disjoint admissible subspaces and stratified lazy union implemented, tested at 1fc3e77 / 5aa334e; weighted priors, structural constraints beyond rectangles and large-scale RSS gate remain |
+| M1 explicit policy version | PARTIAL | v1 default, v2 opt-in; persisted CPU-budget ledger plus raw replay audit implemented; incremental evidence-index cache, parent CPU/wall accounting remain |
+| M5 multi-change model | PARTIAL | Exact K-bounded DP, PELT with correct fallback, exhaustive differential oracle and ranked H1..H16 candidates; independent family testing available; slope models and noisy held-out localization remain |
+| M3 hierarchical boundary policy | PARTIAL | Opt-in hierarchical, stratified and uniform lazy search with replay; no calibrated uncertainty or fully adaptive mixed-condition acquisition / held-out superiority |
+| M7 multi-hypothesis correction | PARTIAL | SQLite v9 frozen family, positive independent holdout seal+p-value, CLI finalize, H1..H16 distinct seeds and real-worker two-H1 test green at c2cb1fb; population selection leakage / null calibration still incomplete |
+| M10 frozen calibration comparison harness | PARTIAL | Four-policy cliff/null real-worker challenge, frozen plan and raw worker CPU/wall; equal-case ceilings only, not external/matched CPU-wall SOTA |
 | M4 controlled two-way interaction | PARTIAL | Independent 2x2 matched-seed difference-in-differences and status contrast; explicit invalid/partial abstention; opt-in v2 emits an immutable discovery event only, not independent confirmation or higher-order interactions |
-| M6, M8–M9, M11–M12 | UNVERIFIED | Implementation pending |
+| M6, M8–M9, M11–M12 | PARTIAL | M6 pilot-separated timing and opt-in protocol added (latest CI pending); M9 v8/v9 transactional persistence + budget replay; M8 advanced conditional witness, M10 external evaluation and remaining acceptance gates outstanding |
 | G1–G14 v2 hard gates | UNVERIFIED | No branch CI or held-out comparison yet |
 
 Research claim: **none**. Any synthetic fixture is a correctness calibration, not scientific novelty. No PR merge, license or release is authorized.
