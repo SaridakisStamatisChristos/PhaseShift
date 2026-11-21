@@ -44,3 +44,10 @@ States are deliberately strict; no intermediate green workflow grants final-bran
 Latest source changes include calibrated timing, seed-isolated campaign seals, dependency-aware null stress and budget-ledger cross-validation. These are **PENDING exact-SHA CI**; do not infer passing from the prior green 58/58 run. The separate synthetic null test does not constitute empirical engine-wide familywise error calibration. No equal full CPU / wall budget comparison or external matched competitor has been performed.
 
 - M9 crash/retry matrix: direct simulated failure injection after observation, after scheduler decision and after CPU-budget ledger write, each before COMMIT, checks full SQLite rollback and successful exact restart of the same canonical case. Real OS kill/power loss and all future schema tables remain additional gates.
+
+
+## 21 November second R7 batch
+
+`weighted_v2` sparse weighted without-replacement proposals, bounded labelled priors and admissible rectangles plus transactionally stored per-case wall and timed CPU evidence are implemented on code SHA `1db4133`. Tests cover direct billion-point virtual space, weighted-selection skew, exhaustion, strict invalid schema, pause/resume replay and independent SQLite event linkage.
+
+**Acceptance state:** M1 PARTIAL, M2 PARTIAL, G3/G10/G11 PENDING exact-SHA full CI; only existing v1 and earlier v2 code are verified at previous `aacddb0` checkpoint. G12 fair full-system CPU and wall, G13 uplift and G14 external comparison remain UNVERIFIED. Preserve both positive and negative test outcomes and do not claim SOTA.

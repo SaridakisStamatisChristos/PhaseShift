@@ -113,3 +113,23 @@ The script records both positive and negative results, failures, raw case/sample
 | M12 | PARTIAL | Source/evidence docs available; final defensible SOTA verdict and comparative release evidence missing |
 
 **Scientific claims:** no measured >=20% time-to-confirmation or >=15% localization uplift; no executed comparison establishing SOTA. The code remains a **draft research branch**. No merge, license change or release is authorized. Preserve any negative results and avoid promoting experimental v2 policy to v1 default.
+
+
+## R7 continuation — weighted lazy search and atomic phase-budget evidence (21 Nov 2026)
+
+**Code checkpoint:** `1db41335a1b14f34a3330b9c1e7c19415f2821f0` on draft feature branch. This checkpoint is pending its own complete GCC/Clang/sanitizer/coverage results. Do not inherit `aacddb0`'s green status. Main stays `93b47590c7e44eaf062d97995e9c5cd33274a7a2`.
+
+| Milestone | R7 state | Concrete implementation / open gate |
+|---|---|---|
+| M2 weighted priors | IMPLEMENTED, exact-SHA CI PENDING | `weighted_v2.hpp`, `search.domain_priors` (positive finite 1e-6..1e6, unspecified labels weight 1), opt-in `weighted_v2` only; weighted sampling without replacement over disjoint admissible rectangles with sparse prefix-mass ledger and replica seeds; O(sum axis labels + stored prefix history) memory, never enumerates full Cartesian product |
+| M2 adversarial validation | PARTIAL | 1e9 virtual-grid property case, seeded no-duplicate/exhaustion, prior bias statistical calibration fixture and 17 fail-closed config mutations; no measured huge-grid resident RSS gate, no arbitrary nonrectangular feasibility expression |
+| M1 case phase accounting | IMPLEMENTED, exact-SHA CI PENDING | Each completed v2 case transaction now persists `v2_phase_budget` with scheduler-proposal wall, worker-invocation wall, valid timed CPU sample ns and completion flag, linked by the same transaction's decision index; `tests/verify_v2_weighted.py` compares pause/resume vs uninterrupted order and raw per-case event linkage |
+| M1 budget inference | PARTIAL | New event durations are *not* direct parent CPU or full-process-tree CPU; not an equal budget research claim |
+| M3–M10, M12 | PARTIAL | All earlier open requirements, in particular calibrated uncertainty, independent conditional confirmation, complete CPU+wall parity, 20+ heldout repetitions and external comparators, remain open |
+
+**R7 falsification log:**
+- F-v2-010: new C++ weighted unit test used an enclosing automatic variable as a lambda default parameter, rejected by GCC/Clang/ASan compile. Repaired in `9bcd6f1` without weakening assertions; follow-on CTest exercised weighted real worker.
+- F-v2-011: the first weighted SQLite replay checker queried nonexistent `next_rng_state` rather than schema-defined `rng_state`. The actual 12-candidate run completed in uninterrupted and resumed modes; its *independent* replay SQL audit stopped at the invalid query. Repaired in `1db4133`; verification on that exact SHA still required.
+- The append-only cost record `397d12b` adds independent per-case timing tags, not inferred CPU equality; `e6bee64` adds invalid-schema/legacy coercion tests. Neither constitutes independent scientific uplift.
+
+**Claim ledger:** no numeric SOTA uplift, no 20% time-to-confirmation improvement, no 15% localization gain, no globally calibrated false-positive rate, and no equality of whole-system CPU/wall claimed. The previous fully green exact-sha handoff was `aacddb0` before this feature slice. PR #4 remains DRAFT and NOT MERGED.

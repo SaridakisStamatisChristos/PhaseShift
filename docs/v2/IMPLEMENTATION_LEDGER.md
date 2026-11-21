@@ -91,3 +91,17 @@ V2 sampled-CPU replay now checks each persisted scheduler decision's foreign-key
 
 ### M7 multi-candidate fail-closed gate
 `confirm` refuses unfrozen v2 H2..H16 and multi-candidate H1, with real-worker adversarial CLI test for zero holdout before freeze; it then permits the predeclared Holm family. Legacy v1 and single-candidate v2 unchanged. Latest exact revision CI required.
+
+
+## R7 subsequent implementation batch — weighted v2, per-case costs
+
+- `96d24ca`: sparse product-weighted admissible-domain sampling, seed replicates, canonical virtual indices.
+- `f189dfd`, `903c15f`: explicit search priors in Config and strict v2-only read/write, validation, replay and experiment execution.
+- `18797dd`, `c4ae802`, `d69033b`, `52e2097`, `d5481a9`: unit/real-worker 1e9 virtual space, finite prior validation, pause/resume independent SQLite oracle.
+- `9bcd6f1`: repair compiler error in test lambda default argument (F-v2-010).
+- `397d12b`: transactionally persisted phase-wall and timed sample CPU descriptive accounting, read-only audit of event-to-decision mapping.
+- `e6bee64`: 17 invalid priors and v1 policy boundary checks.
+- `1db4133`: repair replay-oracle SQL query to use persisted `rng_state` (F-v2-011).
+- Exact acceptance of this new batch: **PENDING 1db4133 CI**; a previous 75-test coverage workflow demonstrated 74 successes plus an invalid test query, not feature acceptance. Complete line/branch coverage must be remeasured. No code is promoted to v1 default, and no work is merged.
+
+R7 requirement-to-evidence closure: M2 weighted policy = IMPLEMENTED/PARTIAL VERIFIED; M1 phase-cost logging = IMPLEMENTED/UNVERIFIED on latest; G1 compatibility, G3 replay, G10 CI and G11 coverage await exact-sha checks; G12–G14 remain not established.
