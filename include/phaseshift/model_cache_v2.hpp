@@ -69,7 +69,8 @@ public:
     SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE,nullptr);
   if(status!=SQLITE_OK){
    const auto msg=std::string(db_?sqlite3_errmsg(db_):"open failed");
-   if(db_)sqlite3_close(db_);db_=nullptr;
+   if(db_)sqlite3_close(db_);
+   db_=nullptr;
    throw Error("v2 model cache open: "+msg);
   }
   try{
@@ -113,7 +114,11 @@ public:
     if(sqlite3_step(ins.get())!=SQLITE_DONE)
      throw Error("v2 model cache identity insert failed");
    }else throw Error("v2 model cache identity lookup failed");
-  }catch(...){sqlite3_close(db_);db_=nullptr;throw;}
+  }catch(...){
+   sqlite3_close(db_);
+   db_=nullptr;
+   throw;
+  }
  }
  ModelCheckpointCacheV2(const ModelCheckpointCacheV2&)=delete;
  ModelCheckpointCacheV2& operator=(const ModelCheckpointCacheV2&)=delete;
