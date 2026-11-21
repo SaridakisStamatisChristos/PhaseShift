@@ -1,0 +1,33 @@
+set(PAUSED "@CMAKE_CURRENT_BINARY_DIR@/v2_conditional_paused")
+set(FULL "@CMAKE_CURRENT_BINARY_DIR@/v2_conditional_full")
+file(REMOVE_RECURSE "${PAUSED}" "${FULL}")
+set(CONFIG "@CMAKE_CURRENT_SOURCE_DIR@/configs/v2/conditional_implications.json")
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" validate
+ --config "${CONFIG}" RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "conditional rules validation failed")
+endif()
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" explore
+ --config "${CONFIG}" --out "${PAUSED}" --pause-after 3
+ RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "conditional rules paused exploration failed")
+endif()
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" resume
+ --run "${PAUSED}" RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "conditional rules resume failed")
+endif()
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" explore
+ --config "${CONFIG}" --out "${FULL}" RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "conditional rules uninterrupted exploration failed")
+endif()
+execute_process(COMMAND "@Python3_EXECUTABLE@"
+ "@CMAKE_CURRENT_SOURCE_DIR@/tests/verify_v2_conditional_rules.py"
+ --paused "${PAUSED}" --full "${FULL}" --config "${CONFIG}"
+ --binary "@CMAKE_CURRENT_BINARY_DIR@/phaseshift"
+ RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "conditional rule independent replay/invalid-config oracle failed")
+endif()

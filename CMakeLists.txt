@@ -439,3 +439,9 @@ set_tests_properties(weighted_v2_invalid_config_contract PROPERTIES TIMEOUT 90)
 add_executable(phaseshift_conditional_rule_v2_tests tests/conditional_rules_v2.cpp)
 target_link_libraries(phaseshift_conditional_rule_v2_tests PRIVATE phaseshift_core)
 add_test(NAME conditional_rules_v2_exhaustive_oracle COMMAND phaseshift_conditional_rule_v2_tests)
+
+configure_file(tests/run_v2_conditional_rules.cmake.in
+ ${CMAKE_CURRENT_BINARY_DIR}/run_v2_conditional_rules.cmake @ONLY)
+add_test(NAME conditional_rules_v2_cli_replay
+ COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_conditional_rules.cmake)
+set_tests_properties(conditional_rules_v2_cli_replay PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
