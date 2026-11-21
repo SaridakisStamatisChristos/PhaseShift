@@ -28,7 +28,7 @@
 | V3-00 | Live baseline, historical provenance | PARTIAL | Exact main/tree/3 push workflows matched; old fixtures not independently rerun |
 | V3-01 | Fair consumed-resource benchmark and falsification | PARTIAL | Real CLI diagnostic, 20-seed separate manifests, strict SQLite/raw-log verifier and Release CTest written; broader landscapes/full heldout/CI evidence pending |
 | V3-02 | Orchestrator extraction and typed control-plane | PARTIAL | Legacy v2 selection extracted to a dedicated adapter with differential characterization CTest; typed keys, committed-only snapshot and budget ledger present. Full coordinator extraction and exact-SHA gates still outstanding |
-| V3-03 | Fresh matched-seed adaptive discovery replication | PARTIAL | Deterministic paired discovery planner supports distinct structural keys; worker scheduling, persistence, replay and frozen holdout integration outstanding |
+| V3-03 | Fresh matched-seed adaptive discovery replication | PARTIAL | v10 fixed-pair and v11 single-axis adaptive real-worker design, atomic two-sided SQLite evidence, deterministic resume; full cost and confirmation isolation gates remain open |
 | V3-04 | Legal cell / axis portfolio | PARTIAL | Standalone opt-in ordered-axis slice policy, legal mixed-space contexts, deterministic reserve and 2.048B virtual-index memory/feasibility oracle written; no main CLI wiring or held-out policy benefit established |
 | V3-05 | Predictive cost/uncertainty acquisition | OPEN | Frozen development-only calibration |
 | V3-06 | Optional surrogate challenger | NOT_REQUIRED_YET | Killable research branch; only promote if its evidence wins |
@@ -74,3 +74,12 @@ CMake has native C++ and Python adversarial tests. Requiring the final head's Re
 Standalone opt-in `phaseshift_v3_pairs` executable, v10 authoritative discovery-only `run.sqlite` with atomic two-sided raw worker results, deterministic seed and order replay, input-byte tamper checks and pre/post-commit forced-kill recovery. New CTest `v3_paired_discovery_real_worker_atomic_resume`. Details and limitations in [PAIRED_DISCOVERY_PILOT.md](PAIRED_DISCOVERY_PILOT.md).
 
 **Evidence state:** code authored; new-revision CI pending. V3-03 **PARTIAL**: fixed endpoints, one axis; no adaptive replicate-vs-explore, general sealed campaign holdout, complete attempted-work budget accounting or statistical performance claim.
+
+
+## V3-03 adaptive discovery successor
+
+New opt-in **schema v11** behind phaseshift_v3_pairs adaptive retains v10 fixed pair behavior and does not modify v1/v2 CLI or SQLite. The bounded adaptive_pair.hpp policy discovers distinct legal ordered-axis edges, commits discovery-only matched-seed results and uses a robust MAD ranking diagnostic after at least three valid independent seeds. It preserves exploration by reserving every fourth turn for an unsampled edge while one remains.
+
+Every adaptive decision and both real-worker outcomes commit in one new-run transaction. Independent replay checks decisions, raw-input identities, whole worker status and numeric effect reconstruction, and predecision evidence digest. Falsification gates include OS crash before/after commit, fabricated decision arm/labels/digest/seed/effect, nonfinite and holdout rejection and an independent noise-confounding fixture.
+
+**Evidence status:** CODE WRITTEN; exact-head CI pending. V3-03 remains PARTIAL: only one numeric ordered axis, no campaign-wide sealed confirmation registry, no full killed-worker cost recovery, no predictive calibration, no external SOTA comparison.

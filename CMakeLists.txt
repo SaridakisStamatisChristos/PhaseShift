@@ -571,3 +571,18 @@ add_test(NAME v3_paired_discovery_real_worker_atomic_resume
  --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_paired_workers)
 set_tests_properties(v3_paired_discovery_real_worker_atomic_resume PROPERTIES
  TIMEOUT 180 RUN_SERIAL TRUE)
+
+# V3-03 discovery-only adaptive explore-versus-replicate (schema v11).
+add_executable(phaseshift_v3_adaptive_policy_tests tests/v3/adaptive_pair.cpp)
+target_link_libraries(phaseshift_v3_adaptive_policy_tests PRIVATE phaseshift_core)
+add_test(NAME v3_adaptive_paired_uncertainty_and_seed_confounding
+ COMMAND phaseshift_v3_adaptive_policy_tests)
+set_tests_properties(v3_adaptive_paired_uncertainty_and_seed_confounding PROPERTIES TIMEOUT 30)
+
+add_test(NAME v3_adaptive_worker_resume_and_tamper_rejection
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/adaptive_worker_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/uniform_replicates.json
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_adaptive_workers)
+set_tests_properties(v3_adaptive_worker_resume_and_tamper_rejection PROPERTIES
+ TIMEOUT 180 RUN_SERIAL TRUE)

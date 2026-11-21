@@ -18,3 +18,18 @@ This opt-in C++20 executable connects the existing deterministic `ReplicatePlann
 **Cost scope:** `worker_timed_cpu_ns` is timed algorithm-region CPU, not complete waited-child/process-tree CPU; `pair_wall_ns` is elapsed worker block wall but excludes planning and persistence. Killed worker work performed before an uncommitted pair cannot be fully accounted for. Full resource-budget gating and cancellation are **OPEN**.
 
 **Remaining V3-03 requirements:** Adaptive replicate-versus-new-coordinate decisions; generalized conditional/legal structural pair selection; independent campaign confirmation seed registry; full CPU and wall accounting; lost-work crash ledger; robust dispersion and uncertainty decisions; external matched comparisons.
+
+
+## Optional v11 adaptive matched discovery
+
+The previous fixed-endpoint runner stays on **schema v10**, unchanged. The new optional v11 mode selects between new adjacent legal ordered-axis pairs and fresh matched-seed replications of ambiguous observed contrasts.
+
+    ./build/phaseshift_v3_pairs adaptive --config configs/v2/uniform_replicates.json --out /tmp/v3-adaptive-pilot --pairs 6 --pause-after 2
+    ./build/phaseshift_v3_pairs verify --run /tmp/v3-adaptive-pilot
+    ./build/phaseshift_v3_pairs resume --run /tmp/v3-adaptive-pilot
+
+**Frozen allocation:** The experimental adaptive-pair-policy.1 enumerates adjacent legal numeric-axis structures using a sparse without-replacement permutation. The first two pairs explore; every fourth later pair reserves global exploration if available. Other turns use fresh matched seeds to replicate a legal prior pair ranked by distance to a frozen practical effect and bounded independent-seed MAD heuristic. Failed/censored pairs are never eligible for a finite-effect replication. This is ranking only, not a posterior, p-value or calibrated interval.
+
+**Persistence:** Separate opt-in schema v11 adds v3_adaptive_decisions to bind pair number, axis endpoints, explore/replicate arm and SHA-256 of the predecision committed-only evidence state. Pair decision, both raw workers and case input bytes are committed atomically. Verify/resume rebuilds each action and numeric effect from frozen source and SQLite, rejecting tampering. No confirmation handle reaches this policy.
+
+**Scope limits:** One numeric ordered axis, 3–4096 declared labels and <=100 matched discovery pairs, at most 10000 implicit? No: the limit is exactly 100 pairs. Full campaign holdout registry, adaptive multidimensional conditional cells, calibrated uncertainty, complete spent-cost accounting after killed uncommitted workers, statistical multiplicity and external SOTA evidence remain unimplemented. Paired versus mismatched-seed validation is a controlled synthetic oracle, not evidence that real generators are fully exchangeable.

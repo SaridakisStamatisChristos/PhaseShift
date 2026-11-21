@@ -34,3 +34,16 @@ Current ordered-axis midpoint heuristic examines nearby legal coordinates, then 
 
 ## F-011 — Wrong-answer timing injected into new v3 slice scorer
 **Attack:** feed a finite effect together with `wrong_answer` status. **Repair:** `49773d24`, explicit non-`ok` status rejection and discovery-only cohort gate before pending-proposal consumption; adversarial unit test. **State:** implemented, current-head CI verification required.
+
+
+## F-012 — Adaptive decisions forged or influenced by holdout
+
+v11 replay rebuilds explore/replicate choices from raw committed discovery data and validates stored arm, numeric endpoints, seed, source digest and predecision committed-state hash. Proposed falsification mutates each field separately; confirmation cohort feedback must be rejected. **State: code/tests authored; CI pending.**
+
+## F-013 — Seed-mismatched cliff illusion
+
+The independent synthetic oracle supplies common ±0.7 log-time seed noise to two structures with a fixed 0.1 actual effect. Proper matched seeds cancel noise; neighboring mismatched seeds spuriously generate >0.4 differences in all 40 constructed pairs. No claim is made about universal generator exchangeability. **State: test authored.**
+
+## F-014 — v11 adaptation accidentally mutates v10
+
+Implement v11 only for new opt-in run directories; retain v10 fixed-pair runner and previous source Store schemas unchanged. Run both independent CLI checks under CI. **State: tests authored; CI pending.**
