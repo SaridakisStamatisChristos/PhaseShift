@@ -22,3 +22,45 @@ execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" confirm-interact
 if(rc EQUAL 0)
  message(FATAL_ERROR "duplicate independent factorial holdout unexpectedly overwrote evidence")
 endif()
+
+# Reject an incomplete/discovery-only factorial without freezing holdout.
+set(PARTIAL "@CMAKE_CURRENT_BINARY_DIR@/v2_factorial_incomplete")
+file(REMOVE_RECURSE "${PARTIAL}")
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" explore
+ --config "@CMAKE_CURRENT_SOURCE_DIR@/configs/v2/factorial_interaction.json"
+ --out "${PARTIAL}" --pause-after 1 RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "factorial incomplete fixture setup failed")
+endif()
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" confirm-interaction
+ --run "${PARTIAL}" RESULT_VARIABLE rc)
+if(rc EQUAL 0 OR EXISTS "${PARTIAL}/factorial_holdout")
+ message(FATAL_ERROR "factorial holdout accepted incomplete discovery")
+endif()
+# The opt-in command rejects nonbinary v2 searches and all historical v1.
+set(NONBINARY "@CMAKE_CURRENT_BINARY_DIR@/v2_factorial_nonbinary")
+file(REMOVE_RECURSE "${NONBINARY}")
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" explore
+ --config "@CMAKE_CURRENT_SOURCE_DIR@/configs/v2/weighted_admissible.json"
+ --out "${NONBINARY}" --pause-after 1 RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "nonbinary fixture setup failed")
+endif()
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" confirm-interaction
+ --run "${NONBINARY}" RESULT_VARIABLE rc)
+if(rc EQUAL 0 OR EXISTS "${NONBINARY}/factorial_holdout")
+ message(FATAL_ERROR "nonbinary v2 search accepted as 2x2 holdout")
+endif()
+set(LEGACY "@CMAKE_CURRENT_BINARY_DIR@/v2_factorial_legacy")
+file(REMOVE_RECURSE "${LEGACY}")
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" explore
+ --config "@CMAKE_CURRENT_SOURCE_DIR@/configs/negative_control.json"
+ --out "${LEGACY}" --pause-after 1 RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "legacy fixture setup failed")
+endif()
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" confirm-interaction
+ --run "${LEGACY}" RESULT_VARIABLE rc)
+if(rc EQUAL 0 OR EXISTS "${LEGACY}/factorial_holdout")
+ message(FATAL_ERROR "legacy v1 run unexpectedly accepted a v2 interaction holdout")
+endif()
