@@ -6,6 +6,11 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+# Only the latest PR head needs the expensive held-out research suite;
+# superseded unmerged revisions retain CI logs but must not burn duplicate CPU.
+concurrency:
+  group: v2-heldout-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   twenty-seed-dual-ceiling:
     runs-on: ubuntu-24.04
