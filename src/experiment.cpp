@@ -2026,24 +2026,80 @@ void report(const std::string& run,const std::string& formats){
   s.artifact(filename,sha256_file(run+"/"+filename),"experiment-report");
  }
 }
+// Bundle schema 1 remains byte-compatible with legacy flat evidence.
+// Schema 2 adds only witnessed, bounded H2..H16 nested artifact paths.
+static bool valid_v2_bundle_witness_id(const std::string& id){
+ for(int rank=2;rank<=16;++rank)
+  if(id=="H"+std::to_string(rank))return true;
+ return false;
+}
+static bool valid_bundle_member(const std::string& name,int schema){
+ if(name.empty()||name=="."||name==".."||name=="SHA256.json"||
+    name.front()=='/'||name.find('\\')!=std::string::npos||
+    name.find("//")!=std::string::npos)return false;
+ const auto first=name.find('/');
+ if(first==std::string::npos)return true;
+ if(schema!=2||name.substr(0,first)!="witnesses")return false;
+ const auto second=name.find('/',first+1);
+ if(second==std::string::npos||name.find('/',second+1)!=std::string::npos)
+  return false;
+ const auto id=name.substr(first+1,second-first-1);
+ const auto leaf=name.substr(second+1);
+ return valid_v2_bundle_witness_id(id)&&
+  (leaf=="witness.cpp"||leaf=="witness.hex"||
+   leaf=="witness.json"||leaf=="minimization.sqlite");
+}
 void verify_bundle(const std::string& bundle){
  const auto path=fs::path(bundle);
- if(!fs::is_directory(path)||!fs::is_regular_file(path/"SHA256.json"))throw Error("bundle directory/manifest missing");
+ if(!fs::is_directory(path)||!fs::is_regular_file(path/"SHA256.json"))
+  throw Error("bundle directory/manifest missing");
  const auto manifest=Json::file((path/"SHA256.json").string());
- if(manifest.i("bundle_schema")!=1)throw Error("unsupported bundle schema");
- const auto* files=manifest.get("files");if(!files||json_object_get_type(files)!=json_type_object)throw Error("invalid bundle file index");
+ const auto schema=static_cast<int>(manifest.i("bundle_schema"));
+ if(schema!=1&&schema!=2)throw Error("unsupported bundle schema");
+ const auto* files=manifest.get("files");
+ if(!files||json_object_get_type(files)!=json_type_object)
+  throw Error("invalid bundle file index");
  std::set<std::string> expected;
  json_object_object_foreach(files,key,value){
   const auto name=std::string(key);
-  if(name.empty()||name=="SHA256.json"||name.find('/')!=std::string::npos||name.find('\\')!=std::string::npos||name=="."||name==".."||json_object_get_type(value)!=json_type_string)throw Error("unsafe bundle file path/hash");
+  if(!valid_bundle_member(name,schema)||json_object_get_type(value)!=json_type_string)
+   throw Error("unsafe bundle file path/hash");
   const auto member=path/name;
-  if(!fs::is_regular_file(member)||fs::is_symlink(member))throw Error("bundle missing/nonregular file: "+name);
-  if(sha256_file(member.string())!=json_object_get_string(value))throw Error("bundle file digest mismatch: "+name);
+  if(name.find('/')!=std::string::npos){
+   const auto id=name.substr(10,name.find('/',10)-10);
+   if(fs::is_symlink(path/"witnesses")||
+      fs::is_symlink(path/"witnesses"/id))
+    throw Error("symlinked bundle witness directory");
+  }
+  if(!fs::is_regular_file(member)||fs::is_symlink(member))
+   throw Error("bundle missing/nonregular file: "+name);
+  if(sha256_file(member.string())!=json_object_get_string(value))
+   throw Error("bundle file digest mismatch: "+name);
   expected.insert(name);
  }
- for(const auto& must:{"run.sqlite","report.json","report.md","samples.csv","README.md"})if(!expected.count(must))throw Error("bundle missing required member: "+std::string(must));
- for(const auto& file:fs::directory_iterator(path)){
-  const auto name=file.path().filename().string();if(!file.is_regular_file()||(name!="SHA256.json"&&!expected.count(name)))throw Error("unexpected/unindexed bundle member: "+name);
+ for(const auto& must:{"run.sqlite","report.json","report.md","samples.csv","README.md"})
+  if(!expected.count(must))
+   throw Error("bundle missing required member: "+std::string(must));
+ if(schema==1){
+  for(const auto& file:fs::directory_iterator(path)){
+   const auto name=file.path().filename().string();
+   if(!file.is_regular_file()||file.is_symlink()||
+      (name!="SHA256.json"&&!expected.count(name)))
+    throw Error("unexpected/unindexed bundle member: "+name);
+  }
+ }else{
+  for(const auto& file:fs::recursive_directory_iterator(path)){
+   const auto relative=file.path().lexically_relative(path).generic_string();
+   if(file.is_symlink())throw Error("symlink in bundle evidence: "+relative);
+   if(file.is_directory()){
+    if(relative!="witnesses"&&
+       (relative.rfind("witnesses/",0)!=0||
+        !valid_v2_bundle_witness_id(relative.substr(10))))
+     throw Error("unexpected bundle evidence directory: "+relative);
+   }else if(!file.is_regular_file()||
+      (relative!="SHA256.json"&&!expected.count(relative)))
+    throw Error("unexpected/unindexed bundle member: "+relative);
+  }
  }
  Store store((path/"run.sqlite").string(),true);
  const auto conf=store.config();
@@ -2065,6 +2121,54 @@ void verify_bundle(const std::string& bundle){
   if(sha256(hex_decode(cleaned))!=witness.s("input_sha256"))throw Error("witness input digest mismatch");
   if(witness.s("category")=="PERFORMANCE_WITNESS"&&!expected.count("minimization.sqlite"))throw Error("performance witness lacks independently recorded minimization data");
  }
+ if(schema==2){
+  if(Json::parse(conf).s("policy_version","v1")!="v2")
+   throw Error("nested evidence bundle requires v2 policy");
+  sqlite3_stmt* raw=nullptr;
+  if(sqlite3_prepare_v2(store.raw(),
+    "SELECT DISTINCT hypothesis_id FROM witnesses WHERE hypothesis_id!='H1'",
+    -1,&raw,nullptr)!=SQLITE_OK)
+   throw Error("cannot inspect bundle hypothesis witnesses");
+  std::unique_ptr<sqlite3_stmt,decltype(&sqlite3_finalize)> statement(raw,&sqlite3_finalize);
+  while(sqlite3_step(statement.get())==SQLITE_ROW){
+   const auto id=std::string(reinterpret_cast<const char*>(
+    sqlite3_column_text(statement.get(),0)));
+   if(!valid_v2_bundle_witness_id(id))
+    throw Error("unsupported nested witness identity");
+   const auto prefix="witnesses/"+id+"/";
+   if(!expected.count(prefix+"witness.hex"))
+    throw Error("v2 witness artifact absent from bundle: "+id);
+   auto encoded=read_file((path/(prefix+"witness.hex")).string());
+   while(!encoded.empty()&&(encoded.back()=='\\n'||encoded.back()=='\\r'))
+    encoded.pop_back();
+   const auto digest=sha256(hex_decode(encoded));
+   sqlite3_stmt* match=nullptr;
+   if(sqlite3_prepare_v2(store.raw(),
+     "SELECT 1 FROM witnesses w JOIN cases c ON w.case_id=c.case_id "
+     "WHERE w.hypothesis_id=? AND c.input_sha256=? LIMIT 1",
+     -1,&match,nullptr)!=SQLITE_OK)
+    throw Error("v2 bundle witness linkage query failed");
+   sqlite3_bind_text(match,1,id.c_str(),-1,SQLITE_TRANSIENT);
+   sqlite3_bind_text(match,2,digest.c_str(),-1,SQLITE_TRANSIENT);
+   const bool linked=sqlite3_step(match)==SQLITE_ROW;
+   sqlite3_finalize(match);
+   if(!linked)throw Error("v2 bundle witness not linked to sealed raw case: "+id);
+   if(expected.count(prefix+"witness.json")){
+    const auto details=Json::file((path/(prefix+"witness.json")).string());
+    if(details.s("input_sha256")!=digest)
+     throw Error("v2 witness metadata/bytes mismatch: "+id);
+    if(details.s("category")=="PERFORMANCE_WITNESS"&&
+       !expected.count(prefix+"minimization.sqlite"))
+     throw Error("v2 performance witness lacks independent minimization DB");
+   }
+   if(expected.count(prefix+"minimization.sqlite")){
+    Store minimized((path/(prefix+"minimization.sqlite")).string(),true);
+    if(minimized.config()!=conf)
+     throw Error("v2 minimized evidence config mismatch");
+    for(const auto& c:minimized.cases(true)){(void)c;}
+   }
+  }
+ }
  std::cout<<"VERIFIED BUNDLE: "<<bundle<<" members="<<expected.size()<<" cases="<<store.summary().i("cases")<<"\n";
 }
 void export_run(const std::string& run,const std::string& out){
@@ -2084,9 +2188,23 @@ void export_run(const std::string& run,const std::string& out){
   if(fs::exists(run+"/witness.cpp"))fs::copy_file(run+"/witness.cpp",out+"/witness.cpp");
   if(fs::exists(run+"/witness.hex"))fs::copy_file(run+"/witness.hex",out+"/witness.hex");
   if(fs::exists(run+"/witness.json"))fs::copy_file(run+"/witness.json",out+"/witness.json");
+  if(fs::exists(run+"/witnesses")){
+   if(!fs::is_directory(run+"/witnesses")||fs::is_symlink(run+"/witnesses"))
+    throw Error("unsafe v2 witness export root");
+   for(const auto& entry:fs::recursive_directory_iterator(run+"/witnesses"))
+    if(entry.is_symlink()||(!entry.is_directory()&&!entry.is_regular_file()))
+     throw Error("unsafe nonregular v2 witness export member");
+   fs::copy(run+"/witnesses",out+"/witnesses",fs::copy_options::recursive);
+  }
   write_file(out+"/README.md","# PHASESHIFT portable evidence bundle\nUse `phaseshift verify-bundle --bundle .` before importing. All member SHA-256 digests are in SHA256.json; case inputs are independently regenerated and validated.\n");
-  Json manifest;manifest.put("bundle_schema",static_cast<std::int64_t>(1));Json files;
-  for(const auto& f:fs::directory_iterator(out))if(f.is_regular_file())files.put(f.path().filename().string().c_str(),sha256_file(f.path().string()));
+  Json manifest;
+  manifest.put("bundle_schema",static_cast<std::int64_t>(
+   fs::exists(out+"/witnesses")?2:1));
+  Json files;
+  for(const auto& f:fs::recursive_directory_iterator(out))
+   if(f.is_regular_file())
+    files.put(f.path().lexically_relative(out).generic_string().c_str(),
+      sha256_file(f.path().string()));
   manifest.put("files",std::move(files));write_file(out+"/SHA256.json",manifest.str());
   verify_bundle(out);
  }catch(...){fs::remove_all(out);throw;}
@@ -2097,7 +2215,11 @@ void import_bundle(const std::string& bundle,const std::string& out){
  if(fs::exists(out))throw Error("import destination already exists; refusing overwrite");
  fs::create_directories(out);
  try{
-  for(const auto& file:fs::directory_iterator(bundle))fs::copy_file(file.path(),fs::path(out)/file.path().filename());
+  for(const auto& file:fs::directory_iterator(bundle)){
+   const auto target=fs::path(out)/file.path().filename();
+   if(file.is_directory())fs::copy(file.path(),target,fs::copy_options::recursive);
+   else fs::copy_file(file.path(),target);
+  }
   verify_bundle(out);
  }catch(...){fs::remove_all(out);throw;}
  std::cout<<"Imported verified evidence into "<<out<<"\n";
