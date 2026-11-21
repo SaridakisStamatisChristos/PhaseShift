@@ -28,6 +28,7 @@ llvm-profdata merge -sparse "${profiles[@]}" -o "$build/merged.profdata"
 llvm-cov export "$build/phaseshift_tests" \
   -instr-profile="$build/merged.profdata" \
   -object="$build/phaseshift" -object="$build/phaseshift_worker" \
+  -object="$build/phaseshift_v3_pairs" \
   -object="$build/phaseshift_boundary_v2_tests" -object="$build/phaseshift_interaction_v2_tests" \
   -object="$build/phaseshift_pelt_v2_tests" -object="$build/phaseshift_campaign_v2_tests" \
   -object="$build/phaseshift_hybrid_v2_tests" \
