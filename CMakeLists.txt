@@ -445,3 +445,7 @@ configure_file(tests/run_v2_conditional_rules.cmake.in
 add_test(NAME conditional_rules_v2_cli_replay
  COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_conditional_rules.cmake)
 set_tests_properties(conditional_rules_v2_cli_replay PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
+
+add_executable(phaseshift_v2_evidence_view_tests tests/evidence_view_v2.cpp)
+target_link_libraries(phaseshift_v2_evidence_view_tests PRIVATE phaseshift_core)
+add_test(NAME v2_committed_discovery_view_oracle COMMAND phaseshift_v2_evidence_view_tests)
