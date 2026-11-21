@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "experiment_id": "v2-weighted-durable-model-replay",
+  "problem_family": "calibration",
+  "algorithms": [
+    "calibration"
+  ],
+  "seed": 334,
+  "primary_axis": "x",
+  "axes": {
+    "negative": {
+      "values": [
+        false,
+        true
+      ]
+    },
+    "threshold": {
+      "values": [
+        2,
+        3
+      ]
+    },
+    "x": {
+      "values": [
+        0,
+        1,
+        2,
+        3
+      ]
+    }
+  },
+  "search": {
+    "policy_version": "v2",
+    "method": "weighted_v2",
+    "replicates": 2,
+    "max_cases": 12,
+    "domain_priors": {
+      "negative": {
+        "false": 9,
+        "true": 1
+      },
+      "x": {
+        "0": 3,
+        "1": 1,
+        "2": 1,
+        "3": 1
+      }
+    },
+    "admissible_subspaces": [
+      {
+        "negative": [
+          false
+        ],
+        "x": [
+          0,
+          1
+        ]
+      },
+      {
+        "negative": [
+          true
+        ],
+        "x": [
+          2,
+          3
+        ],
+        "threshold": [
+          3
+        ]
+      }
+    ],
+    "persist_model_cache_v2": true
+  },
+  "measurement": {
+    "paired_discovery_blocks": 1,
+    "paired_confirm_blocks": 20,
+    "warmup_iterations": 0
+  },
+  "limits": {
+    "total_wall_seconds": 90,
+    "max_search_queue": 64
+  }
+}

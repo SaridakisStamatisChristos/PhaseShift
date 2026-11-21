@@ -1,0 +1,21 @@
+set(RUN "@CMAKE_CURRENT_BINARY_DIR@/v2_model_cache_ctest")
+file(REMOVE_RECURSE "${RUN}")
+set(CONFIG "@CMAKE_CURRENT_SOURCE_DIR@/configs/v2/weighted_model_cache.json")
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" explore
+ --config "${CONFIG}" --out "${RUN}" --pause-after 3 RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "v2 model cache partial real-worker exploration failed")
+endif()
+execute_process(COMMAND "@CMAKE_CURRENT_BINARY_DIR@/phaseshift" resume
+ --run "${RUN}" RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "v2 model cache real-worker replay failed")
+endif()
+execute_process(COMMAND "@Python3_EXECUTABLE@"
+ "@CMAKE_CURRENT_SOURCE_DIR@/tests/verify_v2_model_cache.py"
+ --run "${RUN}" --config "${CONFIG}"
+ --binary "@CMAKE_CURRENT_BINARY_DIR@/phaseshift"
+ RESULT_VARIABLE rc)
+if(NOT rc EQUAL 0)
+ message(FATAL_ERROR "v2 model cache independent invariant verification failed")
+endif()

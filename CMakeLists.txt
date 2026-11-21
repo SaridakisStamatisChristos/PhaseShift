@@ -491,3 +491,10 @@ target_link_libraries(phaseshift_model_cache_v2_tests PRIVATE phaseshift_core)
 add_test(NAME v2_reconstructable_model_sidecar_oracle
  COMMAND phaseshift_model_cache_v2_tests ${CMAKE_CURRENT_BINARY_DIR}/ctest_v2_model_cache)
 set_tests_properties(v2_reconstructable_model_sidecar_oracle PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
+
+configure_file(tests/run_v2_model_cache.cmake.in
+ ${CMAKE_CURRENT_BINARY_DIR}/run_v2_model_cache.cmake @ONLY)
+add_test(NAME v2_durable_model_cache_real_worker_repair
+ COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_model_cache.cmake)
+set_tests_properties(v2_durable_model_cache_real_worker_repair
+ PROPERTIES TIMEOUT 150 RUN_SERIAL TRUE)
