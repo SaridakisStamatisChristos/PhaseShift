@@ -7,6 +7,7 @@
 #include "phaseshift/lazy_search.hpp"
 #include "phaseshift/stratified_v2.hpp"
 #include "phaseshift/scheduler_v2.hpp"
+#include "phaseshift/hybrid_v2.hpp"
 #include "phaseshift/interaction_v2.hpp"
 #include "phaseshift/boundary_v2.hpp"
 #include <algorithm>
@@ -299,7 +300,7 @@ Config config_from_json(const Json& j){
   }
   if(c.method!="grid"&&c.method!="random"&&c.method!="stratified"&&c.method!="adaptive_partition")throw Error("unknown search method");
  }else if(c.policy_version=="v2"){
-  if(c.method!="uniform_v2"&&c.method!="hierarchical_boundary_v2"&&c.method!="stratified_v2")throw Error("unsupported v2 search method");
+  if(c.method!="uniform_v2"&&c.method!="hierarchical_boundary_v2"&&c.method!="stratified_v2"&&c.method!="hybrid_mixed_v2")throw Error("unsupported v2 search method");
   if(c.measurement_protocol_version!="legacy_retained_outputs_v1"&&
      c.measurement_protocol_version!="calibrated_batch_v2")
    throw Error("unsupported v2 measurement protocol; kernel_only_v2 is unavailable");
@@ -312,7 +313,7 @@ Config config_from_json(const Json& j){
    throw Error("v2 replicate seeds overflow signed persistence");
   if(c.method=="hierarchical_boundary_v2"&&(c.axes.size()!=1||!numeric_axis(c.axis)||c.replicate_count!=1||!c.admissible_subspaces.empty()))
    throw Error("hierarchical_boundary_v2 currently requires one ordered numeric axis");
-  if(c.method=="hierarchical_boundary_v2"){
+  if((c.method=="hierarchical_boundary_v2"||c.method=="hybrid_mixed_v2")&&numeric_axis(c.axis)){
    std::optional<std::int64_t> previous;
    for(const auto& label:c.axes.at(c.axis)){
     Case sample=c.base;assign(sample,c.axis,label);
@@ -798,10 +799,15 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
  if(cfg.method=="stratified_v2")
   stratified.emplace(std::vector<LazySearchSpace::Axis>(cfg.axes.begin(),cfg.axes.end()),
     cfg.admissible_subspaces,cfg.axis,replicas,cfg.seed^0xb4ad19f14acULL);
+ std::optional<HybridMixedPolicyV2> hybrid;
+ if(cfg.method=="hybrid_mixed_v2")
+  hybrid.emplace(std::vector<LazySearchSpace::Axis>(cfg.axes.begin(),cfg.axes.end()),
+   cfg.admissible_subspaces,cfg.axis,replicas,cfg.seed^0x827d391bULL,
+   cfg.exploration_fraction,numeric_axis(cfg.axis));
  std::optional<HierarchicalPolicyV2> hierarchy;
  if(cfg.method=="hierarchical_boundary_v2")
   hierarchy.emplace(static_cast<std::size_t>(space.cardinality()),cfg.seed^0xd9af2e13ULL,cfg.exploration_fraction);
- const auto rng_state=[&](){return hierarchy?hierarchy->rng_state():(stratified?stratified->state():sampler.state());};
+ const auto rng_state=[&](){return hybrid?hybrid->rng_state():(hierarchy?hierarchy->rng_state():(stratified?stratified->state():sampler.state()));};
  const auto cpu_ms=[&](const Case& c){
   double ms=0;
   for(const auto& o:store.observations(c.id,false))
@@ -810,8 +816,21 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
  };
  auto add_evidence=[&](std::uint64_t i,const Case& c){
   if(hierarchy)hierarchy->observe(static_cast<std::size_t>(i),metric(store,c,cfg,false),cpu_ms(c));
+  if(hybrid)hybrid->observe(i,metric(store,c,cfg,false),cpu_ms(c));
  };
  auto next_valid=[&]()->std::optional<std::pair<std::uint64_t,Case>>{
+  if(hybrid){
+   for(std::size_t attempts=0;attempts<10000;++attempts){
+    const auto index=hybrid->next();
+    if(!index)return std::nullopt;
+    Case c=cfg.base;c.seed=cfg.seed+(*index%replicas);
+    for(const auto& [axis,value]:space.at(*index/replicas))assign(c,axis,value);
+    try{validate_case_schema(c,cfg.max_bytes);}
+    catch(const Error&){hybrid->reject(*index);continue;}
+    return std::pair<std::uint64_t,Case>{*index,std::move(c)};
+   }
+   throw Error("v2 hybrid exceeded deterministic invalid-proposal cap");
+  }
   if(hierarchy){
    const auto pos=hierarchy->next();if(!pos)return std::nullopt;
    Case c=cfg.base;c.seed=cfg.seed;
@@ -888,6 +907,7 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
    if(cfg.max_sampled_cpu_ns)
     store.record_v2_budget_entry(c.id,sampled_cpu_used,cfg.max_sampled_cpu_ns,!sampled_cpu_unknown);
    if(hierarchy)store.event("v2_acquisition",std::to_string(next->first)+";origin="+hierarchy->origin());
+   if(hybrid)store.event("v2_acquisition",std::to_string(next->first)+";origin="+hybrid->origin());
    if(stratified)store.event("v2_acquisition",std::to_string(next->first)+";origin=stratified_primary_axis");
    if(cfg.max_sampled_cpu_ns){
     Json cost;cost.put("sampled_cpu_ns",static_cast<std::int64_t>(sampled_cpu_used));
