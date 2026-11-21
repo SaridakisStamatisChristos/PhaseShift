@@ -89,4 +89,35 @@ with tempfile.TemporaryDirectory(prefix="phaseshift-model-v2-invalid-") as scrat
         proc=subprocess.run([str(a.binary),"validate","--config",str(path)],
                             capture_output=True,text=True,timeout=20)
         assert proc.returncode!=0,(idx,proc.stdout,proc.stderr)
-print("PASS complete durable model cache, repeated read-only replay, missing checkpoint repair, tamper and ahead rejection")
+# Verify final-run and missing-run boundaries without changing the source.
+missing = subprocess.run(
+    [str(a.binary),"verify-model-cache","--run",str(a.run/"absent")],
+    capture_output=True,text=True,timeout=20)
+assert missing.returncode!=0 and "run database missing" in missing.stderr
+with tempfile.TemporaryDirectory(prefix="phaseshift-v2-model-cache-policy-") as scratch:
+    base=pathlib.Path(scratch)
+    root=a.config.resolve().parents[2]
+    v1=base/"v1"
+    result=subprocess.run([str(a.binary),"explore","--config",str(root/"configs/negative_control.json"),
+                           "--out",str(v1),"--pause-after","1"],
+                          capture_output=True,text=True,timeout=30)
+    assert result.returncode==0,(result.stdout,result.stderr)
+    verdict=subprocess.run([str(a.binary),"verify-model-cache","--run",str(v1)],
+                           capture_output=True,text=True,timeout=20)
+    assert verdict.returncode!=0 and "requires an opt-in v2" in verdict.stderr
+    optout=copy.deepcopy(original)
+    optout["search"].pop("persist_model_cache_v2")
+    optout["search"]["max_cases"]=4
+    optout["experiment_id"]="v2-model-cache-optout"
+    path=base/"v2-optout-config.json"
+    path.write_text(json.dumps(optout,sort_keys=True)+"\n")
+    run=base/"v2-optout"
+    result=subprocess.run([str(a.binary),"explore","--config",str(path),
+                           "--out",str(run),"--pause-after","1"],
+                          capture_output=True,text=True,timeout=30)
+    assert result.returncode==0,(result.stdout,result.stderr)
+    verdict=subprocess.run([str(a.binary),"verify-model-cache","--run",str(run)],
+                           capture_output=True,text=True,timeout=20)
+    assert verdict.returncode!=0 and "requires an opt-in v2" in verdict.stderr
+assert snapshot()==before
+print("PASS durable cache replay, policy/version boundaries, missing and corrupt checkpoint rejection")
