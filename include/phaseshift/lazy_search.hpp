@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <map>
 #include <limits>
+#include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -26,6 +27,22 @@ public:
   }
  }
  std::uint64_t cardinality() const noexcept{return cardinality_;}
+ // Exact inverse of at(): canonical ordered axis/value pairs only. No
+ // intermediate Cartesian products or hashed, collision-prone candidate keys.
+ std::optional<std::uint64_t> index_of(
+  const std::vector<std::pair<std::string,std::string>>& coords) const {
+  if(coords.size()!=axes_.size())return std::nullopt;
+  std::uint64_t rank=0;
+  for(std::size_t i=0;i<axes_.size();++i){
+   const auto& [name,labels]=axes_[i];
+   if(coords[i].first!=name)return std::nullopt;
+   const auto it=std::find(labels.begin(),labels.end(),coords[i].second);
+   if(it==labels.end())return std::nullopt;
+   rank=rank*static_cast<std::uint64_t>(labels.size())+
+    static_cast<std::uint64_t>(std::distance(labels.begin(),it));
+  }
+  return rank;
+ }
  std::vector<std::pair<std::string,std::string>> at(std::uint64_t index) const {
   if(index>=cardinality_)throw Error("v2 candidate index outside search space");
   std::vector<std::pair<std::string,std::string>> out(axes_.size());
@@ -97,6 +114,18 @@ public:
  }
  std::uint64_t cardinality() const noexcept{return ends_.size()==1?ends_.front():total_;}
  std::size_t subspace_count() const noexcept{return blocks_.size();}
+ // A disjoint union makes the inverse unique. Infeasible coordinates
+ // return no index rather than entering a bounded-rejection loop.
+ std::optional<std::uint64_t> index_of(
+  const std::vector<std::pair<std::string,std::string>>& coords) const {
+  std::uint64_t start=0;
+  for(std::size_t block=0;block<blocks_.size();++block){
+   const auto local=blocks_[block].index_of(coords);
+   if(local)return start+*local;
+   start=ends_[block];
+  }
+  return std::nullopt;
+ }
  std::vector<std::pair<std::string,std::string>> at(std::uint64_t index) const {
   if(index>=cardinality())throw Error("v2 admissible coordinate index out of range");
   const auto found=std::upper_bound(ends_.begin(),ends_.end(),index);
