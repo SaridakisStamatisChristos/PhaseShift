@@ -177,17 +177,18 @@ std::optional<PersistentJumpEvidenceV2> screen_persistent_jump_v2(
   background.push_back(delta);
  }
  std::sort(background.begin(),background.end());
- const std::size_t middle=background.size()/2;
- const double median=background.size()%2?background[middle]:
-  0.5*background[middle-1]+0.5*background[middle];
- if(!std::isfinite(median))throw Error("persistent-jump background overflow");
+ // The upper quartile is deliberately more conservative than the median:
+ // an isolated large noise gradient must not define a structural step.
+ // Use integer arithmetic bounded by N<=4096 in the fit that calls us.
+ const double noise_floor=background[(3*(background.size()-1)+3)/4];
+ if(!std::isfinite(noise_floor))throw Error("persistent-jump background overflow");
  const double magnitude=std::abs(persistence);
  // Strict inequalities reject a continuous trend with no discrete jump.
  if(!(persistence*edge>0.)||!(magnitude>=minimum_log_effect)||
     !(magnitude>=0.5*std::abs(edge))||
     !(std::abs(edge)>=minimum_log_effect)||
-    !(std::abs(edge)>3.*median))
+    !(std::abs(edge)>3.*noise_floor))
   return std::nullopt;
- return PersistentJumpEvidenceV2{magnitude,std::abs(edge),median};
+ return PersistentJumpEvidenceV2{magnitude,std::abs(edge),noise_floor};
 }
 } // namespace ps
