@@ -31,6 +31,14 @@ int main(int argc,char** argv){try{
  ps::freeze_campaign_v2(store,valid);
  REQUIRE(scalar(store.raw(),"PRAGMA user_version")==9);
  REQUIRE(scalar(store.raw(),"SELECT COUNT(*) FROM campaign_members_v2")==3);
+ {auto initial=store.summary();auto* list=initial.get("hypotheses");
+  REQUIRE(list&&json_object_array_length(list)==3);
+  for(std::size_t i=0;i<json_object_array_length(list);++i){
+   ps::Json h(json_object_get(json_object_array_get_idx(list,i)));
+   REQUIRE(!h.b("familywise_reject"));
+   REQUIRE(h.s("familywise_status")=="PENDING_FAMILY_FINALIZATION");
+  }
+ }
  REQUIRE(fails([&]{ps::freeze_campaign_v2(store,valid);}));
  REQUIRE(fails([&]{(void)ps::finalize_campaign_v2(store,"C1");}));
  ps::Observation v;v.algorithm="calibration";v.status="ok";v.ns=1200;v.batch=1;v.work=44;
@@ -56,6 +64,15 @@ int main(int argc,char** argv){try{
  REQUIRE(scalar(store.raw(),"SELECT COUNT(*) FROM campaign_outcomes_v2 WHERE familywise_reject=1")==1);
  REQUIRE(scalar(store.raw(),"SELECT COUNT(*) FROM campaign_outcomes_v2 WHERE raw_p=1")==1);
  REQUIRE(scalar(store.raw(),"SELECT COUNT(*) FROM campaigns_v2 WHERE state='FINALIZED'")==1);
+ {auto outcome=store.summary();REQUIRE(outcome.i("registered_campaigns")==1);
+  REQUIRE(outcome.i("familywise_positive_members")==1);
+  auto* list=outcome.get("hypotheses");REQUIRE(list&&json_object_array_length(list)==3);
+  for(std::size_t i=0;i<json_object_array_length(list);++i){
+   ps::Json h(json_object_get(json_object_array_get_idx(list,i)));
+   REQUIRE(h.b("familywise_reject")== (h.s("id")=="H1"));
+   REQUIRE(h.s("campaign_state")=="FINALIZED");
+  }
+ }
  REQUIRE(fails([&]{(void)ps::finalize_campaign_v2(store,"C1");}));
  // Immutable read-only connections ignore an active WAL unless it has been
  // checkpointed; flush the completed campaign transaction before verifying.

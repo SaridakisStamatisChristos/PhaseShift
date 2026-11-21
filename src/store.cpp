@@ -430,7 +430,9 @@ std::string Store::environment(){Statement s(db_,"SELECT environment FROM experi
 Json Store::summary(){
  Json report;auto* rows=json_object_new_array();Statement st(db_,"SELECT id,status,axis,left_value,right_value,effect,detail,kind,frozen_params FROM hypotheses ORDER BY id");
  Statement schema(db_,"PRAGMA user_version");if(sqlite3_step(schema.p)!=SQLITE_ROW)throw Error("cannot read evidence schema");
- const bool links_supported=sqlite3_column_int(schema.p,0)>=7;
+ const auto current_schema=sqlite3_column_int(schema.p,0);
+ const bool links_supported=current_schema>=7;
+ const bool campaign_supported=current_schema>=9;
  while(sqlite3_step(st.p)==SQLITE_ROW){auto str=[&](int i){auto* t=sqlite3_column_text(st.p,i);return std::string(t?reinterpret_cast<const char*>(t):"");};
   const auto recorded_status=str(1);
   const bool positive=recorded_status=="CONFIRMED"||recorded_status=="MINIMIZED_CONFIRMED";
@@ -441,12 +443,43 @@ Json Store::summary(){
   Json x;x.put("id",str(0));x.put("status",positive&&!attested?"UNVERIFIED_LEGACY_CONFIRMATION":recorded_status);
   if(positive&&!attested)x.put("raw_status",recorded_status);
   x.put("confirmation_evidence_applicable",positive);
-  x.put("confirmation_evidence_attested",attested);x.put("axis",str(2));x.put("left",static_cast<std::int64_t>(sqlite3_column_int64(st.p,3)));x.put("right",static_cast<std::int64_t>(sqlite3_column_int64(st.p,4)));x.put("effect",sqlite3_column_double(st.p,5));x.put("detail",str(6));x.put("kind",str(7));x.put("frozen_params",str(8));json_object_array_add(rows,x.p);x.p=nullptr;}
+  x.put("confirmation_evidence_attested",attested);x.put("axis",str(2));x.put("left",static_cast<std::int64_t>(sqlite3_column_int64(st.p,3)));x.put("right",static_cast<std::int64_t>(sqlite3_column_int64(st.p,4)));x.put("effect",sqlite3_column_double(st.p,5));x.put("detail",str(6));x.put("kind",str(7));x.put("frozen_params",str(8));
+  if(campaign_supported){
+   Statement membership(db_,"SELECT c.campaign_id,c.state,o.holm_adjusted_p,o.familywise_reject"
+     " FROM campaign_members_v2 m JOIN campaigns_v2 c ON c.campaign_id=m.campaign_id"
+     " LEFT JOIN campaign_outcomes_v2 o ON o.hypothesis_id=m.hypothesis_id"
+     " WHERE m.hypothesis_id=?");
+   membership.text(1,str(0));
+   if(sqlite3_step(membership.p)==SQLITE_ROW){
+    const auto* campaign_id=sqlite3_column_text(membership.p,0);
+    const auto* family_state=sqlite3_column_text(membership.p,1);
+    const std::string cid=reinterpret_cast<const char*>(campaign_id);
+    const std::string state=reinterpret_cast<const char*>(family_state);
+    x.put("campaign_id",cid);x.put("campaign_state",state);
+    if(state=="FINALIZED"&&sqlite3_column_type(membership.p,2)!=SQLITE_NULL){
+     const bool familywise=positive&&attested&&sqlite3_column_int(membership.p,3)==1;
+     x.put("holm_adjusted_p",sqlite3_column_double(membership.p,2));
+     x.put("familywise_reject",familywise);
+     x.put("familywise_status",familywise?"FAMILYWISE_SEALED":"NOT_FAMILYWISE_CONFIRMED");
+    }else{
+     x.put("familywise_reject",false);
+     x.put("familywise_status","PENDING_FAMILY_FINALIZATION");
+    }
+   }else if(positive){
+    x.put("familywise_reject",false);
+    x.put("familywise_status","UNREGISTERED_SINGLE_HYPOTHESIS");
+   }
+  }
+  json_object_array_add(rows,x.p);x.p=nullptr;}
  json_object_object_add(report.p,"hypotheses",rows);
  auto count=[&](const char* q){Statement s(db_,q);if(sqlite3_step(s.p)!=SQLITE_ROW)throw Error("summary query error");return static_cast<std::int64_t>(sqlite3_column_int64(s.p,0));};
  report.put("cases",count("SELECT COUNT(*) FROM cases"));report.put("samples",count("SELECT COUNT(*) FROM samples"));report.put("invalid_samples",count("SELECT COUNT(*) FROM samples WHERE status != 'ok'"));
  report.put("aggregates",count("SELECT COUNT(*) FROM aggregates"));report.put("environment_records",count("SELECT COUNT(*) FROM environments"));
  report.put("algorithm_records",count("SELECT COUNT(*) FROM algorithms"));report.put("generator_records",count("SELECT COUNT(*) FROM generators"));
+ if(campaign_supported){
+  report.put("registered_campaigns",count("SELECT COUNT(*) FROM campaigns_v2"));
+  report.put("familywise_positive_members",count("SELECT COUNT(*) FROM campaign_outcomes_v2 WHERE familywise_reject=1"));
+ }
  return report;
 }
 }

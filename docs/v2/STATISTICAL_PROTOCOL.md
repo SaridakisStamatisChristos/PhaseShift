@@ -31,3 +31,7 @@ The manifest must contain `schema_version:1`, `campaign_id`, ordered `members`, 
 **Limitation:** A frozen campaign must contain *all* intended candidate IDs before the first confirm; multiple-candidate discovery IDs and a real-workload campaign challenge are separate gates, not asserted complete here.
 
 Multi-change discovery now preserves up to 16 distinct frozen candidate geometries instead of recording only H1 and discarding the others. Results remain exploratory until individual independent holdouts complete and the predeclared family is Holm-finalized. The generated alternatives do not automatically enter a campaign or permit opportunistic testing/retesting without multiplicity accounting.
+
+## Reporting distinction
+
+For v9 campaign runs, generated summaries and reports attach `campaign_id`, `campaign_state`, `holm_adjusted_p` (only when finalized), `familywise_reject`, and `familywise_status` to participating hypotheses. Raw one-hypothesis `CONFIRMED` is **not** presented as family-wise accepted while a campaign is merely frozen or has not been registered. The raw hypothesis status is preserved for v1 compatibility; the new field is the distinct family-inference claim.
