@@ -76,6 +76,51 @@ change("unavailable_constraint",lambda c:c["search"].update(
         {"when":{"axis":"negative","values":[False]},
          "require":{"axis":"negative","values":[True]}}
     ]))
+# Falsify nested typed schema boundaries independently of successful sampling.
+change("when_clause_wrong_type",
+       lambda c:c["search"]["conditional_rules"][0].update(when="x"))
+change("when_clause_null",
+       lambda c:c["search"]["conditional_rules"][0].update(when=None))
+change("require_clause_wrong_type",
+       lambda c:c["search"]["conditional_rules"][0].update(require=["x"]))
+change("require_clause_null",
+       lambda c:c["search"]["conditional_rules"][0].update(require=None))
+change("when_clause_empty",
+       lambda c:c["search"]["conditional_rules"][0].update(when={}))
+change("require_clause_empty",
+       lambda c:c["search"]["conditional_rules"][0].update(require={}))
+change("empty_when_axis",
+       lambda c:c["search"]["conditional_rules"][0]["when"].update(axis=""))
+change("integer_when_axis",
+       lambda c:c["search"]["conditional_rules"][0]["when"].update(axis=100))
+change("missing_when_values",
+       lambda c:c["search"]["conditional_rules"][0]["when"].pop("values"))
+change("missing_required_values",
+       lambda c:c["search"]["conditional_rules"][0]["require"].pop("values"))
+change("when_values_wrong_type",
+       lambda c:c["search"]["conditional_rules"][0]["when"].update(values="false"))
+change("require_values_wrong_type",
+       lambda c:c["search"]["conditional_rules"][0]["require"].update(values={}))
+change("when_nested_object_label",
+       lambda c:c["search"]["conditional_rules"][0]["when"].update(values=[{"fake":True}]))
+change("require_nested_array_label",
+       lambda c:c["search"]["conditional_rules"][0]["require"].update(values=[[0]]))
+change("when_null_label",
+       lambda c:c["search"]["conditional_rules"][0]["when"].update(values=[None]))
+change("require_unknown_axis",
+       lambda c:c["search"]["conditional_rules"][0]["require"].update(axis="missing"))
+change("require_unknown_label",
+       lambda c:c["search"]["conditional_rules"][0]["require"].update(values=["never"]))
+change("top_level_conditional_unknown",
+       lambda c:c["search"].update(unknown_conditional_flag=True))
+change("single_non_object_rule",
+       lambda c:c["search"].update(conditional_rules=[False]))
+change("single_missing_require",
+       lambda c:c["search"].update(conditional_rules=[{"when":{"axis":"x","values":[0]}}]))
+change("single_missing_when",
+       lambda c:c["search"].update(conditional_rules=[{"require":{"axis":"x","values":[0]}}]))
+change("wrong_conditional_value_boolean",
+       lambda c:c["search"].update(conditional_rules=True))
 with tempfile.TemporaryDirectory(prefix="phaseshift-conditional-contract-") as tmp:
     for label,cfg in cases_bad:
         path=pathlib.Path(tmp)/(label+".json")
