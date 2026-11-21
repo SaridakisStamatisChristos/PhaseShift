@@ -169,7 +169,8 @@ Plan read_plan(Sqlite& db){
  Statement st(db,"SELECT source_json,source_sha256,axis,left_label,right_label,max_pairs,protocol FROM v3_plan WHERE id=1");
  require(st.row(),"missing immutable v3 plan");
  const auto source=st.str(0),digest=st.str(1),axis=st.str(2),left=st.str(3),right=st.str(4);
- const auto count=st.number(5),protocol=st.str(6);
+ const auto count=st.number(5);
+ const auto protocol=st.str(6);
  require(sha256(source)==digest,"frozen plan digest mismatch");
  require(protocol=="v3_matched_discovery_pilot_1"&&count>0&&count<=100,"invalid v3 protocol/count");
  auto result=make_plan(source,left,right,static_cast<int>(count));
@@ -300,7 +301,8 @@ void execute_pairs(Sqlite& db,const Plan& plan,ReplicatePlanner& planner,
   std::vector<std::string>{plan.config.a,plan.config.b};
  std::size_t this_call=0;
  while(completed<static_cast<std::size_t>(plan.pairs)&&(pause==0||this_call<pause)){
-  const auto proposal=proposed(planner,plan),seed=proposal.first.key.replicate.seed;
+  const auto proposal=proposed(planner,plan);
+  const auto seed=proposal.first.key.replicate.seed;
   const auto a=materialize(plan,plan.left,seed),b=materialize(plan,plan.right,seed);
   const auto started=std::chrono::steady_clock::now();
   auto measure_one=[&](const Case& c){
