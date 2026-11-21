@@ -289,9 +289,9 @@ Config config_from_json(const Json& j){
   if(c.method!="grid"&&c.method!="random"&&c.method!="stratified"&&c.method!="adaptive_partition")throw Error("unknown search method");
  }else if(c.policy_version=="v2"){
   if(c.method!="uniform_v2"&&c.method!="hierarchical_boundary_v2"&&c.method!="stratified_v2")throw Error("unsupported v2 search method");
-  if(c.detector_version!="boundary_v1"&&c.detector_version!="multi_change_v2")
+  if(c.detector_version!="boundary_v1"&&c.detector_version!="multi_change_v2"&&c.detector_version!="multi_change_pelt_v2")
    throw Error("unsupported v2 detector version");
-  if(c.detector_version=="multi_change_v2"&&!numeric_axis(c.axis))
+  if((c.detector_version=="multi_change_v2"||c.detector_version=="multi_change_pelt_v2")&&!numeric_axis(c.axis))
    throw Error("multi_change_v2 requires an ordered numeric primary axis");
   if(c.max_cases>c.max_queue)throw Error("v2 candidate budget exceeds memory bound");
   if(c.seed>static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())-static_cast<std::uint64_t>(c.replicate_count-1))
@@ -669,7 +669,8 @@ static std::vector<Detection> detect_multi_v2(Store& store,const Config& cfg){
   for(std::size_t j=1;j<y.size();++j)gradients.push_back(std::abs(y[j]-y[j-1]));
   const auto baseline=sample_median(gradients);
   const auto penalty=std::max(1e-6,4.0*baseline*baseline*std::log(static_cast<double>(y.size())));
-  const auto fit=fit_multi_change_v2(y,2,3,penalty);
+  const auto fit=cfg.detector_version=="multi_change_pelt_v2"?
+   fit_multi_change_pelt_v2(y,2,3,penalty):fit_multi_change_v2(y,2,3,penalty);
   for(const auto at:fit.changes){
    const auto effect=std::abs(y[at]-y[at-1]);
    std::vector<double> alternatives;
@@ -853,7 +854,7 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
  if(completed==cfg.max_cases||exhausted){
   v2_factorial_diagnostic(store,cfg);
   std::optional<Detection> selected=detect(store,cfg);
-  if(cfg.detector_version=="multi_change_v2"){
+  if(cfg.detector_version=="multi_change_v2"||cfg.detector_version=="multi_change_pelt_v2"){
    const auto candidates=detect_multi_v2(store,cfg);
    std::size_t rank=0;
    for(const auto& c:candidates){

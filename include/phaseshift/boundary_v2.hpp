@@ -15,3 +15,8 @@ struct MultiChangeFitV2 {
 MultiChangeFitV2 fit_multi_change_v2(std::span<const double> values,
  std::size_t min_segment_size,std::size_t max_changes,double penalty);
 }
+
+// PELT with delayed pruning for minimum segment size; exact K-bounded DP
+// fallback when the unconstrained optimum exceeds max_changes.
+MultiChangeFitV2 fit_multi_change_pelt_v2(std::span<const double> values,
+ std::size_t min_segment_size,std::size_t max_changes,double penalty);

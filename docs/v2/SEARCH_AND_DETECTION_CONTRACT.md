@@ -27,3 +27,8 @@ Opt-in `search.admissible_subspaces` accepts 1–256 explicitly disjoint rectang
 ## Stratified primary-axis exploration (M3 incremental)
 
 Opt-in `search.method=stratified_v2` uses one exactly permuted without-replacement sampler **per primary-axis stratum**, interleaved round-robin in a seeded random stratum order. Each sampler maps its local index to the original admissible union and replicate index using mixed-radix arithmetic (no full product generation). Every nonempty primary stratum is reached before revisiting a stratum; all candidates remain exactly-once over a full sweep. This is intentionally **not uniform** across unequal-size strata. CPU costs, calibrated uncertainty, adaptivity, and held-out superiority are not implied. The method is an internal baseline that can expose rare primary-axis regions under small budgets. v1 and hierarchical schedules are unchanged.
+
+
+## Pruned exact changepoint model (M5 incremental)
+
+Opt-in `detection.detector_version=multi_change_pelt_v2` supports squared-error penalized segmentation with delayed PELT candidate pruning under a minimum segment size. An unconstrained optimal partition containing more changes than the configured K-bound is **not truncated**: it falls back to the existing exact K-bounded DP. Worst-case complexity remains quadratic for the pruned search and O(KN²) for fallback. Unit tests compare every result to the exact K-bounded oracle on exhaustive binary sequences and test zero/smooth/multiple transitions. Scores are exploratory; candidate selection never establishes independent holdout significance.

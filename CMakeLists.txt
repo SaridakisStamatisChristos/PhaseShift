@@ -299,3 +299,9 @@ add_test(NAME stratified_v2_oracle COMMAND phaseshift_stratified_v2_tests)
 configure_file(tests/run_v2_stratified.cmake.in ${CMAKE_CURRENT_BINARY_DIR}/run_v2_stratified.cmake @ONLY)
 add_test(NAME v2_stratified_resume COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_stratified.cmake)
 set_tests_properties(v2_stratified_resume PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+
+# Independent exhaustive score oracle for pruned changepoint candidate generation.
+add_executable(phaseshift_pelt_v2_tests tests/pelt_v2.cpp)
+target_link_libraries(phaseshift_pelt_v2_tests PRIVATE phaseshift_core)
+add_test(NAME pelt_v2_differential COMMAND phaseshift_pelt_v2_tests)
+set_tests_properties(pelt_v2_differential PROPERTIES TIMEOUT 90)
