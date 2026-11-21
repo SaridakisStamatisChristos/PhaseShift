@@ -9,6 +9,7 @@ import csv
 import hashlib
 import json
 import pathlib
+import resource
 import sqlite3
 import subprocess
 import time
@@ -28,6 +29,8 @@ def execute(binary, root, policy, fixture, seed, cases, sampled_cpu_ns):
     cfg["limits"]["total_wall_seconds"] = 120
     cfg["search"]["policy_version"] = "v2"
     cfgpath.write_text(json.dumps(cfg, sort_keys=True, indent=2) + "\n")
+    parent_before = resource.getrusage(resource.RUSAGE_SELF)
+    child_before = resource.getrusage(resource.RUSAGE_CHILDREN)
     started = time.perf_counter_ns()
     try:
         result = subprocess.run([str(binary), "explore", "--config", str(cfgpath),
@@ -41,11 +44,24 @@ def execute(binary, root, policy, fixture, seed, cases, sampled_cpu_ns):
         (root / f"{name}.stderr.txt").write_text(
             f"external subprocess deadline expired; partial evidence retained: {exc}\n")
     wall = time.perf_counter_ns() - started
+    child_after = resource.getrusage(resource.RUSAGE_CHILDREN)
+    parent_after = resource.getrusage(resource.RUSAGE_SELF)
+    def cpu_delta_ns(now, prior):
+        return max(0, round(
+            ((now.ru_utime + now.ru_stime) -
+             (prior.ru_utime + prior.ru_stime)) * 1_000_000_000
+        ))
+    child_cpu_ns = cpu_delta_ns(child_after, child_before)
+    parent_cpu_ns = cpu_delta_ns(parent_after, parent_before)
     row = {
         "fixture": fixture, "policy": policy, "seed": seed,
         "sampled_worker_cpu_ceiling_ns": sampled_cpu_ns,
         "max_cases": cases, "exit_code": code,
-        "exploration_wall_ns": wall, "completed_cases": None,
+        "exploration_wall_ns": wall,
+        "command_child_cpu_ns": child_cpu_ns,
+        "harness_parent_cpu_ns": parent_cpu_ns,
+        "observed_total_cpu_ns": child_cpu_ns + parent_cpu_ns,
+        "completed_cases": None,
         "sampled_worker_cpu_ns": None, "invalid_samples": None,
         "last_ledger_cpu_ns": None, "last_ledger_max_ns": None,
         "budget_limit_event": None, "h1_status": None,
@@ -112,6 +128,8 @@ def main():
         "sampled_worker_cpu_ceiling_ns": args.sampled_cpu_ns,
         "case_budget_overrun": "one final complete case allowed",
         "full_process_cpu_equal": False, "full_wall_equal": False,
+        "full_process_cpu_measured": True,
+        "cpu_measurement": "Linux getrusage RUSAGE_CHILDREN and RUSAGE_SELF deltas",
         "sota_claim": False, "predeclared": True,
     }
     plan["sha256"] = hashlib.sha256(
