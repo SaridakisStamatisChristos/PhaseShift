@@ -1091,6 +1091,33 @@ void confirm(const std::string& run,const std::string& id){
  };
  if(status=="NO_CONFIRMED_BOUNDARY"){std::cout<<"No candidate to confirm\n";return;}
  if(status!="HYPOTHESIZED")throw Error("confirmation already attempted or candidate not eligible: "+status);
+ if(cfg.policy_version=="v2"){
+  sqlite3_stmt* members=nullptr;
+  if(sqlite3_prepare_v2(store.raw(),
+   "SELECT COUNT(*) FROM hypotheses WHERE status!='NO_CONFIRMED_BOUNDARY'",-1,&members,nullptr)!=SQLITE_OK)
+   throw Error("cannot inspect v2 frozen candidate family");
+  const auto state=sqlite3_step(members);
+  const auto candidates=state==SQLITE_ROW?sqlite3_column_int64(members,0):0;
+  sqlite3_finalize(members);
+  if(state!=SQLITE_ROW)throw Error("cannot count v2 frozen candidate family");
+  if(candidates>1||id!="H1"){
+   // A multiple-candidate confirmation is invalid unless its
+   // predeclared, immutable Holm family is frozen before holdout.
+   sqlite3_stmt* family=nullptr;
+   if(sqlite3_prepare_v2(store.raw(),
+    "SELECT c.state FROM campaign_members_v2 m JOIN campaigns_v2 c"
+    " ON c.campaign_id=m.campaign_id WHERE m.hypothesis_id=?",-1,&family,nullptr)!=SQLITE_OK){
+    // SQLite v8 doesn't have campaign tables: fail closed.
+    throw Error("v2 multi-hypothesis confirmation requires frozen campaign");
+   }
+   sqlite3_bind_text(family,1,id.c_str(),-1,SQLITE_TRANSIENT);
+   const auto row=sqlite3_step(family);
+   const bool frozen=row==SQLITE_ROW&&
+     std::string(reinterpret_cast<const char*>(sqlite3_column_text(family,0)))=="FROZEN";
+   sqlite3_finalize(family);
+   if(!frozen)throw Error("v2 multi-hypothesis confirmation requires frozen campaign membership");
+  }
+ }
  /* Preserve the original candidate's frozen failure subtype/scope when
     entering TESTED: failure confirmations parse that exact evidence. */
  sqlite3_stmt* detail_stmt=nullptr;

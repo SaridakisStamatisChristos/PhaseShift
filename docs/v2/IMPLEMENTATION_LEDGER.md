@@ -84,3 +84,6 @@ Predeclared, one-family-per-v2-run immutable campaign manifest and Holm outcome 
 
 ### M9 replay-ledger falsification and repair
 V2 sampled-CPU replay now checks each persisted scheduler decision's foreign-keyed `budget_ledger` cumulative CPU, declared limit, and accounting-completeness flag against values independently reconstructed from raw measurements. A fully finalized budget-limited run still executes this read-only proof path on `resume`, rather than short-circuiting straight to report generation. The CLI test now uses a transactionally backed-up corrupted copy with the cumulative CPU incremented by 1 ns and requires fail-closed rejection; noncorrupted repeated resume remains idempotent. Legacy v1 unaffected. Exact SHA CI required.
+
+### M7 multi-candidate fail-closed gate
+`confirm` refuses unfrozen v2 H2..H16 and multi-candidate H1, with real-worker adversarial CLI test for zero holdout before freeze; it then permits the predeclared Holm family. Legacy v1 and single-candidate v2 unchanged. Latest exact revision CI required.

@@ -44,3 +44,8 @@ The v2 confirmed-H1..H16 seal now passes the exact immutable set of 20–100 see
 ## Controlled null stress campaign
 
 The deterministic `v2_correlated_null_holm_smoke` generates 3,000 independent *simulated* all-null campaigns for family sizes 1, 2, 4, 8 and 16 under independent, perfectly shared and partially correlated sign streams. It computes *exact discrete* two-sided binomial sign-test p-values under each marginal null and applies Holm step-down at alpha 0.05. The observed campaign-wise false-positive fraction is required to be <=0.075 as a **coarse Monte Carlo smoke**, not an estimate of the engine's population FWER and not a guarantee under selection or reuse of real-world holdouts. All v2 campaign claims still require generated real-worker evidence with independent seed groups and immutable outcome seals.
+
+
+## Fail-closed multi-candidate confirmation
+
+On a v2 run with more than one frozen hypothesis, or when confirming H2..H16, the CLI now requires an existing `FROZEN` campaign containing that hypothesis **before** it transitions HYPOTHESIZED→TESTED or generates any holdout case. SQLite v8 runs without a campaign fail closed; a valid single-H1 v2 run keeps its historical one-hypothesis behavior. The independent two-hypothesis real-worker smoke intentionally invokes `confirm H1` before campaign freeze and requires rejection, then freezes the family and performs both real holdouts. Candidate families may still omit untested hypotheses if the subset is explicitly frozen; no global research-campaign multiplicity claim is made outside that family.
