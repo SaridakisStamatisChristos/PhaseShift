@@ -1,6 +1,7 @@
 #include "phaseshift/experiment.hpp"
 #include "phaseshift/campaign_v2.hpp"
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -74,7 +75,22 @@ int main(int argc,char** argv){try{
   CHECK(count(s.raw(),"SELECT COUNT(*) FROM hypotheses WHERE status='MINIMIZED_CONFIRMED'")==2);
   CHECK(count(s.raw(),"SELECT COUNT(*) FROM witnesses WHERE status='MINIMIZED_CONFIRMED'")==2);
  }
- std::cout<<"PASS independent v2 H1/H2 confirmed witness artifacts and legacy H1 layout\n";
+ const auto exported=fs::path(run.string()+"-bundle");
+ const auto imported=fs::path(run.string()+"-imported");
+ fs::remove_all(exported);fs::remove_all(imported);
+ ps::export_run(run.string(),exported.string());
+ CHECK(ps::Json::file((exported/"SHA256.json").string()).i("bundle_schema")==2);
+ CHECK(fs::exists(exported/"witness.cpp"));
+ CHECK(fs::exists(exported/"witnesses"/"H2"/"witness.hex"));
+ ps::verify_bundle(exported.string());
+ ps::import_bundle(exported.string(),imported.string());
+ CHECK(fs::exists(imported/"witnesses"/"H2"/"witness.cpp"));
+ {std::ofstream corrupt(imported/"witnesses"/"H2"/"witness.hex",std::ios::app);
+  CHECK(corrupt.good());corrupt<<"tampered";CHECK(corrupt.good());}
+ bool rejected=false;
+ try{ps::verify_bundle(imported.string());}catch(const ps::Error&){rejected=true;}
+ CHECK(rejected);
+ std::cout<<"PASS v2 H1/H2 independent witnesses, export/import and tamper rejection\n";
  return 0;
 }catch(const std::exception& e){std::cerr<<e.what()<<"\n";return 1;}
 }
