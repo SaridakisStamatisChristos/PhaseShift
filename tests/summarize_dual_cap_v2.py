@@ -36,6 +36,14 @@ with tempfile.TemporaryDirectory() as tmp:
     assert not result["sota_claim"]
     assert len(result["policy_rows"])==4
     assert len(result["paired_diagnostics"])==2
+    assert all(p["median_wall_budget_utilization"] in (0.04,0.05)
+        and p["median_cpu_budget_utilization"]==0.01
+        and p["localization_eligible_seeds"]==0
+        and p["median_confirmed_correct_boundary_width"] is None
+        for p in result["policy_rows"])
+    assert all(p["localization_eligible_seed_pairs"]==0 and
+        p["median_baseline_minus_policy_interval_width"] is None
+        for p in result["paired_diagnostics"])
     assert all(r["eligible_seed_pairs"]==20 and
          r["median_baseline_minus_policy_wall_ns"]==10000 and
          r["exploratory_bootstrap95_low_ns"]==10000

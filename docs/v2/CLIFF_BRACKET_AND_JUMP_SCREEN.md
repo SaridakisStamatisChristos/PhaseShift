@@ -54,3 +54,15 @@ external search baselines before recommending a production policy switch.
   smooth-trend, and impulse tests of the optional persistence screen.
 
 Each is a correctness/diagnostic gate, *not* proof of head-to-head speedup.
+
+## Current research benchmark coverage
+
+The 20-seed synthetic `dual_cap_challenge.py` inventory now includes
+`cliff_bracket_v2` alongside all existing policies, both known-cliff and
+constant-null scenarios. The scorecard reports independently confirmed
+correct-boundary interval widths, eligible seed counts, budget utilization,
+and why runs stopped. **An eight-case stopping rule with substantial unused
+CPU/wall budget is not an equal-consumed-compute study.** It cannot establish
+superiority under tight matching ceilings. Real-family scoring still
+requires a separate admissible one-axis configuration and fair external
+search competitors; no claims are silently inferred.

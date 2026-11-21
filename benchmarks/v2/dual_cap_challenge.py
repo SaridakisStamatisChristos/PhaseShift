@@ -22,7 +22,7 @@ import time
 from equal_budget import config
 
 POLICIES = ("adaptive_partition", "uniform_v2", "stratified_v2",
-            "hierarchical_boundary_v2", "hybrid_mixed_v2")
+            "hierarchical_boundary_v2", "cliff_bracket_v2", "hybrid_mixed_v2")
 FIXTURES = ("single_cliff", "constant_null")
 
 

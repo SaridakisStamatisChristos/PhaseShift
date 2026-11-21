@@ -46,8 +46,24 @@ def analyze(root):
             trial=[indexed[fixture,policy,s] for s in plan["seeds"]]
             cpu=[t["observed_total_cpu_ns"] for t in trial]
             wall=[t["observed_total_wall_ns"] for t in trial]
+            # Localization is a property of independently confirmed,
+            # correct synthetic cliffs, not of a provisional segmentation.
+            eligible_widths=[t["h1_right"]-t["h1_left"] for t in trial
+                 if t.get("synthetic_known_threshold_correct",0) and
+                    t["eligible_confirmed_under_budget"] and
+                    t.get("h1_left") is not None and t.get("h1_right") is not None]
             per.append({
                 "fixture":fixture,"policy":policy,"seeds":len(trial),
+                "median_wall_budget_utilization":statistics.median(
+                    t["observed_total_wall_ns"]/plan["wall_ceiling_ns"] for t in trial),
+                "median_cpu_budget_utilization":statistics.median(
+                    t["observed_total_cpu_ns"]/plan["cpu_ceiling_ns"] for t in trial),
+                "stop_reasons":{reason:sum(t.get("stop_reason","not_recorded")==reason
+                    for t in trial) for reason in sorted(set(
+                    t.get("stop_reason","not_recorded") for t in trial))},
+                "localization_eligible_seeds":len(eligible_widths),
+                "median_confirmed_correct_boundary_width":(
+                    statistics.median(eligible_widths) if eligible_widths else None),
                 "failed_commands":sum(t["had_failure"] for t in trial),
                 "budget_overshoots":sum(not t["within_both_ceilings"] for t in trial),
                 "median_observed_cpu_ns":statistics.median(cpu),
@@ -79,6 +95,19 @@ def analyze(root):
                         continue
                     differences.append(
                         a["observed_total_wall_ns"]-b["observed_total_wall_ns"])
+                # Matched threshold widths are meaningful only if both runs
+                # independently confirmed the planted cliff under budget.
+                localization=[]
+                if fixture=="single_cliff":
+                    for seed in plan["seeds"]:
+                        a=indexed[fixture,baseline,seed]
+                        b=indexed[fixture,policy,seed]
+                        if all(t.get("synthetic_known_threshold_correct",0) and
+                               t["eligible_confirmed_under_budget"] and
+                               not t["had_failure"] and t["within_both_ceilings"]
+                               for t in (a,b)):
+                            localization.append((a["h1_right"]-a["h1_left"])-
+                                                (b["h1_right"]-b["h1_left"]))
                 point=statistics.median(differences) if differences else None
                 ci_low=ci_high=None
                 if len(differences)>=20:
@@ -95,6 +124,11 @@ def analyze(root):
                     "fixture":fixture,"baseline":baseline,"policy":policy,
                     "eligible_seed_pairs":len(differences),
                     "median_baseline_minus_policy_wall_ns":point,
+                    "localization_eligible_seed_pairs":len(localization),
+                    "localization_unmatched_seed_pairs":(
+                        len(plan["seeds"])-len(localization) if fixture=="single_cliff" else None),
+                    "median_baseline_minus_policy_interval_width":(
+                        statistics.median(localization) if localization else None),
                     "exploratory_bootstrap95_low_ns":ci_low,
                     "exploratory_bootstrap95_high_ns":ci_high,
                     "confirmatory_claim":False,
@@ -107,6 +141,8 @@ def analyze(root):
         "confirmatory_claim":False,
         "limitations":[
             "Equal caps do not imply equal consumed resources or case semantics",
+            "Budget-utilization fractions disclose under-saturation; fixed case stops are not equal-budget competition",
+            "Localization medians select independently confirmed correct planted cliffs; eligibility counts must accompany medians",
             "One complete case can overshoot either cap; logged, never a win",
             "CPU process descendants not reaped by the measured CLI are unavailable",
             "No adjustment for optional discovery or candidate-selection multiplicity",

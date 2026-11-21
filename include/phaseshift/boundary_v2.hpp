@@ -29,7 +29,7 @@ namespace ps {
 struct PersistentJumpEvidenceV2 {
  double absolute_persistent_shift=0;
  double absolute_edge_change=0;
- double median_background_change=0;
+ double upper_quartile_background_change=0;
 };
 std::optional<PersistentJumpEvidenceV2> screen_persistent_jump_v2(
  std::span<const double> values,std::size_t cut,double minimum_log_effect);
