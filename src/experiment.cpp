@@ -1215,9 +1215,14 @@ void confirm(const std::string& run,const std::string& id){
       " pairs expected="+std::to_string(cfg.confirm_blocks)+"; left=ok right="+subtype+
       "; categorical status, censored timing not a speedup; no finite ratio inferred"+
       "; independent baseline negative-control oracle_valid="+(all_valid?"true":"false");
-  if(std::string(verdict)=="CONFIRMED")
-   store.seal_confirmation(id,cfg.a,cfg.confirm_blocks,false,prescribed_seeds(true));
-  store.hypothesis(id,verdict,axis,left,right,0,evidence);
+  // The seal and final status commit as one SQLite transaction.
+  store.exec("BEGIN IMMEDIATE");
+  try{
+   if(std::string(verdict)=="CONFIRMED")
+    store.seal_confirmation(id,cfg.a,cfg.confirm_blocks,false,prescribed_seeds(true));
+   store.hypothesis(id,verdict,axis,left,right,0,evidence);
+   store.exec("COMMIT");
+  }catch(...){store.exec("ROLLBACK");throw;}
   report(run);std::cout<<verdict<<" "<<evidence<<"\n";return;
  }
  std::array<std::vector<double>,2> side_estimates;
@@ -1312,12 +1317,16 @@ void confirm(const std::string& run,const std::string& id){
          <<" veto_if_invalid=true";
   }
  }
- if(confirmed)store.seal_confirmation(id,cfg.a,cfg.confirm_blocks,false,prescribed_seeds(false));
- store.hypothesis(id,confirmed?"CONFIRMED":"NOT_CONFIRMED",axis,left,right,std::abs(delta),detail.str()+(confirmed?"":"; prespecified evidence threshold not met"));
- // Only a successfully sealed, independently confirmed fixed-sample
- // performance contrast may enter a predeclared Holm campaign.
- if(confirmed&&campaign_p_value)
-  record_campaign_signflip_v2(store,id,*campaign_p_value,cfg.confirm_blocks);
+ // Keep sealed positive status and family p-value indivisible. A failed SQL
+ // attestation may preserve raw holdout evidence but not a positive verdict.
+ store.exec("BEGIN IMMEDIATE");
+ try{
+  if(confirmed)store.seal_confirmation(id,cfg.a,cfg.confirm_blocks,false,prescribed_seeds(false));
+  store.hypothesis(id,confirmed?"CONFIRMED":"NOT_CONFIRMED",axis,left,right,std::abs(delta),detail.str()+(confirmed?"":"; prespecified evidence threshold not met"));
+  if(confirmed&&campaign_p_value)
+   record_campaign_signflip_v2(store,id,*campaign_p_value,cfg.confirm_blocks);
+  store.exec("COMMIT");
+ }catch(...){store.exec("ROLLBACK");throw;}
  report(run);std::cout<<store.summary().str()<<"\n";
  }catch(const Error& error){
   if(std::string(error.what()).find("total_wall_seconds budget exhausted")!=std::string::npos){

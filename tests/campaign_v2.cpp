@@ -74,6 +74,44 @@ int main(int argc,char** argv){try{
   }
  }
  REQUIRE(fails([&]{(void)ps::finalize_campaign_v2(store,"C1");}));
+ // Independent SQL failure injection: the confirmation path must not publish
+ // an unsupported raw positive if the p-value attestation aborts.
+ ps::Store atomic(std::string(argv[1])+"/rollback.sqlite");
+ atomic.upgrade_v2_schema();
+ atomic.experiment(R"({"policy_version":"v2","confirm_blocks":20})",ps::environment());
+ atomic.hypothesis("H1","OBSERVED","x",1,2,2.0,"discovery","PERFORMANCE_CLIFF");
+ atomic.hypothesis("H1","HYPOTHESIZED","x",1,2,2.0,"frozen");
+ const auto only=ps::Json::parse(R"({"schema_version":1,"campaign_id":"ATOMIC","members":["H1"],"alpha":0.05,"confirm_seed_pairs":20,"test":"paired_sign_flip_v1"})");
+ ps::freeze_campaign_v2(atomic,only);
+ atomic.hypothesis("H1","TESTED","x",1,2,2.0,"independent holdout");
+ for(int pair=0;pair<20;++pair)for(int side=0;side<2;++side){
+  ps::Case c;c.family="calibration";c.x=1+side;
+  c.seed=static_cast<std::uint64_t>(800000+pair);c=ps::make_case(c);
+  atomic.add_observation(c,v,true);
+ }
+ bool injected=false;
+ atomic.exec("BEGIN IMMEDIATE");
+ try{
+  atomic.seal_confirmation("H1","calibration",20);
+  atomic.hypothesis("H1","CONFIRMED","x",1,2,2.0,"should not survive failed p");
+  ps::record_campaign_signflip_v2(atomic,"H1",0.0,20);
+  atomic.exec("COMMIT");
+ }catch(const ps::Error&){injected=true;atomic.exec("ROLLBACK");}
+ REQUIRE(injected);
+ REQUIRE(scalar(atomic.raw(),"SELECT COUNT(*) FROM confirmation_seals")==0);
+ REQUIRE(scalar(atomic.raw(),"SELECT COUNT(*) FROM campaign_pvalues_v2")==0);
+ REQUIRE(scalar(atomic.raw(),"SELECT COUNT(*) FROM hypotheses WHERE status='TESTED'")==1);
+ REQUIRE(scalar(atomic.raw(),"SELECT COUNT(*) FROM samples WHERE holdout=1")==40);
+ atomic.exec("BEGIN IMMEDIATE");
+ try{
+  atomic.seal_confirmation("H1","calibration",20);
+  atomic.hypothesis("H1","CONFIRMED","x",1,2,2.0,"attested");
+  ps::record_campaign_signflip_v2(atomic,"H1",0.001,20);
+  atomic.exec("COMMIT");
+ }catch(...){atomic.exec("ROLLBACK");throw;}
+ REQUIRE(scalar(atomic.raw(),"SELECT COUNT(*) FROM confirmation_seals")==1);
+ REQUIRE(scalar(atomic.raw(),"SELECT COUNT(*) FROM campaign_pvalues_v2")==1);
+ REQUIRE(scalar(atomic.raw(),"SELECT COUNT(*) FROM hypotheses WHERE status='CONFIRMED'")==1);
  // Immutable read-only connections ignore an active WAL unless it has been
  // checkpointed; flush the completed campaign transaction before verifying.
  REQUIRE(sqlite3_wal_checkpoint_v2(store.raw(),nullptr,SQLITE_CHECKPOINT_TRUNCATE,
