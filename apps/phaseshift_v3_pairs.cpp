@@ -159,6 +159,7 @@ Plan make_adaptive_plan(const std::string& source,int count){
  validate_plan(draft);
  return draft;
 }
+void enable_adaptive_schema(Sqlite& db);
 void create_schema(Sqlite& db,const Plan& plan){
  db.exec(R"SQL(
  BEGIN IMMEDIATE;
@@ -199,11 +200,11 @@ void create_schema(Sqlite& db,const Plan& plan){
  st.bind(1,plan.source);st.bind(2,sha256(plan.source));
  st.bind(3,plan.axis);st.bind(4,plan.left);st.bind(5,plan.right);
  st.bind(6,static_cast<std::int64_t>(plan.pairs));st.done();
+ if(plan.adaptive)enable_adaptive_schema(db); // same atomic schema/plan commit
  db.exec("COMMIT");
 }
 void enable_adaptive_schema(Sqlite& db){
  db.exec(R"SQL(
- BEGIN IMMEDIATE;
  CREATE TABLE v3_adaptive_decisions(
   pair_number INTEGER PRIMARY KEY REFERENCES v3_pairs(pair_number),
   axis TEXT NOT NULL, left_label TEXT NOT NULL, right_label TEXT NOT NULL,
@@ -211,7 +212,6 @@ void enable_adaptive_schema(Sqlite& db){
   prior_evidence_digest TEXT NOT NULL CHECK(length(prior_evidence_digest)=64),
   CHECK(left_label<>right_label));
  PRAGMA user_version=11;
- COMMIT;
  )SQL");
 }
 Plan read_plan(Sqlite& db){
@@ -526,7 +526,6 @@ int main(int argc,char** argv){
    fs::create_directories(out);
    Sqlite db(fs::path(out)/"run.sqlite");
    create_schema(db,plan);
-   if(plan.adaptive)enable_adaptive_schema(db);
    auto planner=planner_for(plan);
    std::optional<AdaptivePairPolicy> adaptive;
    if(plan.adaptive)adaptive.emplace(adaptive_legal_labels(plan),
