@@ -14,6 +14,7 @@
 #include "phaseshift/cpu_usage_v2.hpp"
 #include "phaseshift/scheduler_v2.hpp"
 #include "phaseshift/hybrid_v2.hpp"
+#include "phaseshift/v3/legacy_policy_adapter.hpp"
 #include "phaseshift/interaction_v2.hpp"
 #include "phaseshift/boundary_v2.hpp"
 #include "phaseshift/slope_v2.hpp"
@@ -1076,27 +1077,8 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
  if(space.cardinality()>static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())/replicas)
   throw Error("CARDINALITY_OVERFLOW: v2 coordinate/replicate universe");
  const auto virtual_count=space.cardinality()*replicas;
- SparsePermutation sampler(virtual_count,cfg.seed^0xb7d2f937c4abULL);
- std::optional<StratifiedIndexSamplerV2> stratified;
- std::optional<WeightedIndexSamplerV2> weighted;
- if(cfg.method=="weighted_v2")
-  weighted.emplace(std::vector<LazySearchSpace::Axis>(cfg.axes.begin(),cfg.axes.end()),
-    cfg.admissible_subspaces,cfg.domain_priors,replicas,cfg.seed^0x47c11bf25eb49a0dULL);
- if(cfg.method=="stratified_v2")
-  stratified.emplace(std::vector<LazySearchSpace::Axis>(cfg.axes.begin(),cfg.axes.end()),
-    cfg.admissible_subspaces,cfg.axis,replicas,cfg.seed^0xb4ad19f14acULL);
- std::optional<HybridMixedPolicyV2> hybrid;
- if(cfg.method=="hybrid_mixed_v2")
-  hybrid.emplace(std::vector<LazySearchSpace::Axis>(cfg.axes.begin(),cfg.axes.end()),
-   cfg.admissible_subspaces,cfg.axis,replicas,cfg.seed^0x827d391bULL,
-   cfg.exploration_fraction,numeric_axis(cfg.axis));
- std::optional<HierarchicalPolicyV2> hierarchy;
- if(cfg.method=="hierarchical_boundary_v2"||cfg.method=="cliff_bracket_v2")
-  hierarchy.emplace(static_cast<std::size_t>(space.cardinality()),cfg.seed^0xd9af2e13ULL,
-    cfg.exploration_fraction,cfg.method=="cliff_bracket_v2");
- const auto rng_state=[&](){return hybrid?hybrid->rng_state():
-  (hierarchy?hierarchy->rng_state():
-   (weighted?weighted->state():(stratified?stratified->state():sampler.state())));};
+ v3::LegacyV2PolicyAdapter selector(cfg,space,replicas,numeric_axis(cfg.axis));
+ const auto rng_state=[&](){return selector.rng_state();};
  DiscoveryEvidenceViewV2 view(static_cast<std::size_t>(cfg.max_cases));
  std::optional<ModelCheckpointCacheV2> model_cache;
  if(cfg.persist_model_cache_v2)
@@ -1111,39 +1093,27 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
   if(model_cache)
    model_cache->remember(view.size(),i,c.id,rng_state(),
      item.metric,item.observed_cpu_ms,committed_rows);
-  if(hierarchy)hierarchy->observe(static_cast<std::size_t>(i),item.metric,item.observed_cpu_ms);
-  if(hybrid)hybrid->observe(i,item.metric,item.observed_cpu_ms);
+  selector.observe(i,item.metric,item.observed_cpu_ms);
  };
  auto next_valid=[&]()->std::optional<std::pair<std::uint64_t,Case>>{
-  if(hybrid){
-   for(std::size_t attempts=0;attempts<10000;++attempts){
-    const auto index=hybrid->next();
-    if(!index)return std::nullopt;
-    Case c=cfg.base;c.seed=cfg.seed+(*index%replicas);
-    for(const auto& [axis,value]:space.at(*index/replicas))assign(c,axis,value);
-    try{validate_case_schema(c,cfg.max_bytes);}
-    catch(const Error&){hybrid->reject(*index);continue;}
-    return std::pair<std::uint64_t,Case>{*index,std::move(c)};
-   }
-   throw Error("v2 hybrid exceeded deterministic invalid-proposal cap");
-  }
-  if(hierarchy){
-   const auto pos=hierarchy->next();if(!pos)return std::nullopt;
-   Case c=cfg.base;c.seed=cfg.seed;
-   for(const auto& [axis,value]:space.at(*pos))assign(c,axis,value);
+  // Construct exactly the old generator/case encoding; the adapter only owns
+  // policy selection and observed-policy state, never worker/Store contracts.
+  const auto build=[&](std::uint64_t index){
+   Case c=cfg.base;c.seed=cfg.seed+(index%replicas);
+   for(const auto& [axis,value]:space.at(index/replicas))
+    assign(c,axis,value);
+   return c;
+  };
+  const auto selected=selector.next_index([&](std::uint64_t index){
+   try {validate_case_schema(build(index),cfg.max_bytes);return true;}
+   catch(const Error&){return false;}
+  });
+  if(!selected)return std::nullopt;
+  auto c=build(*selected);
+  // Preserve legacy hierarchical policy's fail-closed behavior.
+  if(cfg.method=="hierarchical_boundary_v2"||cfg.method=="cliff_bracket_v2")
    validate_case_schema(c,cfg.max_bytes);
-   return std::pair<std::uint64_t,Case>{static_cast<std::uint64_t>(*pos),std::move(c)};
-  }
-  for(std::size_t attempts=0;attempts<10000&&
-      (weighted?weighted->has_next():(stratified?stratified->has_next():sampler.has_next()));++attempts){
-   auto index=weighted?weighted->next():(stratified?stratified->next():sampler.next());Case c=cfg.base;c.seed=cfg.seed+(index%replicas);
-   for(const auto& [axis,value]:space.at(index/replicas))assign(c,axis,value);
-   try{validate_case_schema(c,cfg.max_bytes);}catch(const Error&){continue;}
-   return std::pair<std::uint64_t,Case>{index,std::move(c)};
-  }
-  if(weighted?weighted->has_next():(stratified?stratified->has_next():sampler.has_next()))
-   throw Error("v2 exceeded deterministic invalid-proposal cap");
-  return std::nullopt;
+  return std::pair<std::uint64_t,Case>{*selected,std::move(c)};
  };
  std::size_t completed=0;
  std::uint64_t sampled_cpu_used=0;
@@ -1232,10 +1202,8 @@ static void execute_lazy_v2(const Config& cfg,const std::string& out,Store& stor
    store.record_decision(static_cast<std::size_t>(next->first),c.id,rng_state());
    if(cfg.max_sampled_cpu_ns)
     store.record_v2_budget_entry(c.id,sampled_cpu_used,cfg.max_sampled_cpu_ns,!sampled_cpu_unknown);
-   if(hierarchy)store.event("v2_acquisition",std::to_string(next->first)+";origin="+hierarchy->origin());
-   if(hybrid)store.event("v2_acquisition",std::to_string(next->first)+";origin="+hybrid->origin());
-   if(stratified)store.event("v2_acquisition",std::to_string(next->first)+";origin=stratified_primary_axis");
-   if(weighted)store.event("v2_acquisition",std::to_string(next->first)+";origin=weighted_domain_prior");
+   if(const auto origin=selector.acquisition_origin())
+    store.event("v2_acquisition",std::to_string(next->first)+";"+*origin);
    Json phases;
    phases.put("virtual_index",static_cast<std::int64_t>(next->first));
    phases.put("proposal_wall_ns",static_cast<std::int64_t>(proposal_wall_ns));

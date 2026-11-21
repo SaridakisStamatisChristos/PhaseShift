@@ -545,3 +545,10 @@ target_link_libraries(phaseshift_v3_contract_tests PRIVATE phaseshift_core)
 add_test(NAME v3_typed_keys_frozen_discovery_budget_and_matched_seeds
  COMMAND phaseshift_v3_contract_tests)
 set_tests_properties(v3_typed_keys_frozen_discovery_budget_and_matched_seeds PROPERTIES TIMEOUT 30)
+
+# V3-02 differential characterization of the extracted v2 policy selector.
+add_executable(phaseshift_v3_selector_characterization tests/v3/selector_characterization.cpp)
+target_link_libraries(phaseshift_v3_selector_characterization PRIVATE phaseshift_core)
+add_test(NAME v3_legacy_policy_extraction_characterization
+ COMMAND phaseshift_v3_selector_characterization)
+set_tests_properties(v3_legacy_policy_extraction_characterization PROPERTIES TIMEOUT 30)
