@@ -383,3 +383,12 @@ set_tests_properties(hybrid_mixed_v2_replay PROPERTIES TIMEOUT 90 RUN_SERIAL TRU
 add_executable(phaseshift_witness_paths_v2_tests tests/witness_paths_v2.cpp)
 target_link_libraries(phaseshift_witness_paths_v2_tests PRIVATE phaseshift_core)
 add_test(NAME v2_named_witness_path_isolation COMMAND phaseshift_witness_paths_v2_tests)
+
+# Linux-only real OS kill (SIGKILL), WAL recovery, retry and replay budget checks.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+ add_executable(phaseshift_v2_os_crash_tests tests/v2_os_crash.cpp)
+ target_link_libraries(phaseshift_v2_os_crash_tests PRIVATE phaseshift_core)
+ add_test(NAME v2_sigkill_transaction_recovery
+  COMMAND phaseshift_v2_os_crash_tests ${CMAKE_CURRENT_BINARY_DIR}/ctest_v2_os_kill)
+ set_tests_properties(v2_sigkill_transaction_recovery PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE)
+endif()
