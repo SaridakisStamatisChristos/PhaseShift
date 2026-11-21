@@ -70,7 +70,7 @@ def run_one(binary, root, policy, fixture, seed, cases, cpu_budget_ns,
         else:
             cfg["search"].pop("policy_version", None)
             cfg.pop("policy_version", None)
-    cfg["limits"]["total_wall_seconds"] = max(
+    cfg.setdefault("limits", {})["total_wall_seconds"] = max(
         5, min(86400, (wall_budget_ns // 1_000_000_000) + 20))
     manifest.write_text(json.dumps(cfg, sort_keys=True, indent=2) + "\n")
     commands = []
