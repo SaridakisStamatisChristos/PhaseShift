@@ -498,3 +498,15 @@ add_test(NAME v2_durable_model_cache_real_worker_repair
  COMMAND ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_BINARY_DIR}/run_v2_model_cache.cmake)
 set_tests_properties(v2_durable_model_cache_real_worker_repair
  PROPERTIES TIMEOUT 150 RUN_SERIAL TRUE)
+
+add_executable(phaseshift_v2_noisy_detection_tests tests/v2_noisy_detection.cpp)
+target_link_libraries(phaseshift_v2_noisy_detection_tests PRIVATE phaseshift_core)
+add_test(NAME v2_noisy_holdout_segmentation_challenge
+ COMMAND phaseshift_v2_noisy_detection_tests ${CMAKE_CURRENT_BINARY_DIR}/ctest_v2_noisy)
+set_tests_properties(v2_noisy_holdout_segmentation_challenge PROPERTIES
+ TIMEOUT 90 RUN_SERIAL TRUE)
+add_executable(phaseshift_v2_large_space_rss_tests tests/v2_large_space_rss.cpp)
+target_link_libraries(phaseshift_v2_large_space_rss_tests PRIVATE phaseshift_core)
+add_test(NAME v2_billion_coordinate_measured_rss
+ COMMAND phaseshift_v2_large_space_rss_tests)
+set_tests_properties(v2_billion_coordinate_measured_rss PROPERTIES TIMEOUT 30)
