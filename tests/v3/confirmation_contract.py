@@ -10,6 +10,8 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[2]/"benchmarks"/"v3"))
 from confirmation_protocol import (nominate,family_manifest,sign_tail,
                                     adjusted_pvalues,MAX_MEMBERS,SEED_PAIRS,ALPHA)
 from run_confirmation_development import SOURCE_COMMIT,SOURCE_RUN_ID
+from aggregate_confirmations import structural_truth_labels
+from multidim_truth import load,truth
 
 def encode(d):
     return "".join(str(len(k))+":"+k+str(len(str(v)))+":"+str(v)
@@ -76,6 +78,32 @@ class ConfirmationContract(unittest.TestCase):
             sign_tail(19,19)
         out=adjusted_pvalues([.01,.02,.9])
         self.assertEqual(out,[.03,.04,.9])
+    def test_posthoc_truth_is_independent_of_sqlite_axis_serialization_order(self):
+        m,_=load("development")
+        fixture=next(f for f in m["fixtures"] if f["id"]=="multi_context_steps")
+        edge=truth(fixture)[0]
+        context=dict(edge["context"])
+        fid="multi_context_steps";policy="conditional-tree";seed=6101
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)
+            folder=root/(fid+"_"+policy+"_"+str(seed))/"run"
+            folder.mkdir(parents=True)
+            dbfile=folder/"run.sqlite"
+            dummy(dbfile,[("ok",.8,int(context["threshold"]),edge["left"],edge["right"])])
+            # sqlite serialization orders axes differently from the oracle
+            # declaration; this must not change the planted truth label.
+            left={"negative":context["negative"],
+                  "threshold":context["threshold"],"x":edge["left"]}
+            right={**left,"x":edge["right"]}
+            with sqlite3.connect(dbfile) as db:
+                db.execute("UPDATE v3_conditional_decisions SET left_coords=?,right_coords=? WHERE pair_number=0",
+                           (encode(left),encode(right)))
+            out=structural_truth_labels(root,fixture,
+                {"fixture":fid,"policy":policy,"seed":seed},
+                [{"discovery_pair":0,"direction":1}])
+            self.assertEqual(len(out),1)
+            self.assertTrue(out[0]["positive_jump_with_matching_direction"])
+
     def test_no_multiplicity_shortcut(self):
         self.assertGreater(adjusted_pvalues([.02,.02])[0],.02)
         self.assertEqual(len(adjusted_pvalues([1.0,1.0])),2)
