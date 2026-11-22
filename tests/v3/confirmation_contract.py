@@ -25,7 +25,7 @@ def dummy(path,items):
             db.execute("INSERT INTO v3_pairs VALUES(?,?,?)",(i,status,effect))
             a={"x":left,"threshold":ctx,"negative":"false"}
             b={"x":right,"threshold":ctx,"negative":"false"}
-            db.execute("INSERT INTO v3_conditional_decisions VALUES(?,?,?,?,?)",
+            db.execute("INSERT INTO v3_conditional_decisions VALUES(?,?,?,?)",
                        (i,"x",encode(a),encode(b)))
 
 class ConfirmationContract(unittest.TestCase):
