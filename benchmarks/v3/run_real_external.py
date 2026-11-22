@@ -151,7 +151,7 @@ def independent_raw_pair(db,number,cfg,policy,left,right):
                 hashlib.sha256(payload).hexdigest()==input_hash and
                 params[cfg["primary_axis"]] in
                    [int(left),int(right)] and
-                params["distribution"]==cfg["fixed"].get("distribution",
+                params["distribution"]==cfg.get("fixed",{}).get("distribution",
                        cfg["axes"].get("distribution",{}).get("values",[""])[0]),
                 "case payload/correctness-input mismatch")
     samples=db.execute("""SELECT s.side,s.ordinal,s.algorithm,s.status,s.ns,s.batch,
@@ -292,7 +292,9 @@ def select(rows,plan):
     threshold=math.log(plan["min_practical_ratio"])
     for i,row in enumerate(rows):
         effect=row["effect"]
-        if effect is None or abs(effect)<threshold:continue
+        if effect is None:continue
+        require(math.isfinite(effect),"nonfinite discovery effect in external proposal")
+        if abs(effect)<threshold:continue
         edge=(row["left"],row["right"])
         rank=(-abs(effect),i)
         if edge not in by or rank<by[edge][0]:
