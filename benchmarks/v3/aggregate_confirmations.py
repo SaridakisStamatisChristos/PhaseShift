@@ -9,13 +9,13 @@ import argparse
 import json
 from pathlib import Path
 
-from confirmation_protocol import read,require
+from confirmation_protocol import read,require,db_ro,decode
 from multidim_truth import key,load,truth
 from protocol import sha256_file
 from run_confirmation_development import (
     SOURCE_COMMIT,SOURCE_RUN_ID,verify as verify_family)
 
-def structural_truth_labels(source,fixture,trial,choices,known):
+def structural_truth_labels(source,fixture,trial,choices):
     """Post-selection audit only. It must not feed the family freeze."""
     fid,policy,seed=trial["fixture"],trial["policy"],trial["seed"]
     path=source/(fid+"_"+policy+"_"+str(seed))/"run"/"run.sqlite"
@@ -37,9 +37,9 @@ def structural_truth_labels(source,fixture,trial,choices,known):
                            structural and member["direction"]==1})
     return labels
 
-def compose(manifest,per_shard,source_roots):
+def compose(manifest,per_shard,source_roots,confirmation_roots):
     ids={f["id"] for f in manifest["fixtures"]}
-    require(set(per_shard)==ids and set(source_roots)==ids,
+    require(set(per_shard)==ids and set(source_roots)==ids and\n            set(confirmation_roots)==ids,
             "missing/duplicate confirmation or source shard")
     all_rows=[]
     per_fixture=[]
@@ -75,10 +75,33 @@ def compose(manifest,per_shard,source_roots):
                 "trials_with_nominal_rejection":sum(
                     r.get("audit",{}).get("nominal_rejections",0)>0 for r in rs)
             }
-        per_fixture.append({"fixture":fid,"planted_work_unit_edges":len(truth(f)),
-                            "policies":bypolicy})
+        diagnostic={"selected_positive_planted_jump_edges":0,
+                    "selected_edges_outside_planted_jump_truth":0,
+                    "nominal_model_rejections_at_positive_planted_jumps":0,
+                    "nominal_model_rejections_outside_planted_jump_truth":0}
         for row in data["raw_results"]:
+            dest=confirmation_roots[fid]/(fid+"_"+row["policy"]+"_"+str(row["seed"]))
+            choices=read(dest/"selection.json")["selected"]
+            labels=structural_truth_labels(source_roots[fid],f,row,choices)
+            require(len(labels)==row["selected_members"],
+                    "post-hoc selected-edge count drift")
+            members=row.get("audit",{}).get("members",[])
+            if row["status"]=="FAMILY_COMPLETE_UNDER_UNVERIFIED_MODEL":
+                require(len(members)==len(labels),"missing holdout member verdicts")
+            for label in labels:
+                match=label["positive_jump_with_matching_direction"]
+                if match:
+                    diagnostic["selected_positive_planted_jump_edges"]+=1
+                else:
+                    diagnostic["selected_edges_outside_planted_jump_truth"]+=1
+                if members and members[label["member_index"]]["state"]=="REJECTED_UNDER_DECLARED_MODEL":
+                    name=("nominal_model_rejections_at_positive_planted_jumps" if match else
+                          "nominal_model_rejections_outside_planted_jump_truth")
+                    diagnostic[name]+=1
             all_rows.append(row)
+        per_fixture.append({"fixture":fid,"planted_work_unit_edges":len(truth(f)),
+                            "policies":bypolicy,
+                            "posthoc_work_unit_labels_not_time_null":diagnostic})
     require(len(all_rows)==240 and
             len({(r["fixture"],r["policy"],r["seed"]) for r in all_rows})==240,
             "incomplete/duplicated full confirmation inventory")
@@ -136,7 +159,7 @@ def main():
         provenance[fid]={"source_plan_sha256":sha256_file(source/"frozen_plan.json"),
                          "confirmation_plan_sha256":sha256_file(root/"plan.json"),
                          "scorecard_sha256":sha256_file(root/"scorecard.json")}
-    final=compose(manifest,verified,sources)
+    final=compose(manifest,verified,sources,confirmations)
     final["shard_provenance"]=provenance
     if a.verify_only:
         require(read(a.out)==final,"aggregate replay mismatch")
