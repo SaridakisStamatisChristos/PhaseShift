@@ -92,3 +92,23 @@ A six-pair run deliberately remains in cost-fallback mode: a sufficiently large 
     ./build/phaseshift_v3_pairs taxonomy --run /tmp/v3-cost
 
 For v12–v15 conditional runs this command reconstructs the exact committed discovery prefix in a read-only SQLite snapshot, including verifying the existing scheduler/worker transcript. JSON contains explicit discovery-only candidate kinds, exact categorical contexts, descriptive bounds, minimum two-pair support, rival scores and uncertainty/abstention diagnostics. Consecutive declared numeric edges with valid replicated matched measurements are integrated into relative profiles (no inferred absolute level, no gap filling); incomplete chains stay inconclusive. Crossovers require repeated matched within-seed sign reversal of paired A/B log ratios. Status frontiers carry no speed effect. Conditional interactions compare different contexts' matched edge summaries and are exploratory, not full-factorial or significance claims. The penalty is engineering scale, not probability or confidence. `confirmed` is always false. Reading results does not alter the run or any old schema. Scaling and externally calibrated localization, heteroscedastic modelling and sealed confirmation remain separate gates.
+
+
+## V3-08 experimental fixed edge family
+
+Select distinct observed discovery pair numbers from a **completed** conditional v12–v15 run. Freeze a manifest with exactly five fields, for example:
+
+```json
+{"family_id":"edge-study","seed_pairs":20,"alpha":0.05,"sign_model":"unverified","members":[{"discovery_pair":0,"direction":1}]}
+```
+
+The count must equal the original configuration's confirm_blocks, 20–100. Direction is +1 or -1 and the minimum effect is log(min_practical_ratio). Use `independent_seed_signs_declared` only if the fixed independent-sign sampling assumption is explicitly justified externally. It does not validate that assumption. The one-sided null is probability of directed matched contrast exceeding minimum <= 1/2 for each independent seed. No status is converted to time. Commands:
+
+```bash
+./build/phaseshift_v3_pairs family-freeze --run /tmp/v3-cost --manifest /tmp/family.json
+./build/phaseshift_v3_pairs family-confirm --run /tmp/v3-cost --pause-after 2
+./build/phaseshift_v3_pairs family-confirm --run /tmp/v3-cost
+./build/phaseshift_v3_pairs family-report --run /tmp/v3-cost
+```
+
+One sidecar per run directory, schema 16, no discovery-schema mutation. Frozen source snapshot, source revision, exact edge endpoints, seed list and protocol are independently reconstructed; worker measurements execute in round-robin member order. Resume requires same source revision; report never changes the ledger. No early member results are emitted while incomplete; raw DB is not protected against deliberate peeking or copying. Censored or unverified-assumption members are conservatively p=1 and remain in Holm denominator. Even a rejection under declared model is not yet scientifically CONFIRMED: no empirical correlated-null or external assumption validation yet. Only directed edge contrasts are supported, not a full multi-hypothesis taxonomy confirmation. Complete family and source DB should be kept together. If interrupted during initial freeze before SQLite creation finishes, retain the failed reservation and investigate rather than silently re-freeze. Per-invocation wall limit is not a campaign-global budget or abandoned-worker cost guarantee.

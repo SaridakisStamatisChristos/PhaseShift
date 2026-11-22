@@ -6,6 +6,8 @@
 #include "phaseshift/v3/adaptive_pair.hpp"
 #include "phaseshift/v3/conditional_pair.hpp"
 #include "phaseshift/v3/taxonomy.hpp"
+#include "phaseshift/v3/fixed_family.hpp"
+#include <bit>
 #include <sqlite3.h>
 #include <algorithm>
 #include <chrono>
@@ -697,6 +699,348 @@ void taxonomy_json(const Plan& plan,const std::vector<MatchedBoundaryObservation
  output.put("profiles",std::move(profiles));
  std::cout<<output.str()<<"\n";
 }
+// A separate schema-16 sidecar owns holdout data. Never feed it into discovery.
+struct FamilySpecV3 {
+ std::string manifest,canonical,digest,source_digest,revision;
+ std::size_t n=0;
+ double alpha=0.;
+ bool assumptions=false;
+ std::vector<FrozenEdgeMemberV3> members;
+ std::vector<std::uint64_t> seeds;
+};
+std::string source_digest_v3(Sqlite& db,const Plan& plan){
+ std::string bytes="phaseshift.v3.family-source.1";
+ auto append=[&](const std::string& value){bytes+=std::to_string(value.size())+":"+value;};
+ auto record=[&](const char* query){
+  append(query);
+  Statement rows(db,query);
+  while(rows.row()){
+   append("row");
+   for(int i=0;i<sqlite3_column_count(rows.stmt);++i){
+    const auto type=sqlite3_column_type(rows.stmt,i);
+    append(std::to_string(type));
+    if(type==SQLITE_INTEGER)append(std::to_string(rows.number(i)));
+    else if(type==SQLITE_FLOAT)append(std::to_string(std::bit_cast<std::uint64_t>(sqlite3_column_double(rows.stmt,i))));
+    else if(type==SQLITE_TEXT){
+     const auto* p=sqlite3_column_text(rows.stmt,i);
+     append(std::string(reinterpret_cast<const char*>(p),static_cast<std::size_t>(sqlite3_column_bytes(rows.stmt,i))));
+    }else require(type==SQLITE_NULL,"unexpected family fingerprint type");
+   }
+  }
+ };
+ record("PRAGMA user_version");
+ record("SELECT * FROM v3_plan ORDER BY id");
+ record("SELECT case_id,family,params,seed,input_sha256 FROM v3_cases ORDER BY case_id");
+ record("SELECT * FROM v3_pairs ORDER BY pair_number");
+ record("SELECT * FROM v3_samples ORDER BY pair_number,side,ordinal");
+ record("SELECT * FROM v3_conditional_decisions ORDER BY pair_number");
+ if(plan.acquisition)record("SELECT * FROM v3_acquisition_decisions ORDER BY pair_number");
+ return sha256(bytes);
+}
+FamilySpecV3 make_family_spec(const Plan& plan,const std::vector<MatchedBoundaryObservationV3>& discovery,
+ const std::string& manifest,const std::string& source_digest,const std::string& revision){
+ require(discovery.size()==static_cast<std::size_t>(plan.pairs),"family requires completed discovery");
+ require(revision.size()==40&&std::all_of(revision.begin(),revision.end(),[](char c){
+  return (c>='0'&&c<='9')||(c>='a'&&c<='f');}),"family requires source revision");
+ const auto doc=Json::parse(manifest);
+ require(doc.p&&json_object_get_type(doc.p)==json_type_object&&json_object_object_length(doc.p)==5,
+         "family manifest must have five fields");
+ auto typed=[&](const char* field,json_type type){
+  auto* value=doc.get(field);
+  require(value&&json_object_get_type(value)==type,std::string("family invalid field: ")+field);
+ };
+ typed("family_id",json_type_string);typed("seed_pairs",json_type_int);
+ typed("sign_model",json_type_string);typed("members",json_type_array);
+ require(doc.get("alpha")&&(json_object_get_type(doc.get("alpha"))==json_type_double||
+          json_object_get_type(doc.get("alpha"))==json_type_int),"invalid family alpha type");
+ const auto id=doc.s("family_id"),model=doc.s("sign_model");
+ require(!id.empty()&&id.size()<=64&&std::all_of(id.begin(),id.end(),[](unsigned char c){
+  return (c>='a'&&c<='z')||(c>='A'&&c<='Z')||(c>='0'&&c<='9')||c=='-'||c=='_';
+ }),"invalid family ID");
+ require(model=="independent_seed_signs_declared"||model=="unverified","unknown sign model");
+ const auto n=doc.i("seed_pairs");const auto alpha=doc.d("alpha");
+ require(n>=20&&n<=100&&n==plan.config.confirm_blocks&&std::isfinite(alpha)&&alpha>=.001&&alpha<=.25,
+         "family seed count/alpha outside frozen bounds");
+ FamilySpecV3 f;f.manifest=manifest;f.source_digest=source_digest;f.revision=revision;
+ f.n=static_cast<std::size_t>(n);f.alpha=alpha;f.assumptions=model=="independent_seed_signs_declared";
+ auto* list=doc.get("members");const auto size=json_object_array_length(list);
+ require(size>=1&&size<=16,"family must contain 1..16 members");
+ require(size*f.n<=1600,"family holdout cap");
+ std::set<std::string> edge_keys;
+ Json frozen;frozen.put("protocol","phaseshift.v3.fixed_edge_family.1");
+ frozen.put("source_revision",revision);frozen.put("source_snapshot_sha256",source_digest);
+ frozen.put("source_config_sha256",sha256(plan.source));frozen.put("family_id",id);
+ frozen.put("sign_model",model);frozen.put("test","one_sided_exact_binomial_sign_tail");
+ frozen.put("null","P(direction * matched_log_contrast > minimum_log_effect) <= 0.5 per independent seed");
+ frozen.put("multiplicity","holm_all_members");frozen.put("alpha",alpha);
+ frozen.put("seed_pairs",n);frozen.put("minimum_log_effect",std::log(plan.config.min_ratio));
+ frozen.put("metric",plan.config.b.empty()?"right_minus_left_log_time":"right_minus_left_log_ratio");
+ Json fm(json_object_new_array());
+ const auto& labels=plan.config.axes.at(plan.axis);
+ for(std::size_t i=0;i<size;++i){
+  auto* item=json_object_array_get_idx(list,i);
+  require(item&&json_object_get_type(item)==json_type_object&&json_object_object_length(item)==2,
+          "invalid family member");
+  const Json member(json_object_get(item));
+  require(member.get("discovery_pair")&&json_object_get_type(member.get("discovery_pair"))==json_type_int&&
+          member.get("direction")&&json_object_get_type(member.get("direction"))==json_type_int,
+          "family member must contain integer pair and direction");
+  const auto ref=member.i("discovery_pair"),direction=member.i("direction");
+  require(ref>=0&&static_cast<std::size_t>(ref)<discovery.size()&&(direction==1||direction==-1),
+          "family selection outside discovery or invalid direction");
+  const auto& observed=discovery[static_cast<std::size_t>(ref)];
+  require(observed.left_metric&&observed.right_metric,"cannot nominate censored discovery edge");
+  const auto edge=encode_coords(observed.context)+":"+std::to_string(observed.left)+":"+std::to_string(observed.right);
+  require(edge_keys.insert(edge).second,"duplicate structural edge in family");
+  f.members.push_back({static_cast<std::size_t>(ref),static_cast<int>(direction)});
+  Json row;row.put("member_index",static_cast<std::int64_t>(i));row.put("discovery_pair",ref);
+  row.put("direction",direction);row.put("kind","MATCHED_EDGE_CONTRAST");
+  row.put("context",encode_coords(observed.context));
+  row.put("axis",plan.axis);row.put("left",labels.at(observed.left));row.put("right",labels.at(observed.right));
+  json_object_array_add(fm.p,json_object_get(row.p));
+ }
+ frozen.put("members",std::move(fm));
+ // Discovery planner uses only 31-bit seeds; holdout uses a fixed disjoint
+ // high-range stream keyed ONLY by the frozen experiment seed. Membership
+ // and observed outcomes cannot tune the seed stream. Uniqueness is checked.
+ std::uint64_t state=plan.config.seed^0xb3375e6d19f1bb91ULL;
+ std::set<std::uint64_t> reserved;
+ for(const auto& row:discovery)reserved.insert(row.seed);
+ Json seed_plan(json_object_new_array());
+ for(std::size_t i=0;i<size*f.n;++i){
+  std::uint64_t seed=0;
+  for(int tries=0;tries<1024;++tries){
+   const auto candidate=(splitmix64(state)&0x3fffffffffffffffULL)|0x4000000000000000ULL;
+   if(reserved.insert(candidate).second){seed=candidate;break;}
+  }
+  require(seed!=0,"holdout seed collision exhaustion");
+  f.seeds.push_back(seed);
+  json_object_array_add(seed_plan.p,json_object_new_int64(static_cast<std::int64_t>(seed)));
+ }
+ frozen.put("holdout_seeds",std::move(seed_plan));
+ f.canonical=frozen.str();f.digest=sha256(f.canonical);
+ return f;
+}
+Case family_case(const Plan& plan,const MatchedBoundaryObservationV3& edge,
+                 bool right,std::uint64_t seed){
+ auto c=plan.config.base;c.seed=seed;
+ for(const auto& [axis,label]:edge.context)apply_axis(c,axis,label);
+ apply_axis(c,plan.axis,plan.config.axes.at(plan.axis).at(right?edge.right:edge.left));
+ return make_case(c,plan.config.max_bytes);
+}
+void freeze_family_sidecar(Sqlite& db,const FamilySpecV3& f){
+ db.exec("BEGIN IMMEDIATE");
+ try{
+  db.exec(R"SQL(
+ CREATE TABLE v3_family(
+  id INTEGER PRIMARY KEY CHECK(id=1),manifest TEXT NOT NULL,
+  specification TEXT NOT NULL,spec_sha256 TEXT NOT NULL,source_sha256 TEXT NOT NULL,
+  source_revision TEXT NOT NULL);
+ CREATE TABLE v3_cases(
+  case_id TEXT PRIMARY KEY, family TEXT NOT NULL, params TEXT NOT NULL,
+  seed INTEGER NOT NULL, input BLOB NOT NULL,input_sha256 TEXT NOT NULL);
+ CREATE TABLE v3_pairs(
+  pair_number INTEGER PRIMARY KEY,seed INTEGER NOT NULL UNIQUE,
+  left_first INTEGER NOT NULL CHECK(left_first IN (0,1)),
+  left_case_id TEXT NOT NULL REFERENCES v3_cases(case_id),
+  right_case_id TEXT NOT NULL REFERENCES v3_cases(case_id),
+  status TEXT NOT NULL CHECK(status IN ('ok','censored')),
+  log_contrast REAL,worker_timed_cpu_ns INTEGER,pair_wall_ns INTEGER NOT NULL CHECK(pair_wall_ns>0),
+  CHECK((status='ok' AND log_contrast IS NOT NULL) OR (status='censored' AND log_contrast IS NULL)));
+ CREATE TABLE v3_samples(
+  pair_number INTEGER NOT NULL REFERENCES v3_pairs(pair_number),
+  side INTEGER NOT NULL CHECK(side IN (0,1)),
+  ordinal INTEGER NOT NULL,case_id TEXT NOT NULL REFERENCES v3_cases(case_id),
+  algorithm TEXT NOT NULL,status TEXT NOT NULL,ns INTEGER,batch INTEGER,work INTEGER,cpu_ns INTEGER,
+  peak_rss_bytes INTEGER,pilot_ns INTEGER,pilot_iterations INTEGER,protocol TEXT NOT NULL,
+  block INTEGER NOT NULL,output_digest TEXT NOT NULL,detail TEXT NOT NULL,
+  order_position INTEGER,order_seed TEXT NOT NULL,
+  PRIMARY KEY(pair_number,side,ordinal),
+  CHECK((status='ok' AND ns>0) OR (status!='ok' AND ns IS NULL)));
+ PRAGMA user_version=16;
+ )SQL");
+  Statement st(db,"INSERT INTO v3_family VALUES(1,?,?,?,?,?)");
+  st.bind(1,f.manifest);st.bind(2,f.canonical);st.bind(3,f.digest);
+  st.bind(4,f.source_digest);st.bind(5,f.revision);st.done();
+  db.exec("COMMIT");
+ }catch(...){db.exec("ROLLBACK");throw;}
+}
+FamilySpecV3 read_family_sidecar(Sqlite& db,const Plan& plan,
+ const std::vector<MatchedBoundaryObservationV3>& discovery,const std::string& source_digest){
+ Statement ver(db,"PRAGMA user_version");require(ver.row()&&ver.number(0)==16,"not v16 family sidecar");
+ Statement st(db,"SELECT manifest,specification,spec_sha256,source_sha256,source_revision FROM v3_family WHERE id=1");
+ require(st.row()&&st.str(3)==source_digest,"changed discovery snapshot");
+ const auto f=make_family_spec(plan,discovery,st.str(0),source_digest,st.str(4));
+ require(f.canonical==st.str(1)&&f.digest==st.str(2),"altered frozen family specification");
+ return f;
+}
+using HoldoutEffectsV3=std::vector<std::vector<std::optional<double>>>;
+std::size_t replay_family_sidecar(Sqlite& db,const Plan& plan,const FamilySpecV3& f,
+ const std::vector<MatchedBoundaryObservationV3>& discovery,HoldoutEffectsV3& effects){
+ effects.assign(f.members.size(),{});
+ Statement rows(db,"SELECT pair_number,seed,left_first,left_case_id,right_case_id,status,log_contrast,worker_timed_cpu_ns,pair_wall_ns FROM v3_pairs ORDER BY pair_number");
+ std::size_t index=0;
+ while(rows.row()){
+  require(index<f.seeds.size()&&rows.number(0)==static_cast<std::int64_t>(index),"family pair sequence/cap mismatch");
+  const auto member=index%f.members.size();const auto seed=f.seeds[index];
+  const auto& edge=discovery.at(f.members[member].discovery_pair);
+  const auto a=family_case(plan,edge,false,seed),b=family_case(plan,edge,true,seed);
+  const auto left_first=((seed^index)&1ULL)==0;
+  require(rows.number(1)==static_cast<std::int64_t>(seed)&&rows.number(2)==(left_first?1:0)&&
+          rows.str(3)==a.id&&rows.str(4)==b.id&&rows.number(8)>0,"family seed/structure/order mismatch");
+  std::vector<Observation> raw[2];
+  std::int64_t cpu=0;bool cpu_known=true;
+  for(int side=0;side<2;++side){
+   const auto& c=side==0?a:b;
+   Statement source(db,"SELECT family,params,seed,input_sha256,input FROM v3_cases WHERE case_id=?");
+   source.bind(1,c.id);
+   require(source.row()&&source.str(0)==c.family&&source.str(1)==case_params(c)&&
+    source.number(2)==static_cast<std::int64_t>(seed)&&source.str(3)==sha256(c.bytes)&&
+    sqlite3_column_bytes(source.stmt,4)==static_cast<int>(c.bytes.size())&&
+    (c.bytes.empty()||std::memcmp(sqlite3_column_blob(source.stmt,4),c.bytes.data(),c.bytes.size())==0),
+    "holdout raw case provenance mismatch");
+   Statement sample(db,"SELECT ordinal,case_id,algorithm,status,ns,batch,cpu_ns FROM v3_samples WHERE pair_number=? AND side=? ORDER BY ordinal");
+   sample.bind(1,static_cast<std::int64_t>(index));sample.bind(2,static_cast<std::int64_t>(side));
+   std::map<std::string,std::size_t> counts;
+   while(sample.row()){
+    require(sample.number(0)==static_cast<std::int64_t>(raw[side].size())&&sample.str(1)==c.id,
+      "holdout sample provenance mismatch");
+    Observation obs;obs.algorithm=sample.str(2);obs.status=sample.str(3);
+    require(obs.algorithm==plan.config.a||(!plan.config.b.empty()&&obs.algorithm==plan.config.b),"holdout algorithm mismatch");
+    ++counts[obs.algorithm];
+    const bool ok=obs.status=="ok";
+    require(ok==(sqlite3_column_type(sample.stmt,4)!=SQLITE_NULL)&&
+            ok==(sqlite3_column_type(sample.stmt,5)!=SQLITE_NULL),"holdout failed timing/batch promotion");
+    obs.ns=ok?sample.number(4):0;obs.batch=ok?sample.number(5):0;
+    require(!ok||(obs.ns>0&&obs.batch>0),"nonpositive holdout measurement");
+    obs.cpu_ns=sqlite3_column_type(sample.stmt,6)==SQLITE_NULL?-1:sample.number(6);
+    if(obs.cpu_ns<0||obs.cpu_ns>std::numeric_limits<std::int64_t>::max()-cpu)cpu_known=false;
+    else if(cpu_known)cpu+=obs.cpu_ns;
+    raw[side].push_back(std::move(obs));
+   }
+   const auto blocks=static_cast<std::size_t>(plan.config.blocks);
+   require(counts[plan.config.a]==blocks*(plan.config.b.empty()?1U:2U)&&
+           (plan.config.b.empty()||counts[plan.config.b]==2U*blocks)&&
+           raw[side].size()==blocks*(plan.config.b.empty()?1U:4U),"holdout incomplete raw measurements");
+  }
+  const auto l=per_side_metric(raw[0],plan.config.a,plan.config.b);
+  const auto r=per_side_metric(raw[1],plan.config.a,plan.config.b);
+  const auto effect=l&&r?std::optional<double>{*r-*l}:std::nullopt;
+  require(rows.str(5)==(effect?"ok":"censored")&&
+    effect.has_value()==(sqlite3_column_type(rows.stmt,6)!=SQLITE_NULL)&&
+    (!effect||std::abs(sqlite3_column_double(rows.stmt,6)-*effect)<=1e-12*(1.+std::abs(*effect)))&&
+    cpu_known==(sqlite3_column_type(rows.stmt,7)!=SQLITE_NULL)&&(!cpu_known||rows.number(7)==cpu),
+    "holdout effect/status/CPU replay mismatch");
+  effects[member].push_back(effect);++index;
+ }
+ Statement sample_count(db,"SELECT COUNT(*) FROM v3_cases");
+ require(sample_count.row()&&sample_count.number(0)==static_cast<std::int64_t>(index*2),"orphan holdout cases");
+ Statement raw_count(db,"SELECT COUNT(*) FROM v3_samples");
+ const auto expected=index*2*static_cast<std::size_t>(plan.config.blocks)*(plan.config.b.empty()?1U:4U);
+ require(raw_count.row()&&raw_count.number(0)==static_cast<std::int64_t>(expected),"orphan holdout samples");
+ return index;
+}
+void run_family_pair(Sqlite& db,const Plan& plan,const FamilySpecV3& f,
+ const std::vector<MatchedBoundaryObservationV3>& discovery,std::size_t index,
+ std::chrono::steady_clock::time_point deadline){
+ // Atomic holdout pair. Acquire the write lock before the worker call so
+ // competing resumptions cannot collect a second measurement for this row.
+ db.exec("BEGIN IMMEDIATE");
+ try{
+  Statement count(db,"SELECT COUNT(*) FROM v3_pairs");
+  require(count.row()&&count.number(0)==static_cast<std::int64_t>(index),"concurrent family progress; retry from fresh snapshot");
+  const auto seed=f.seeds.at(index);
+  const auto& edge=discovery.at(f.members.at(index%f.members.size()).discovery_pair);
+  const auto a=family_case(plan,edge,false,seed),b=family_case(plan,edge,true,seed);
+  const bool left_first=((seed^index)&1ULL)==0;
+  const std::vector<std::string> algorithms=plan.config.b.empty()?std::vector<std::string>{plan.config.a}:
+    std::vector<std::string>{plan.config.a,plan.config.b};
+  const auto start=std::chrono::steady_clock::now();
+  auto collect=[&](const Case& c){
+   return measure(c,algorithms,plan.config.blocks,plan.config.warmup,
+      plan.config.sample_ms,plan.config.rss_mb,plan.config.minimum_batch_ms,
+      plan.config.isolation_mode=="per_sample",deadline,plan.config.measurement_protocol_version);
+  };
+  std::vector<Observation> l,r;
+  if(left_first){l=collect(a);r=collect(b);}else{r=collect(b);l=collect(a);}
+  if(const auto* fault=std::getenv("PHASESHIFT_V3_FAILPOINT");fault&&std::string(fault)=="before_holdout_commit")std::_Exit(88);
+  const auto wall=std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-start).count();
+  const auto lm=per_side_metric(l,plan.config.a,plan.config.b),rm=per_side_metric(r,plan.config.a,plan.config.b);
+  const auto effect=lm&&rm?std::optional<double>{*rm-*lm}:std::nullopt;
+  require(wall>0&&(!effect||std::isfinite(*effect)),"invalid holdout worker effect/cost");
+  std::int64_t cpu=0;bool known=true;
+  for(const auto& group:{l,r})for(const auto& row:group){
+   if(row.cpu_ns<0||row.cpu_ns>std::numeric_limits<std::int64_t>::max()-cpu)known=false;
+   else if(known)cpu+=row.cpu_ns;
+  }
+  insert_case(db,a);insert_case(db,b);
+  Statement st(db,"INSERT INTO v3_pairs VALUES(?,?,?,?,?,?,?,?,?)");
+  st.bind(1,static_cast<std::int64_t>(index));st.bind(2,static_cast<std::int64_t>(seed));
+  st.bind(3,static_cast<std::int64_t>(left_first?1:0));st.bind(4,a.id);st.bind(5,b.id);
+  st.bind(6,effect?std::string("ok"):std::string("censored"));
+  if(effect)require(sqlite3_bind_double(st.stmt,7,*effect)==SQLITE_OK,"holdout SQL effect");
+  else st.bind_null(7);
+  if(known)st.bind(8,cpu);else st.bind_null(8);
+  st.bind(9,wall);st.done();
+  insert_samples(db,index,0,a,l);insert_samples(db,index,1,b,r);
+  db.exec("COMMIT");
+ }catch(...){db.exec("ROLLBACK");throw;}
+ if(const auto* fault=std::getenv("PHASESHIFT_V3_FAILPOINT");fault&&std::string(fault)=="after_holdout_commit")std::_Exit(89);
+}
+void report_family_v3(const Plan& plan,const FamilySpecV3& f,const HoldoutEffectsV3& effects,
+                     std::size_t count){
+ const auto outcome=fixed_family_v3(f.members,effects,f.n,std::log(plan.config.min_ratio),f.alpha,f.assumptions);
+ Json result;result.put("schema","phaseshift.v3.fixed_edge_family.1");
+ result.put("cohort","confirmation");result.put("family_sha256",f.digest);
+ result.put("source_snapshot_sha256",f.source_digest);
+ result.put("complete",outcome.complete);result.put("committed_pairs",static_cast<std::int64_t>(count));
+ result.put("planned_pairs",static_cast<std::int64_t>(f.seeds.size()));
+ result.put("assumptions_empirically_validated",false);result.put("confirmed",false);
+ // While incomplete, expose counts only at the family level, not signs/p-values.
+ if(outcome.complete){
+  Json rows(json_object_new_array());
+  for(std::size_t i=0;i<outcome.members.size();++i){
+   const auto& x=outcome.members[i];Json row;
+   row.put("member_index",static_cast<std::int64_t>(i));row.put("state",x.state);
+   row.put("valid_pairs",static_cast<std::int64_t>(x.valid));
+   row.put("positive_pairs",static_cast<std::int64_t>(x.positive));
+   row.put("raw_p",x.raw_p);row.put("holm_p",x.holm_p);
+   json_object_array_add(rows.p,json_object_get(row.p));
+  }
+  result.put("members",std::move(rows));
+ }
+ std::cout<<result.str()<<"\n";
+}
+void family_command_v3(const std::string& command,const fs::path& run,const std::string& manifest_path,
+ const Plan& plan,const std::vector<MatchedBoundaryObservationV3>& discovery,
+ const std::string& fingerprint,std::size_t pause){
+ const auto directory=run/"confirmation";const auto path=directory/"family.sqlite";
+ const auto revision=Json::parse(environment()).s("source_revision");
+ if(command=="family-freeze"){
+  require(!manifest_path.empty(),"family-freeze needs manifest");
+  const auto f=make_family_spec(plan,discovery,read_file(manifest_path),fingerprint,revision);
+  require(fs::create_directory(directory),"family already reserved; no refreeze or replacement");
+  Sqlite ledger(path);freeze_family_sidecar(ledger,f);
+  report_family_v3(plan,f,HoldoutEffectsV3(f.members.size()),0);return;
+ }
+ require(fs::is_regular_file(path),"family must be frozen before holdout");
+ const bool read_only=command=="family-report";
+ Sqlite ledger(path,read_only);ledger.exec("BEGIN");
+ const auto f=read_family_sidecar(ledger,plan,discovery,fingerprint);
+ HoldoutEffectsV3 effects;auto count=replay_family_sidecar(ledger,plan,f,discovery,effects);
+ ledger.exec("COMMIT");
+ if(!read_only){
+  require(revision==f.revision,"holdout executable source revision differs from frozen family");
+  const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(plan.config.total_wall_s);
+  const auto stop=pause?std::min(f.seeds.size(),count+pause):f.seeds.size();
+  while(count<stop&&std::chrono::steady_clock::now()<deadline){
+   run_family_pair(ledger,plan,f,discovery,count,deadline);++count;
+  }
+  ledger.exec("BEGIN");count=replay_family_sidecar(ledger,plan,f,discovery,effects);ledger.exec("COMMIT");
+ }
+ report_family_v3(plan,f,effects,count);
+}
+
 std::string option(int argc,char** argv,const std::string& name){
  for(int i=2;i+1<argc;i+=2)if(argv[i]==name)return argv[i+1];
  return {};
@@ -713,7 +1057,8 @@ void syntax(int argc,char** argv,const std::string& command){
   std::set<std::string>{"--config","--out","--left","--right","--pairs","--pause-after"}:
   command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||command=="acquisition-v3")?
   std::set<std::string>{"--config","--out","--pairs","--pause-after"}:
-  (command=="verify"||command=="taxonomy")?std::set<std::string>{"--run"}:
+  command=="family-freeze"?std::set<std::string>{"--run","--manifest"}:
+  (command=="verify"||command=="taxonomy"||command=="family-report")?std::set<std::string>{"--run"}:
   std::set<std::string>{"--run","--pause-after"};
  require((argc-2)%2==0,"options require key/value pairs");
  std::set<std::string> used;
@@ -728,7 +1073,7 @@ int main(int argc,char** argv){
  try{
   require(argc>=2,"expected run, resume or verify");
   const std::string command=argv[1];
-  require(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||command=="acquisition-v3")||command=="resume"||command=="verify"||command=="taxonomy","unknown pilot command");
+  require(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||command=="acquisition-v3")||command=="resume"||command=="verify"||command=="taxonomy"||command=="family-freeze"||command=="family-confirm"||command=="family-report","unknown pilot command");
   syntax(argc,argv,command);
   const auto pause=numeric_option(argc,argv,"--pause-after",0);
   if(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||command=="acquisition-v3")){
@@ -775,10 +1120,12 @@ int main(int argc,char** argv){
   const auto run=option(argc,argv,"--run");
   require(!run.empty(),"resume/verify need --run");
   require(fs::is_regular_file(fs::path(run)/"run.sqlite"),"missing authoritative run.sqlite");
-  Sqlite db(fs::path(run)/"run.sqlite",command=="taxonomy");
-  if(command=="taxonomy")db.exec("BEGIN"); // one read-only snapshot for replay and report
+  const bool family=command=="family-freeze"||command=="family-confirm"||command=="family-report";
+  const bool readonly=command=="taxonomy"||family;
+  Sqlite db(fs::path(run)/"run.sqlite",readonly);
+  if(readonly)db.exec("BEGIN"); // one read-only snapshot for replay and report
   const auto plan=read_plan(db);
-  if(command=="taxonomy")require(plan.conditional,"taxonomy requires v12-v15 conditional evidence");
+  if(readonly)require(plan.conditional,"taxonomy/family requires v12-v15 conditional evidence");
   auto planner=planner_for(plan);
   std::optional<AdaptivePairPolicy> adaptive;
   if(plan.adaptive)adaptive.emplace(adaptive_legal_labels(plan),
@@ -795,7 +1142,12 @@ int main(int argc,char** argv){
   }
   std::vector<MatchedBoundaryObservationV3> taxonomy;
   const auto completed=replay(db,plan,planner,adaptive?&*adaptive:nullptr,
-                              conditional?&*conditional:nullptr,command=="taxonomy"?&taxonomy:nullptr);
+                              conditional?&*conditional:nullptr,readonly?&taxonomy:nullptr);
+  if(family){
+   family_command_v3(command,fs::path(run),option(argc,argv,"--manifest"),plan,taxonomy,
+                     source_digest_v3(db,plan),static_cast<std::size_t>(pause));
+   db.exec("COMMIT");return 0;
+  }
   if(command=="taxonomy"){
    taxonomy_json(plan,taxonomy,completed);db.exec("COMMIT");return 0;
   }

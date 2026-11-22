@@ -664,3 +664,16 @@ add_test(NAME v3_taxonomy_readonly_real_worker_replay
  --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/admissible_calibration.json
  --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_taxonomy)
 set_tests_properties(v3_taxonomy_readonly_real_worker_replay PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+
+# V3-08 frozen whole-family seed-matched holdout and exact sign-tail oracle.
+add_executable(phaseshift_v3_fixed_family_tests tests/v3/fixed_family.cpp)
+target_link_libraries(phaseshift_v3_fixed_family_tests PRIVATE phaseshift_core)
+add_test(NAME v3_fixed_family_exact_sign_oracle_and_holm
+ COMMAND phaseshift_v3_fixed_family_tests)
+set_tests_properties(v3_fixed_family_exact_sign_oracle_and_holm PROPERTIES TIMEOUT 30)
+add_test(NAME v3_fixed_family_real_worker_sealed_holdout
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/fixed_family_worker_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/admissible_calibration.json
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_fixed_family)
+set_tests_properties(v3_fixed_family_real_worker_sealed_holdout PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE)
