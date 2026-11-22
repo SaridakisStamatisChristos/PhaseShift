@@ -59,7 +59,7 @@ jobs:
       - name: Build C++ worker and exact-work falsifier
         run: |
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --target phaseshift_v3_pairs phaseshift_v3_shapes_tests -j2
+          cmake --build build --target phaseshift_v3_pairs phaseshift_v3_shapes_tests phaseshift_v3_fixed_family_tests -j2
           ctest --test-dir build -R 'v3_analytic_synthetic_worker_truth|v3_fixed_family_exact_sign_oracle_and_holm' --output-on-failure
       - name: Real frozen families and independent raw SQLite replay
         env:
