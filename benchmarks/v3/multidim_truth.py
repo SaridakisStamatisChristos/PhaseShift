@@ -118,9 +118,9 @@ def load(suite):
                 "fixture shape")
         xs=f["x"]; ts=f["threshold"];ns=f["negative"]
         require(3<=len(xs)<=128 and xs==sorted(set(xs)) and
-                all(type(x) is int and 0<=x<=10000 for x in xs),"x domain")
+                all(type(x) is int and 0<=x<=1024 for x in xs),"x domain")
         require(1<=len(ts)<=16 and ts==sorted(set(ts)) and
-                all(type(t) is int and t>0 for t in ts),"threshold domain")
+                all(type(t) is int and 1<=t<=1024 for t in ts),"threshold domain")
         require(bool(ns) and all(type(n) is bool for n in ns) and
                 len(ns)==len(set(ns)),"negative contexts")
         require(type(f["scopes"]) is list and len(f["scopes"])<=64,
