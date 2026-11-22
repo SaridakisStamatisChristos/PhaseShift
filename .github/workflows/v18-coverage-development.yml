@@ -1,0 +1,154 @@
+name: v18-coverage-first-three-policy-development
+on:
+  push:
+    branches: ['feature/phaseshift-v3-sota-research']
+    paths:
+      - '.github/workflows/v18-coverage-development.yml'
+      - 'benchmarks/v3/coverage_development.json'
+      - 'benchmarks/v3/run_coverage_competition.py'
+      - 'benchmarks/v3/aggregate_coverage_competition.py'
+      - 'benchmarks/v3/run_paired_development.py'
+      - 'tests/v3/coverage_competition_contract.py'
+      - 'tests/v3/coverage_acquisition.cpp'
+      - 'include/phaseshift/v3/conditional_pair.hpp'
+      - 'apps/phaseshift_v3_pairs.cpp'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: v18-three-way-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  preflight:
+    name: Frozen 20-seed three-way benchmark preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate sealed evaluation, exact fixture identity and three native policy schemas
+        run: |
+          set -euo pipefail
+          python3 -m py_compile benchmarks/v3/run_coverage_competition.py benchmarks/v3/aggregate_coverage_competition.py tests/v3/coverage_competition_contract.py
+          python3 tests/v3/coverage_competition_contract.py
+          python3 tests/v3/multidim_truth_test.py
+          python3 - <<'PY'
+          import sys
+          sys.path.insert(0,"benchmarks/v3")
+          from run_coverage_competition import manifest,order
+          m,_=manifest()
+          assert sum(len(order(m,False,f["id"])) for f in m["fixtures"])==360
+          assert not m["sota_claim"]
+          print("PASS 360 predeclared 3-way native trials, 20 independent seed clusters, evaluation sealed")
+          PY
+  smoke:
+    name: Compile v18 and compare three real policies on a challenging fixture
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install C++ measurement worker prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libsqlite3-dev libjson-c-dev libssl-dev pkg-config
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target phaseshift_v3_pairs phaseshift_v3_shapes_tests phaseshift_v3_coverage_acquisition_tests phaseshift_v3_acquisition_tests -j2
+          ctest --test-dir build -R 'v18_coverage_acquisition_deterministic_and_legacy_replay|v3_acquisition_cost_calibration_drift_and_ablations|v3_analytic_synthetic_worker_truth' --output-on-failure
+      - name: Execute exactly three real matched policies and reverify schema-18 raw evidence
+        run: |
+          set -euo pipefail
+          python3 benchmarks/v3/run_coverage_competition.py \
+            --binary build/phaseshift_v3_pairs --shard masked_interactions \
+            --diagnostic --out build/v18_smoke
+          python3 benchmarks/v3/run_coverage_competition.py \
+            --out build/v18_smoke --verify-only
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v18-three-policy-native-smoke
+          path: build/v18_smoke/
+          retention-days: 15
+          if-no-files-found: warn
+  shard:
+    name: Full 60-trial matched native campaign (${{ matrix.fixture }})
+    needs: smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        fixture:
+          - multi_context_steps
+          - rare_hidden_cliff
+          - smooth_no_jump
+          - multidim_null
+          - sparse_multi_step
+          - masked_interactions
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build all three real native search policies without changing incumbents
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libsqlite3-dev libjson-c-dev libssl-dev pkg-config
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target phaseshift_v3_pairs phaseshift_v3_shapes_tests phaseshift_v3_coverage_acquisition_tests -j2
+          ctest --test-dir build -R 'v18_coverage_acquisition_deterministic_and_legacy_replay|v3_analytic_synthetic_worker_truth' --output-on-failure
+      - name: Run 20 matched seed clusters x 3 policies x 12 real matched-pair queries
+        env:
+          FIXTURE: ${{ matrix.fixture }}
+        run: |
+          set -euo pipefail
+          python3 benchmarks/v3/run_coverage_competition.py \
+            --binary build/phaseshift_v3_pairs --shard "$FIXTURE" \
+            --out build/v18_development
+          python3 benchmarks/v3/run_coverage_competition.py \
+            --out build/v18_development --verify-only
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v18-development-${{ matrix.fixture }}
+          path: build/v18_development/
+          retention-days: 30
+          if-no-files-found: warn
+  aggregate:
+    name: Independent 360-trial coverage acquisition and seed-cluster scorecard
+    needs: shard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: v18-development-*
+          path: build/shards
+          merge-multiple: false
+      - name: Independently reconstruct 360 complete SQLite and command records
+        run: |
+          set -euo pipefail
+          python3 benchmarks/v3/aggregate_coverage_competition.py \
+            --artifacts build/shards --out build/v18_full_scorecard.json
+          python3 benchmarks/v3/aggregate_coverage_competition.py \
+            --artifacts build/shards --out build/v18_full_scorecard.json --verify-only
+          python3 - <<'PY'
+          import json,os
+          r=json.load(open("build/v18_full_scorecard.json"))
+          assert r["observed_trials"]==360 and r["seed_cluster_count"]==20
+          assert not r["eligible_for_claim"] and not r["sota_claim"] and not r["evaluation_opened"]
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as out:
+              out.write("## V18 coverage-first native three-way development evidence\n\n")
+              out.write("**360 real worker trials, 20 fresh development seeds, six fixed fixtures, three policies and 12 queries each.**\n\n")
+              out.write("| Fixture | v14 hits | v15 hits | v18 hits | v14 repeats | v15 repeats | v18 repeats | v18 false nominations |\n")
+              out.write("|---|---:|---:|---:|---:|---:|---:|---:|\n")
+              for f in r["scenario_results"]:
+                  a=f["policies"]["conditional-tree"];b=f["policies"]["acquisition-v3"];c=f["policies"]["acquisition-v3-coverage"]
+                  out.write(f"| {f['fixture']} | {a['under_budget_true_hit_trials']} | {b['under_budget_true_hit_trials']} | {c['under_budget_true_hit_trials']} | {a['replication_queries']} | {b['replication_queries']} | {c['replication_queries']} | {c['false_nomination_events']} |\n")
+              out.write("\n**No winner declared:** new development evidence only; independent holdout still sealed; no external SOTA claim.\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v18-coverage-three-way-360-audited-scorecard
+          path: build/v18_full_scorecard.json
+          retention-days: 60
+          if-no-files-found: warn
