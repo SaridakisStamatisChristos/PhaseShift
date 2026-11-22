@@ -41,6 +41,9 @@ class ForcedNullContracts(unittest.TestCase):
                 c=run.config(m,s,seed)
                 self.assertEqual(c["fixed"]["negative"],True)
                 self.assertEqual(c["axes"]["x"]["values"],[s["left"],s["right"]])
+                self.assertEqual(set(c["axes"]),{"x","threshold"})
+                self.assertEqual(c["axes"]["threshold"]["values"],[s["threshold"]])
+                self.assertEqual(c["fixed"],{"negative":True})
                 self.assertEqual(c["measurement"]["paired_confirm_blocks"],20)
 
     def test_exact_seed_shared_oracle_is_context_invariant(self):
