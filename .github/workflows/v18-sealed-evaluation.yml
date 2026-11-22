@@ -1,0 +1,116 @@
+name: v18-sealed-one-time-360-trial-evaluation
+run-name: V18 one-time sealed three-policy evaluation at ${{ github.sha }}
+on:
+  push:
+    branches: ['feature/phaseshift-v3-sota-research']
+    paths:
+      - '.github/workflows/v18-sealed-evaluation.yml'
+permissions:
+  contents: read
+concurrency:
+  group: v18-sealed-evaluation-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  preflight:
+    name: Pinned candidate and original holdout; zero evaluation observations
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check 360 frozen identities, code pins, and holdout isolation
+        run: |
+          set -euo pipefail
+          python3 -m py_compile benchmarks/v3/run_coverage_evaluation.py benchmarks/v3/aggregate_coverage_evaluation.py tests/v3/coverage_evaluation_contract.py
+          python3 tests/v3/coverage_evaluation_contract.py
+          python3 tests/v3/multidim_truth_test.py
+          python3 - <<'PY'
+          import sys
+          sys.path.insert(0,"benchmarks/v3")
+          from run_coverage_evaluation import manifest,order
+          m,_=manifest()
+          assert sum(len(order(m,False,f["id"])) for f in m["fixtures"])==360
+          assert not m["eligible_for_claim"] and not m["sota_claim"]
+          print("PASS frozen candidate, 20 sealed seeds, six evaluation fixtures; no evaluation observation opened yet")
+          PY
+  shard:
+    name: Full 60-trial sealed cohort (${{ matrix.fixture }})
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        fixture: [multi_context_steps, rare_hidden_cliff, smooth_no_jump, multidim_null, sparse_multi_step, masked_interactions]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build original native policy code; run non-holdout contracts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libsqlite3-dev libjson-c-dev libssl-dev pkg-config
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target phaseshift_v3_pairs phaseshift_v3_shapes_tests phaseshift_v3_coverage_acquisition_tests phaseshift_v3_acquisition_tests -j2
+          ctest --test-dir build -R 'v18_coverage_acquisition_deterministic_and_legacy_replay|v3_acquisition_cost_calibration_drift_and_ablations|v3_analytic_synthetic_worker_truth' --output-on-failure
+      - name: Execute all 20 predeclared holdout seeds x 3 frozen policies
+        env:
+          FIXTURE: ${{ matrix.fixture }}
+        run: |
+          set -euo pipefail
+          python3 benchmarks/v3/run_coverage_evaluation.py \
+            --binary build/phaseshift_v3_pairs --shard "$FIXTURE" \
+            --out build/v18_sealed_evaluation
+          python3 benchmarks/v3/run_coverage_evaluation.py \
+            --out build/v18_sealed_evaluation --verify-only
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v18-sealed-evaluation-${{ matrix.fixture }}
+          path: build/v18_sealed_evaluation/
+          retention-days: 90
+          if-no-files-found: warn
+  aggregate:
+    name: Independent sealed evaluation 360-trial audit and final comparison
+    needs: shard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: v18-sealed-evaluation-*
+          path: build/shards
+          merge-multiple: false
+      - name: Independently reconstruct all holdout SQLite and command evidence
+        run: |
+          set -euo pipefail
+          python3 tests/v3/coverage_evaluation_contract.py
+          python3 benchmarks/v3/aggregate_coverage_evaluation.py \
+            --artifacts build/shards --out build/v18_sealed_final_scorecard.json
+          python3 benchmarks/v3/aggregate_coverage_evaluation.py \
+            --artifacts build/shards --out build/v18_sealed_final_scorecard.json --verify-only
+          python3 - <<'PY'
+          import json,os
+          r=json.load(open("build/v18_sealed_final_scorecard.json"))
+          assert r["suite"]=="evaluation" and r["evaluation_opened"]
+          assert r["observed_trials"]==360 and r["seed_cluster_count"]==20
+          assert not r["eligible_for_claim"] and not r["sota_claim"]
+          assert all(f["policies"][p]["trials"]==20 for f in r["scenario_results"] for p in
+                     ("conditional-tree","acquisition-v3","acquisition-v3-coverage"))
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as out:
+              out.write("## V18 final one-time sealed evaluation (native, 360 trials)\n\n")
+              out.write("Original untouched seeds 7101-7120 and fixtures, unchanged v14/v15 and v18 candidate, 12 pairs each.\n\n")
+              out.write("| Fixture | v14 hit | v15 hit | v18 hit | v14 false | v15 false | v18 false | v14 CPU ns | v15 CPU ns | v18 CPU ns |\n")
+              out.write("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n")
+              for f in r["scenario_results"]:
+                  a=f["policies"]["conditional-tree"];b=f["policies"]["acquisition-v3"];c=f["policies"]["acquisition-v3-coverage"]
+                  out.write(f"| {f['fixture']} | {a['under_budget_true_hit_trials']} | {b['under_budget_true_hit_trials']} | {c['under_budget_true_hit_trials']} | {a['false_nomination_events']} | {b['false_nomination_events']} | {c['false_nomination_events']} | {a['total_cpu_ns']} | {b['total_cpu_ns']} | {c['total_cpu_ns']} |\n")
+              out.write("\nPredeclared descriptive result:\n\n"+json.dumps(r["decision"],sort_keys=True,indent=2)+"\n\n")
+              out.write("No external SOTA claim or fresh timing confirmation; do not tune on these observations.\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v18-sealed-360-independent-final-scorecard
+          path: build/v18_sealed_final_scorecard.json
+          retention-days: 90
+          if-no-files-found: warn
