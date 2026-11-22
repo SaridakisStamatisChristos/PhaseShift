@@ -76,3 +76,8 @@ First exact-head GCC CTest (`f26d5da5`, test 106) failed because the v14 Python 
 ## F-021 — Cost preference confounds discovery or leaks evaluation observations
 
 V15 cost learning consumes only committed discovery data. The independent fixture reserves every fourth pair for prequential evaluation; check that an extreme heldout cost changes coverage but cannot enter the fitted empirical envelope. Miscoverage, cold start and a censored pair force neutral cost weighting; missing CPU remains missing. A separate real-worker Python reconstruction checks the empirical median/envelope, heldout/training counts, component score and raw CPU totals, then corrupts cost and diagnostic records and tests both crash boundaries. Isolated cost/uncertainty/diversity/interaction/replication score ablations receive deterministic unit falsifiers. This checks engineering behavior, not population coverage or policy superiority. **State: authored; current CI pending.**
+
+
+## F-022 — Equal pair-count and fabricated benchmark improvements
+
+Predeclared paired v14/v15 real-worker comparison uses actual consumed CPU and wall at fixed pair count, not equal-resource assumptions. Independently reconstruct timing contrasts and CPU from raw samples, reject illegal coordinates, and retain all negative/over-ceiling and failed trials. Require explicit unlabelled truth for real sorting/Top-K. Tampering a scorecard input's consumed CPU by one nanosecond must be rejected by the independent recomputation; preserve prior raw DB and command artifacts. **State:** CTest authored; CI pending.

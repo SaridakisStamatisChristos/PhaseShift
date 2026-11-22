@@ -30,5 +30,6 @@ jobs:
             build/ctest_null_ablation/ablation_scorecard.json
             build/ctest_null_ablation/ablation.csv
             build/ctest_b10_b11/
+            build/ctest_v3_paired_development/
           retention-days: 14
           if-no-files-found: error

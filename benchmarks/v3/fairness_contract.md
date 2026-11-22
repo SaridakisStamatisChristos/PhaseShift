@@ -25,3 +25,15 @@ file-byte hashes are not stable across WAL checkpoints and can omit committed
 rows; the adversarial WAL→checkpoint regression in
 `tests/v3/benchmark_fairness.py` enforces the corrected logical digest.
 Snapshots are ephemeral and never replace authoritative `run.sqlite`.
+
+
+## V3-04/05 paired-policy development comparison
+
+The distinct frozen `paired_development_manifest.json` compares v14 and v15 on four mixed-dimensional workloads (two synthetic truth-labelled tests and two unlabelled real algorithm families). Seeds 2101–2120 are development-only and disjoint from V3-01 evaluation seeds. Fixed-count trials have 12 fresh matched pairs; the configuration and pair count are identical between policies. Reproducible policy order is randomized by seed/fixture. Routine CI exercises the one-seed eight-trial diagnostic and retains full raw evidence. Run the full 160-trial development suite only in a fresh directory:
+
+```bash
+python3 benchmarks/v3/run_paired_development.py --binary build/phaseshift_v3_pairs --out build/v3_paired_dev
+python3 benchmarks/v3/run_paired_development.py --out build/v3_paired_dev --verify-only
+```
+
+Append `--diagnostic` to the first command for the frozen eight-trial smoke. Trial successes indicate discovery nominations of planted positive edges, not confirmed hypotheses; sorting/Top-K have no labelled truth. The scorecard includes failure and over-ceiling denominators, raw worker CPU, pair measurement wall, waited CLI-subtree + harness invocation CPU and elapsed search wall. It checks consumed ceilings after the complete trial; these are eligibility thresholds, **not** enforced mid-run CPU admission. Verification costs are logged separately. Terminal-time discovery curves are deliberately conservative. Equal pair counts are not equal resource usage. Cost enabled-pair counts expose whether v15 actually used the empirical penalty. No external competitiveness, calibration-coverage probability, held-out promotion or SOTA claim follows from this development-only experiment.

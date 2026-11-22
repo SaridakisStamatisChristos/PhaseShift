@@ -642,3 +642,12 @@ add_test(NAME v3_acquisition_real_worker_cost_replay
  --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/admissible_calibration.json
  --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_acquisition_workers)
 set_tests_properties(v3_acquisition_real_worker_cost_replay PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+
+# Real multi-family matched-pair development comparison (non-promotional smoke).
+add_test(NAME v3_paired_development_multifamily_scorecard
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/paired_development_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --runner ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/v3/run_paired_development.py
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_paired_development)
+set_tests_properties(v3_paired_development_multifamily_scorecard PROPERTIES
+ TIMEOUT 300 RUN_SERIAL TRUE)
