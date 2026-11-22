@@ -261,6 +261,7 @@ struct Plan {
  bool implication=false; // opt-in v13 frozen implication semantics
  bool region_tree=false; // opt-in v14, previous schedules unchanged
  bool acquisition=false; // opt-in v15 empirical cost acquisition
+ bool coverage_first=false; // opt-in v18: retain cost ranking, avoid forced replication
  bool accounted=false; // opt-in v17 attempt accounting, unchanged v15 policy
 };
 std::vector<LazySearchSpace::Axis> ordered_axes(const Config& cfg){
@@ -342,11 +343,12 @@ conditional_scopes(const Plan& plan){
  return plan.config.admissible_subspaces;
 }
 Plan make_conditional_plan(const std::string& source,int count,bool implication=false,
-                           bool region_tree=false,bool acquisition=false){
+                           bool region_tree=false,bool acquisition=false,bool coverage_first=false){
  const auto cfg=config_from_json(Json::parse(source));
  Plan result;result.source=source;result.config=cfg;result.axis=cfg.axis;
  result.pairs=count;result.conditional=true;result.implication=implication;
  result.region_tree=region_tree;result.acquisition=acquisition;
+ result.coverage_first=coverage_first;
  require(cfg.axes.count(result.axis)!=0,"v12 primary axis not in frozen declared space");
  const auto& labels=cfg.axes.at(result.axis);
  require(labels.size()>=2,"v12 requires at least two primary labels");
@@ -356,12 +358,12 @@ Plan make_conditional_plan(const std::string& source,int count,bool implication=
  const auto scopes=conditional_scopes(result);
  const AdmissibleSearchSpace legal(axes,scopes);
  ConditionalPairPortfolio probe(legal,axes,result.axis,scopes,
-  cfg.seed,static_cast<std::size_t>(count),cfg.min_ratio,64,region_tree,acquisition);
+  cfg.seed,static_cast<std::size_t>(count),cfg.min_ratio,64,region_tree,acquisition,coverage_first);
  require(probe.next().has_value(),"v12 no feasible conditional pair");
  return result;
 }
 void enable_adaptive_schema(Sqlite& db);
-void enable_conditional_schema(Sqlite& db,bool implication,bool region_tree,bool acquisition);
+void enable_conditional_schema(Sqlite& db,bool implication,bool region_tree,bool acquisition,bool coverage_first);
 void create_schema(Sqlite& db,const Plan& plan){
  db.exec(R"SQL(
  BEGIN IMMEDIATE;
@@ -403,7 +405,7 @@ void create_schema(Sqlite& db,const Plan& plan){
  st.bind(3,plan.axis);st.bind(4,plan.left);st.bind(5,plan.right);
  st.bind(6,static_cast<std::int64_t>(plan.pairs));st.done();
  if(plan.adaptive)enable_adaptive_schema(db); // same atomic schema/plan commit
- if(plan.conditional)enable_conditional_schema(db,plan.implication,plan.region_tree,plan.acquisition);
+ if(plan.conditional)enable_conditional_schema(db,plan.implication,plan.region_tree,plan.acquisition,plan.coverage_first);
  if(plan.accounted)create_accounting_schema(db);
  db.exec("COMMIT");
 }
@@ -418,7 +420,7 @@ void enable_adaptive_schema(Sqlite& db){
  PRAGMA user_version=11;
  )SQL");
 }
-void enable_conditional_schema(Sqlite& db,bool implication,bool region_tree,bool acquisition){
+void enable_conditional_schema(Sqlite& db,bool implication,bool region_tree,bool acquisition,bool coverage_first){
  db.exec(R"SQL(
  CREATE TABLE v3_conditional_decisions(
   pair_number INTEGER PRIMARY KEY REFERENCES v3_pairs(pair_number),
@@ -433,7 +435,7 @@ void enable_conditional_schema(Sqlite& db,bool implication,bool region_tree,bool
   diagnostic TEXT NOT NULL, actual_wall_ns INTEGER NOT NULL CHECK(actual_wall_ns>0),
   actual_worker_cpu_ns INTEGER CHECK(actual_worker_cpu_ns>=0));
  )SQL");
- db.exec(acquisition?"PRAGMA user_version=15;":region_tree?"PRAGMA user_version=14;":
+ db.exec(coverage_first?"PRAGMA user_version=18;":acquisition?"PRAGMA user_version=15;":region_tree?"PRAGMA user_version=14;":
          implication?"PRAGMA user_version=13;":"PRAGMA user_version=12;");
 }
 std::string encode_coords(const std::vector<AxisValue>& coords){
@@ -448,7 +450,7 @@ Plan read_plan(Sqlite& db){
  Statement version(db,"PRAGMA user_version");
  require(version.row(),"cannot inspect v3 schema version");
  const auto schema=version.number(0);
- require(schema==10||schema==11||schema==12||schema==13||schema==14||schema==15||schema==17,"not a supported v3 pilot SQLite database");
+ require(schema==10||schema==11||schema==12||schema==13||schema==14||schema==15||schema==17||schema==18,"not a supported v3 pilot SQLite database");
  Statement st(db,"SELECT source_json,source_sha256,axis,left_label,right_label,max_pairs,protocol FROM v3_plan WHERE id=1");
  require(st.row(),"missing immutable v3 plan");
  const auto source=st.str(0),digest=st.str(1),axis=st.str(2),left=st.str(3),right=st.str(4);
@@ -459,7 +461,7 @@ Plan read_plan(Sqlite& db){
  auto result=(schema>=12)?
    make_conditional_plan(source,static_cast<int>(count),
        schema==13||(schema>=14&&!config_from_json(Json::parse(source)).conditional_rules.empty()),
-       schema>=14,schema==15||schema==17):
+       schema>=14,schema==15||schema==17||schema==18,schema==18):
    make_plan(source,left,right,static_cast<int>(count));
  result.adaptive=schema==11;
  result.accounted=schema==17;
@@ -1231,7 +1233,7 @@ int numeric_option(int argc,char** argv,const std::string& key,int fallback){
 void syntax(int argc,char** argv,const std::string& command){
  const std::set<std::string> accepted=command=="run"?
   std::set<std::string>{"--config","--out","--left","--right","--pairs","--pause-after"}:
-  command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||command=="acquisition-v3"||command=="accounted-v3")?
+  command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||(command=="acquisition-v3"||command=="acquisition-v3-coverage")||command=="accounted-v3")?
   std::set<std::string>{"--config","--out","--pairs","--pause-after"}:
   command=="family-freeze"?std::set<std::string>{"--run","--manifest"}:
   (command=="verify"||command=="taxonomy"||command=="family-report"||command=="accounting")?std::set<std::string>{"--run"}:
@@ -1249,22 +1251,22 @@ int main(int argc,char** argv){
  try{
   require(argc>=2,"expected run, resume or verify");
   const std::string command=argv[1];
-  require(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||command=="acquisition-v3"||command=="accounted-v3")||command=="resume"||command=="verify"||command=="taxonomy"||command=="family-freeze"||command=="family-confirm"||command=="family-report"||command=="accounting","unknown pilot command");
+  require(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||(command=="acquisition-v3"||command=="acquisition-v3-coverage")||command=="accounted-v3")||command=="resume"||command=="verify"||command=="taxonomy"||command=="family-freeze"||command=="family-confirm"||command=="family-report"||command=="accounting","unknown pilot command");
   syntax(argc,argv,command);
   const auto pause=numeric_option(argc,argv,"--pause-after",0);
-  if(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||command=="acquisition-v3"||command=="accounted-v3")){
+  if(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||(command=="acquisition-v3"||command=="acquisition-v3-coverage")||command=="accounted-v3")){
    const auto config=option(argc,argv,"--config"),out=option(argc,argv,"--out");
    require(!config.empty()&&!out.empty(),"run needs config and output path");
    Plan plan;
    if(command=="adaptive")
     plan=make_adaptive_plan(read_file(config),numeric_option(argc,argv,"--pairs",3));
-   else if(command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||command=="acquisition-v3"||command=="accounted-v3")){
+   else if(command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||(command=="acquisition-v3"||command=="acquisition-v3-coverage")||command=="accounted-v3")){
     const auto frozen=read_file(config);
-    const auto rules=(command=="conditional-tree"||command=="acquisition-v3"||command=="accounted-v3")?
+    const auto rules=(command=="conditional-tree"||(command=="acquisition-v3"||command=="acquisition-v3-coverage")||command=="accounted-v3")?
       !config_from_json(Json::parse(frozen)).conditional_rules.empty():
       command=="conditional-rules";
     plan=make_conditional_plan(frozen,numeric_option(argc,argv,"--pairs",3),
-                               rules,(command=="conditional-tree"||command=="acquisition-v3"||command=="accounted-v3"),command=="acquisition-v3"||command=="accounted-v3");
+                               rules,(command=="conditional-tree"||(command=="acquisition-v3"||command=="acquisition-v3-coverage")||command=="accounted-v3"),(command=="acquisition-v3"||command=="acquisition-v3-coverage")||command=="accounted-v3",command=="acquisition-v3-coverage");
     plan.accounted=command=="accounted-v3";
    }
    else{
@@ -1290,7 +1292,7 @@ int main(int argc,char** argv){
     legal.emplace(axes,scopes);
     conditional.emplace(*legal,axes,plan.axis,scopes,
       plan.config.seed,static_cast<std::size_t>(plan.pairs),plan.config.min_ratio,
-      64,plan.region_tree,plan.acquisition);
+      64,plan.region_tree,plan.acquisition,plan.coverage_first);
    }
    execute_pairs(db,plan,planner,adaptive?&*adaptive:nullptr,
                  conditional?&*conditional:nullptr,0,static_cast<std::size_t>(pause));
@@ -1323,7 +1325,7 @@ int main(int argc,char** argv){
    legal.emplace(axes,scopes);
    conditional.emplace(*legal,axes,plan.axis,scopes,
      plan.config.seed,static_cast<std::size_t>(plan.pairs),plan.config.min_ratio,
-     64,plan.region_tree,plan.acquisition);
+     64,plan.region_tree,plan.acquisition,plan.coverage_first);
   }
   std::vector<MatchedBoundaryObservationV3> taxonomy;
   const auto completed=replay(db,plan,planner,adaptive?&*adaptive:nullptr,
