@@ -95,7 +95,7 @@ Result execute(const Case& c,const std::string& algorithm){
    // multiplier stresses timing without introducing any structural cliff.
    if(a[2]!=1||a[0]>1024||a[1]>1024)
     throw Error("v3 seed-shared null requires negative=true and bounded coordinates");
-   auto shared_state=c.seed^0x5d6c9e3a712bf084ULL;
+   std::uint64_t shared_state=c.seed^0x5d6c9e3a712bf084ULL;
    work=1024ULL << ((splitmix64(shared_state)>>7)&3ULL);
   }else if(algorithm=="calibration_steps_v3"){
    const auto x=static_cast<std::uint64_t>(a[0]),t=static_cast<std::uint64_t>(a[1]);
