@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 
 from confirmation_protocol import read,require,db_ro,decode
-from multidim_truth import key,load,truth
+from multidim_truth import config,key,load,truth
 from protocol import sha256_file
 from run_confirmation_development import (
     SOURCE_COMMIT,SOURCE_RUN_ID,verify as verify_family)
@@ -28,7 +28,7 @@ def structural_truth_labels(source,fixture,trial,choices):
     for member in choices:
         edge=source_edges[member["discovery_pair"]]
         left,right=decode(edge[1]),decode(edge[2])
-        ctx=[(k,v) for k,v in left.items() if k!="x"]
+        ctx=[(k,left[k]) for k in config(fixture,0)["axes"] if k!="x"]
         structural=key(ctx,int(left["x"]),int(right["x"])) in gold
         labels.append({"member_index":len(labels),
                        "work_unit_jump":structural,
