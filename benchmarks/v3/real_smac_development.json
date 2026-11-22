@@ -1,0 +1,66 @@
+{
+  "schema": 1,
+  "protocol": "phaseshift.v3-external-smac24-real-algorithm-development.1",
+  "suite": "development",
+  "eligible_for_sota": false,
+  "source_manifest": "benchmarks/v3/real_external_development.json",
+  "source_manifest_blob_sha1": "6259fffdadb2fc93d5c8a9934fab7951f3efa19b",
+  "source_v18_code_blobs": {
+    "include/phaseshift/v3/conditional_pair.hpp": "352649a791af583dd5e779500d2db9336119901b",
+    "include/phaseshift/v3/acquisition.hpp": "4af662731363c76d87955008d8d655beb0f76566",
+    "apps/phaseshift_v3_pairs.cpp": "780d32f50514bdccfc47658230d8795b10fc8918"
+  },
+  "source_real_manifest_blob_sha1": "2122d7f770d66bbc9145febe40ba7ac5cbc6f6d7",
+  "smac_version": "2.4.1",
+  "policies": [
+    "acquisition-v3-coverage",
+    "smac3_hpo"
+  ],
+  "pair_budget": 12,
+  "confirmation_pairs": 20,
+  "max_distinct_candidates": 2,
+  "min_practical_ratio": 1.2,
+  "alpha": 0.05,
+  "seeds": [
+    33001,
+    33002,
+    33003,
+    33004,
+    33005,
+    33006,
+    33007,
+    33008,
+    33009,
+    33010,
+    33011,
+    33012,
+    33013,
+    33014,
+    33015,
+    33016,
+    33017,
+    33018,
+    33019,
+    33020
+  ],
+  "diagnostic_seeds": [
+    33001
+  ],
+  "scenarios": [
+    {
+      "id": "sort_ascending",
+      "source": "sort_pathology",
+      "distribution": "ascending"
+    },
+    {
+      "id": "topk_uniform",
+      "source": "topk_fraction",
+      "distribution": "uniform"
+    }
+  ],
+  "objective": "minimize negative absolute matched log speed ratio difference on adjacent feasible structural edges; censored reward 0",
+  "comparison": "same PhaseShift C++ workers and correctness oracle; SMAC ask/tell per native CLI pair; 12 queries per policy; startup/optimizer overhead not equivalent",
+  "truth_status": "real algorithm boundary location not independently ground-truth labeled",
+  "evaluation_reused": false,
+  "sota_claim": false
+}
