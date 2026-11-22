@@ -5,6 +5,7 @@
 #include "phaseshift/v3/replicate_planner.hpp"
 #include "phaseshift/v3/adaptive_pair.hpp"
 #include "phaseshift/v3/conditional_pair.hpp"
+#include "phaseshift/v3/taxonomy.hpp"
 #include <sqlite3.h>
 #include <algorithm>
 #include <chrono>
@@ -49,10 +50,11 @@ void apply_axis(Case& c,const std::string& key,const std::string& value){
 }
 struct Sqlite {
  sqlite3* db=nullptr;
- explicit Sqlite(const fs::path& path){
-  const auto result=sqlite3_open_v2(path.string().c_str(),&db,SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE,nullptr);
+ explicit Sqlite(const fs::path& path,bool readonly=false){
+  const auto result=sqlite3_open_v2(path.string().c_str(),&db,readonly?SQLITE_OPEN_READONLY:SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE,nullptr);
   if(result!=SQLITE_OK){const auto error=db?sqlite3_errmsg(db):"open failed";if(db)sqlite3_close(db);db=nullptr;throw Error("v3 SQLite: "+std::string(error));}
-  exec("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;");
+  if(readonly)exec("PRAGMA query_only=ON; PRAGMA busy_timeout=5000;");
+  else exec("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;");
  }
  ~Sqlite(){if(db)sqlite3_close(db);}
  Sqlite(const Sqlite&)=delete;Sqlite& operator=(const Sqlite&)=delete;
@@ -374,7 +376,8 @@ Case materialize_selected(const Plan& plan,const ScheduledV3& selected,
 std::optional<double> per_side_metric(const std::vector<Observation>& rows,
  const std::string& main,const std::string& competitor);
 std::size_t replay(Sqlite& db,const Plan& plan,ReplicatePlanner& planner,
-                   AdaptivePairPolicy* adaptive,ConditionalPairPortfolio* conditional){
+                   AdaptivePairPolicy* adaptive,ConditionalPairPortfolio* conditional,
+                   std::vector<MatchedBoundaryObservationV3>* taxonomy=nullptr){
  Statement rows(db,"SELECT pair_number,seed,left_first,left_case_id,right_case_id,status,log_contrast,pair_wall_ns,worker_timed_cpu_ns FROM v3_pairs ORDER BY pair_number");
  std::size_t completed=0;
  while(rows.row()){
@@ -478,6 +481,29 @@ std::size_t replay(Sqlite& db,const Plan& plan,ReplicatePlanner& planner,
            known==(sqlite3_column_type(audit.stmt,2)!=SQLITE_NULL)&&
            (!known||audit.number(2)==total),"v15 acquisition cost/diagnostic replay mismatch");
    require(!audit.row(),"duplicate v15 acquisition diagnostic");
+  }
+  if(taxonomy){
+   require(selected.conditional_choice.has_value(),"taxonomy requires conditional run");
+   const auto& chosen=*selected.conditional_choice;
+   const auto& labels=plan.config.axes.at(plan.axis);
+   MatchedBoundaryObservationV3 item;item.seed=seed;
+   for(std::size_t i=0;i<chosen.left.size();++i){
+    const auto& [axis,label]=chosen.left[i];
+    if(axis==plan.axis){
+     item.left=static_cast<std::size_t>(std::find(labels.begin(),labels.end(),label)-labels.begin());
+     item.right=static_cast<std::size_t>(std::find(labels.begin(),labels.end(),chosen.right[i].second)-labels.begin());
+    }else item.context.push_back(chosen.left[i]);
+   }
+   const auto side_status=[](const std::vector<Observation>& group,std::optional<double> metric){
+    if(metric)return std::string("ok");
+    std::set<std::string> failures;
+    for(const auto& raw:group)if(raw.status!="ok")failures.insert(raw.status);
+    return failures.size()==1?*failures.begin():std::string("mixed_or_invalid");
+   };
+   item.left_metric=left_metric;item.right_metric=right_metric;
+   item.left_status=side_status(persisted[0],left_metric);
+   item.right_status=side_status(persisted[1],right_metric);
+   taxonomy->push_back(std::move(item));
   }
   if(adaptive)adaptive->on_committed(*selected.adaptive_choice,
                                   Cohort::Discovery,recalculated);
@@ -627,6 +653,50 @@ void execute_pairs(Sqlite& db,const Plan& plan,ReplicatePlanner& planner,
  std::cout<<"v3 matched discovery committed "<<completed<<"/"<<plan.pairs
           <<" pairs; cohort=discovery; significance=not_established\n";
 }
+Json context_json_v3(const std::vector<AxisValue>& context){
+ Json out;
+ for(const auto& [axis,label]:context)out.put(axis.c_str(),label);
+ return out;
+}
+void taxonomy_json(const Plan& plan,const std::vector<MatchedBoundaryObservationV3>& rows,
+                   std::size_t completed){
+ std::vector<double> axis;
+ const auto& labels=plan.config.axes.at(plan.axis);
+ for(const auto& label:labels)axis.push_back(static_cast<double>(integer(label)));
+ const auto report=classify_matched_v3(axis,rows,std::log(plan.config.min_ratio),!plan.config.b.empty());
+ Json output;output.put("schema","phaseshift.v3.taxonomy.1");
+ output.put("cohort","discovery");output.put("confirmed",false);
+ output.put("localization","descriptive_not_confidence_interval");
+ output.put("source_config_sha256",sha256(plan.source));output.put("axis",plan.axis);
+ output.put("minimum_log_effect",std::log(plan.config.min_ratio));
+ output.put("observations",static_cast<std::int64_t>(report.observations));
+ output.put("committed_pairs",static_cast<std::int64_t>(completed));
+ output.put("planned_pairs",static_cast<std::int64_t>(plan.pairs));
+ output.put("missing_or_unsupported_edges",static_cast<std::int64_t>(report.missing_or_unsupported_edges));
+ Json candidates(json_object_new_array());
+ for(const auto& c:report.candidates){
+  Json row;row.put("kind",c.kind);row.put("detail",c.detail);
+  row.put("context",context_json_v3(c.context));row.put("other_context",context_json_v3(c.other_context));
+  row.put("left",labels.at(c.left));row.put("right",labels.at(c.right));
+  row.put("min_matched_support",static_cast<std::int64_t>(c.support));
+  if(c.effect)row.put("descriptive_effect",*c.effect);
+  json_object_array_add(candidates.p,json_object_get(row.p));
+ }
+ output.put("candidates",std::move(candidates));
+ Json profiles(json_object_new_array());
+ for(const auto& p:report.profiles){
+  Json row;row.put("context",context_json_v3(p.context));
+  row.put("left",labels.at(p.begin));row.put("right",labels.at(p.end));
+  row.put("kind",p.shape.kind);row.put("best_rival",p.shape.rival);
+  Json scores;
+  for(const auto& [name,value]:p.shape.scores)scores.put(name.c_str(),value);
+  row.put("penalized_scores",std::move(scores));
+  row.put("constant_residual_variance_ratio",p.shape.residual_variance_ratio);
+  json_object_array_add(profiles.p,json_object_get(row.p));
+ }
+ output.put("profiles",std::move(profiles));
+ std::cout<<output.str()<<"\n";
+}
 std::string option(int argc,char** argv,const std::string& name){
  for(int i=2;i+1<argc;i+=2)if(argv[i]==name)return argv[i+1];
  return {};
@@ -643,7 +713,7 @@ void syntax(int argc,char** argv,const std::string& command){
   std::set<std::string>{"--config","--out","--left","--right","--pairs","--pause-after"}:
   command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||command=="acquisition-v3")?
   std::set<std::string>{"--config","--out","--pairs","--pause-after"}:
-  command=="verify"?std::set<std::string>{"--run"}:
+  (command=="verify"||command=="taxonomy")?std::set<std::string>{"--run"}:
   std::set<std::string>{"--run","--pause-after"};
  require((argc-2)%2==0,"options require key/value pairs");
  std::set<std::string> used;
@@ -658,7 +728,7 @@ int main(int argc,char** argv){
  try{
   require(argc>=2,"expected run, resume or verify");
   const std::string command=argv[1];
-  require(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||command=="acquisition-v3")||command=="resume"||command=="verify","unknown pilot command");
+  require(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||command=="acquisition-v3")||command=="resume"||command=="verify"||command=="taxonomy","unknown pilot command");
   syntax(argc,argv,command);
   const auto pause=numeric_option(argc,argv,"--pause-after",0);
   if(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||command=="acquisition-v3")){
@@ -705,8 +775,10 @@ int main(int argc,char** argv){
   const auto run=option(argc,argv,"--run");
   require(!run.empty(),"resume/verify need --run");
   require(fs::is_regular_file(fs::path(run)/"run.sqlite"),"missing authoritative run.sqlite");
-  Sqlite db(fs::path(run)/"run.sqlite");
+  Sqlite db(fs::path(run)/"run.sqlite",command=="taxonomy");
+  if(command=="taxonomy")db.exec("BEGIN"); // one read-only snapshot for replay and report
   const auto plan=read_plan(db);
+  if(command=="taxonomy")require(plan.conditional,"taxonomy requires v12-v15 conditional evidence");
   auto planner=planner_for(plan);
   std::optional<AdaptivePairPolicy> adaptive;
   if(plan.adaptive)adaptive.emplace(adaptive_legal_labels(plan),
@@ -721,8 +793,12 @@ int main(int argc,char** argv){
      plan.config.seed,static_cast<std::size_t>(plan.pairs),plan.config.min_ratio,
      64,plan.region_tree,plan.acquisition);
   }
+  std::vector<MatchedBoundaryObservationV3> taxonomy;
   const auto completed=replay(db,plan,planner,adaptive?&*adaptive:nullptr,
-                              conditional?&*conditional:nullptr);
+                              conditional?&*conditional:nullptr,command=="taxonomy"?&taxonomy:nullptr);
+  if(command=="taxonomy"){
+   taxonomy_json(plan,taxonomy,completed);db.exec("COMMIT");return 0;
+  }
   if(command=="verify"){
    std::cout<<"v3 replay verified "<<completed<<" committed matched pairs\n";return 0;
   }

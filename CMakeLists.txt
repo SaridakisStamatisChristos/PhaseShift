@@ -651,3 +651,16 @@ add_test(NAME v3_paired_development_multifamily_scorecard
  --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_paired_development)
 set_tests_properties(v3_paired_development_multifamily_scorecard PROPERTIES
  TIMEOUT 300 RUN_SERIAL TRUE)
+
+# V3-07 read-only descriptive taxonomy and independent small-partition oracle.
+add_executable(phaseshift_v3_taxonomy_tests tests/v3/taxonomy.cpp)
+target_link_libraries(phaseshift_v3_taxonomy_tests PRIVATE phaseshift_core)
+add_test(NAME v3_taxonomy_rival_shapes_sparse_and_exhaustive_oracle
+ COMMAND phaseshift_v3_taxonomy_tests)
+set_tests_properties(v3_taxonomy_rival_shapes_sparse_and_exhaustive_oracle PROPERTIES TIMEOUT 30)
+add_test(NAME v3_taxonomy_readonly_real_worker_replay
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/taxonomy_worker_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/admissible_calibration.json
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_taxonomy)
+set_tests_properties(v3_taxonomy_readonly_real_worker_replay PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)

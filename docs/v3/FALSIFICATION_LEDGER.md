@@ -81,3 +81,8 @@ V15 cost learning consumes only committed discovery data. The independent fixtur
 ## F-022 — Equal pair-count and fabricated benchmark improvements
 
 Predeclared paired v14/v15 real-worker comparison uses actual consumed CPU and wall at fixed pair count, not equal-resource assumptions. Independently reconstruct timing contrasts and CPU from raw samples, reject illegal coordinates, and retain all negative/over-ceiling and failed trials. Require explicit unlabelled truth for real sorting/Top-K. Tampering a scorecard input's consumed CPU by one nanosecond must be rejected by the independent recomputation; preserve prior raw DB and command artifacts. **State:** CTest authored; CI pending.
+
+
+## F-023 — Rival-shape confusion and sparse projection fabrication
+
+Independent enumeration of all binary length-eight level profiles and all feasible cut masks checks exact v2 DP/PELT score integration. Ground-truth opposing double cliffs, constant, smooth actual-coordinate linear trend, piecewise slope and isolated impulses must classify appropriately or abstain. Missing/censored/variable edges cannot connect unrelated reconstructed profiles. Repeated same-seed pair evidence is distinct from full factorial confirmation; duplicate seeds/forged failed metrics/confirmation are rejected. Read-only real-worker JSON report is reproducible on an immutable snapshot and rejects forged prior policy decisions. **State:** tests authored; exact-head CI pending. No population performance or localization coverage claim.
