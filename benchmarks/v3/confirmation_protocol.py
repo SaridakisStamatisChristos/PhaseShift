@@ -158,7 +158,7 @@ def independent_sidecar(source_db,confirmation_db,frozen,report):
                           WHERE s.pair_number=? ORDER BY s.side,s.ordinal""",(i,)).fetchall()
             require(len(samples)==2 and [a[0] for a in samples]==[0,1] and
                     all(a[1] in ("calibration","calibration_steps_v3",
-                                 "calibration_smooth_v3") and a[6]==seed for a in samples),
+                                 "calibration_smooth_v3","calibration_seed_shared_null_v3") and a[6]==seed for a in samples),
                     "holdout raw sample/cardinality/seed mismatch")
             raw_cpu=None if any(s[5] is None for s in samples) else sum(s[5] for s in samples)
             require(raw_cpu==cpu,"holdout CPU differs from raw samples")
