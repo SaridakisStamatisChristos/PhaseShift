@@ -1,0 +1,976 @@
+{
+  "schema": 2,
+  "suite": "development",
+  "seeds": [
+    4101,
+    4102,
+    4103,
+    4104,
+    4105,
+    4106,
+    4107,
+    4108,
+    4109,
+    4110,
+    4111,
+    4112,
+    4113,
+    4114,
+    4115,
+    4116,
+    4117,
+    4118,
+    4119,
+    4120
+  ],
+  "cpu_ceiling_ns": 5000000000,
+  "wall_ceiling_ns": 15000000000,
+  "diagnostic_policies": [
+    "adaptive_partition",
+    "weighted_v2",
+    "cliff_bracket_v2"
+  ],
+  "scenarios": [
+    {
+      "id": "early_cliff",
+      "truth": "single_cliff",
+      "cases": 64,
+      "policies": [
+        "grid",
+        "random",
+        "stratified",
+        "adaptive_partition",
+        "uniform_v2",
+        "stratified_v2",
+        "weighted_v2",
+        "hierarchical_boundary_v2",
+        "cliff_bracket_v2",
+        "hybrid_mixed_v2"
+      ],
+      "config": {
+        "schema_version": 1,
+        "experiment_id": "early_cliff",
+        "problem_family": "calibration",
+        "algorithms": [
+          "calibration"
+        ],
+        "seed": 0,
+        "primary_axis": "x",
+        "axes": {
+          "x": {
+            "values": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25,
+              26,
+              27,
+              28,
+              29,
+              30,
+              31,
+              32,
+              33,
+              34,
+              35,
+              36,
+              37,
+              38,
+              39,
+              40,
+              41,
+              42,
+              43,
+              44,
+              45,
+              46,
+              47,
+              48,
+              49,
+              50,
+              51,
+              52,
+              53,
+              54,
+              55,
+              56,
+              57,
+              58,
+              59,
+              60,
+              61,
+              62,
+              63
+            ]
+          }
+        },
+        "fixed": {
+          "threshold": 9,
+          "negative": false
+        },
+        "search": {
+          "method": "grid",
+          "max_cases": 64
+        },
+        "measurement": {
+          "paired_discovery_blocks": 1,
+          "paired_confirm_blocks": 20,
+          "warmup_iterations": 0
+        },
+        "detection": {
+          "min_practical_ratio": 1.2
+        },
+        "limits": {
+          "max_search_queue": 128,
+          "total_wall_seconds": 120
+        }
+      }
+    },
+    {
+      "id": "late_cliff",
+      "truth": "single_cliff",
+      "cases": 64,
+      "policies": [
+        "grid",
+        "random",
+        "stratified",
+        "adaptive_partition",
+        "uniform_v2",
+        "stratified_v2",
+        "weighted_v2",
+        "hierarchical_boundary_v2",
+        "cliff_bracket_v2",
+        "hybrid_mixed_v2"
+      ],
+      "config": {
+        "schema_version": 1,
+        "experiment_id": "late_cliff",
+        "problem_family": "calibration",
+        "algorithms": [
+          "calibration"
+        ],
+        "seed": 0,
+        "primary_axis": "x",
+        "axes": {
+          "x": {
+            "values": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25,
+              26,
+              27,
+              28,
+              29,
+              30,
+              31,
+              32,
+              33,
+              34,
+              35,
+              36,
+              37,
+              38,
+              39,
+              40,
+              41,
+              42,
+              43,
+              44,
+              45,
+              46,
+              47,
+              48,
+              49,
+              50,
+              51,
+              52,
+              53,
+              54,
+              55,
+              56,
+              57,
+              58,
+              59,
+              60,
+              61,
+              62,
+              63,
+              64,
+              65,
+              66,
+              67,
+              68,
+              69,
+              70,
+              71,
+              72,
+              73,
+              74,
+              75,
+              76,
+              77,
+              78,
+              79,
+              80,
+              81,
+              82,
+              83,
+              84,
+              85,
+              86,
+              87,
+              88,
+              89,
+              90,
+              91,
+              92,
+              93,
+              94,
+              95
+            ]
+          }
+        },
+        "fixed": {
+          "threshold": 95,
+          "negative": false
+        },
+        "search": {
+          "method": "grid",
+          "max_cases": 64
+        },
+        "measurement": {
+          "paired_discovery_blocks": 1,
+          "paired_confirm_blocks": 20,
+          "warmup_iterations": 0
+        },
+        "detection": {
+          "min_practical_ratio": 1.2
+        },
+        "limits": {
+          "max_search_queue": 128,
+          "total_wall_seconds": 120
+        }
+      }
+    },
+    {
+      "id": "sparse_cliff",
+      "truth": "single_cliff",
+      "cases": 48,
+      "policies": [
+        "grid",
+        "random",
+        "stratified",
+        "adaptive_partition",
+        "uniform_v2",
+        "stratified_v2",
+        "weighted_v2",
+        "hierarchical_boundary_v2",
+        "cliff_bracket_v2",
+        "hybrid_mixed_v2"
+      ],
+      "config": {
+        "schema_version": 1,
+        "experiment_id": "sparse_cliff",
+        "problem_family": "calibration",
+        "algorithms": [
+          "calibration"
+        ],
+        "seed": 0,
+        "primary_axis": "x",
+        "axes": {
+          "x": {
+            "values": [
+              0,
+              3,
+              6,
+              9,
+              12,
+              15,
+              18,
+              21,
+              24,
+              27,
+              30,
+              33,
+              36,
+              39,
+              42,
+              45,
+              48,
+              51,
+              54,
+              57,
+              60,
+              63,
+              66,
+              69,
+              72,
+              75,
+              78,
+              81,
+              84,
+              87,
+              90,
+              93,
+              96,
+              99,
+              102,
+              105,
+              108,
+              111,
+              114,
+              117,
+              120,
+              123,
+              126,
+              129,
+              132,
+              135,
+              138,
+              141
+            ]
+          }
+        },
+        "fixed": {
+          "threshold": 47,
+          "negative": false
+        },
+        "search": {
+          "method": "grid",
+          "max_cases": 48
+        },
+        "measurement": {
+          "paired_discovery_blocks": 1,
+          "paired_confirm_blocks": 20,
+          "warmup_iterations": 0
+        },
+        "detection": {
+          "min_practical_ratio": 1.2
+        },
+        "limits": {
+          "max_search_queue": 128,
+          "total_wall_seconds": 120
+        }
+      }
+    },
+    {
+      "id": "dense_null",
+      "truth": "null",
+      "cases": 64,
+      "policies": [
+        "grid",
+        "random",
+        "stratified",
+        "adaptive_partition",
+        "uniform_v2",
+        "stratified_v2",
+        "weighted_v2",
+        "hierarchical_boundary_v2",
+        "cliff_bracket_v2",
+        "hybrid_mixed_v2"
+      ],
+      "config": {
+        "schema_version": 1,
+        "experiment_id": "dense_null",
+        "problem_family": "calibration",
+        "algorithms": [
+          "calibration"
+        ],
+        "seed": 0,
+        "primary_axis": "x",
+        "axes": {
+          "x": {
+            "values": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25,
+              26,
+              27,
+              28,
+              29,
+              30,
+              31,
+              32,
+              33,
+              34,
+              35,
+              36,
+              37,
+              38,
+              39,
+              40,
+              41,
+              42,
+              43,
+              44,
+              45,
+              46,
+              47,
+              48,
+              49,
+              50,
+              51,
+              52,
+              53,
+              54,
+              55,
+              56,
+              57,
+              58,
+              59,
+              60,
+              61,
+              62,
+              63
+            ]
+          }
+        },
+        "fixed": {
+          "threshold": 17,
+          "negative": true
+        },
+        "search": {
+          "method": "grid",
+          "max_cases": 64
+        },
+        "measurement": {
+          "paired_discovery_blocks": 1,
+          "paired_confirm_blocks": 20,
+          "warmup_iterations": 0
+        },
+        "detection": {
+          "min_practical_ratio": 1.2
+        },
+        "limits": {
+          "max_search_queue": 128,
+          "total_wall_seconds": 120
+        }
+      }
+    },
+    {
+      "id": "sparse_null",
+      "truth": "null",
+      "cases": 48,
+      "policies": [
+        "grid",
+        "random",
+        "stratified",
+        "adaptive_partition",
+        "uniform_v2",
+        "stratified_v2",
+        "weighted_v2",
+        "hierarchical_boundary_v2",
+        "cliff_bracket_v2",
+        "hybrid_mixed_v2"
+      ],
+      "config": {
+        "schema_version": 1,
+        "experiment_id": "sparse_null",
+        "problem_family": "calibration",
+        "algorithms": [
+          "calibration"
+        ],
+        "seed": 0,
+        "primary_axis": "x",
+        "axes": {
+          "x": {
+            "values": [
+              0,
+              4,
+              8,
+              12,
+              16,
+              20,
+              24,
+              28,
+              32,
+              36,
+              40,
+              44,
+              48,
+              52,
+              56,
+              60,
+              64,
+              68,
+              72,
+              76,
+              80,
+              84,
+              88,
+              92,
+              96,
+              100,
+              104,
+              108,
+              112,
+              116,
+              120,
+              124,
+              128,
+              132,
+              136,
+              140,
+              144,
+              148,
+              152,
+              156,
+              160,
+              164,
+              168,
+              172,
+              176,
+              180,
+              184,
+              188
+            ]
+          }
+        },
+        "fixed": {
+          "threshold": 35,
+          "negative": true
+        },
+        "search": {
+          "method": "grid",
+          "max_cases": 48
+        },
+        "measurement": {
+          "paired_discovery_blocks": 1,
+          "paired_confirm_blocks": 20,
+          "warmup_iterations": 0
+        },
+        "detection": {
+          "min_practical_ratio": 1.2
+        },
+        "limits": {
+          "max_search_queue": 128,
+          "total_wall_seconds": 120
+        }
+      }
+    },
+    {
+      "id": "large_null",
+      "truth": "null",
+      "cases": 64,
+      "policies": [
+        "grid",
+        "random",
+        "stratified",
+        "adaptive_partition",
+        "uniform_v2",
+        "stratified_v2",
+        "weighted_v2",
+        "hierarchical_boundary_v2",
+        "cliff_bracket_v2",
+        "hybrid_mixed_v2"
+      ],
+      "config": {
+        "schema_version": 1,
+        "experiment_id": "large_null",
+        "problem_family": "calibration",
+        "algorithms": [
+          "calibration"
+        ],
+        "seed": 0,
+        "primary_axis": "x",
+        "axes": {
+          "x": {
+            "values": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25,
+              26,
+              27,
+              28,
+              29,
+              30,
+              31,
+              32,
+              33,
+              34,
+              35,
+              36,
+              37,
+              38,
+              39,
+              40,
+              41,
+              42,
+              43,
+              44,
+              45,
+              46,
+              47,
+              48,
+              49,
+              50,
+              51,
+              52,
+              53,
+              54,
+              55,
+              56,
+              57,
+              58,
+              59,
+              60,
+              61,
+              62,
+              63,
+              64,
+              65,
+              66,
+              67,
+              68,
+              69,
+              70,
+              71,
+              72,
+              73,
+              74,
+              75,
+              76,
+              77,
+              78,
+              79,
+              80,
+              81,
+              82,
+              83,
+              84,
+              85,
+              86,
+              87,
+              88,
+              89,
+              90,
+              91,
+              92,
+              93,
+              94,
+              95,
+              96,
+              97,
+              98,
+              99,
+              100,
+              101,
+              102,
+              103,
+              104,
+              105,
+              106,
+              107,
+              108,
+              109,
+              110,
+              111,
+              112,
+              113,
+              114,
+              115,
+              116,
+              117,
+              118,
+              119,
+              120,
+              121,
+              122,
+              123,
+              124,
+              125,
+              126,
+              127
+            ]
+          }
+        },
+        "fixed": {
+          "threshold": 83,
+          "negative": true
+        },
+        "search": {
+          "method": "grid",
+          "max_cases": 64
+        },
+        "measurement": {
+          "paired_discovery_blocks": 1,
+          "paired_confirm_blocks": 20,
+          "warmup_iterations": 0
+        },
+        "detection": {
+          "min_practical_ratio": 1.2
+        },
+        "limits": {
+          "max_search_queue": 128,
+          "total_wall_seconds": 120
+        }
+      }
+    },
+    {
+      "id": "sorting",
+      "truth": "unlabelled",
+      "cases": 15,
+      "policies": [
+        "grid",
+        "random",
+        "stratified",
+        "adaptive_partition",
+        "uniform_v2",
+        "stratified_v2",
+        "weighted_v2",
+        "hybrid_mixed_v2"
+      ],
+      "config": {
+        "schema_version": 1,
+        "experiment_id": "sorting",
+        "problem_family": "integer_array",
+        "algorithms": [
+          "std_sort",
+          "quicksort_first_pivot"
+        ],
+        "seed": 0,
+        "primary_axis": "n",
+        "axes": {
+          "n": {
+            "values": [
+              64,
+              128,
+              256,
+              512,
+              1024
+            ]
+          },
+          "distribution": {
+            "values": [
+              "ascending",
+              "uniform",
+              "all_equal"
+            ]
+          }
+        },
+        "fixed": {},
+        "search": {
+          "method": "grid",
+          "max_cases": 15
+        },
+        "measurement": {
+          "paired_discovery_blocks": 3,
+          "paired_confirm_blocks": 20,
+          "warmup_iterations": 1
+        },
+        "detection": {
+          "min_practical_ratio": 1.2
+        },
+        "limits": {
+          "total_wall_seconds": 90,
+          "max_case_bytes": 1048576,
+          "max_worker_rss_mb": 1024,
+          "max_sample_wall_ms": 10000
+        }
+      }
+    },
+    {
+      "id": "topk",
+      "truth": "unlabelled",
+      "cases": 12,
+      "policies": [
+        "grid",
+        "random",
+        "stratified",
+        "adaptive_partition",
+        "uniform_v2",
+        "stratified_v2",
+        "weighted_v2",
+        "hybrid_mixed_v2"
+      ],
+      "config": {
+        "schema_version": 1,
+        "experiment_id": "topk",
+        "problem_family": "topk",
+        "algorithms": [
+          "topk_heap",
+          "topk_nth"
+        ],
+        "seed": 0,
+        "primary_axis": "k",
+        "axes": {
+          "k": {
+            "values": [
+              0,
+              1,
+              8,
+              64,
+              256,
+              512
+            ]
+          },
+          "distribution": {
+            "values": [
+              "uniform",
+              "heavy_duplicate"
+            ]
+          }
+        },
+        "fixed": {
+          "n": 1024
+        },
+        "search": {
+          "method": "random",
+          "max_cases": 12
+        },
+        "measurement": {
+          "paired_discovery_blocks": 3,
+          "paired_confirm_blocks": 20,
+          "warmup_iterations": 1
+        }
+      }
+    },
+    {
+      "id": "graph",
+      "truth": "unlabelled",
+      "cases": 6,
+      "policies": [
+        "grid",
+        "random",
+        "stratified",
+        "adaptive_partition",
+        "uniform_v2",
+        "stratified_v2",
+        "weighted_v2",
+        "hierarchical_boundary_v2",
+        "cliff_bracket_v2",
+        "hybrid_mixed_v2"
+      ],
+      "config": {
+        "schema_version": 1,
+        "experiment_id": "graph",
+        "problem_family": "graph",
+        "algorithms": [
+          "dijkstra_heap",
+          "dijkstra_dense"
+        ],
+        "seed": 0,
+        "primary_axis": "edges",
+        "axes": {
+          "edges": {
+            "values": [
+              0,
+              16,
+              64,
+              128,
+              256,
+              512
+            ]
+          }
+        },
+        "fixed": {
+          "vertices": 64,
+          "source": 0,
+          "weight_class": "general"
+        },
+        "search": {
+          "method": "adaptive_partition",
+          "max_cases": 6
+        },
+        "measurement": {
+          "paired_discovery_blocks": 3,
+          "paired_confirm_blocks": 20,
+          "warmup_iterations": 1
+        }
+      }
+    }
+  ],
+  "eligible_for_claim": false,
+  "sota_claim": false
+}

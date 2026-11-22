@@ -37,3 +37,15 @@ python3 benchmarks/v3/run_paired_development.py --out build/v3_paired_dev --veri
 ```
 
 Append `--diagnostic` to the first command for the frozen eight-trial smoke. Trial successes indicate discovery nominations of planted positive edges, not confirmed hypotheses; sorting/Top-K have no labelled truth. The scorecard includes failure and over-ceiling denominators, raw worker CPU, pair measurement wall, waited CLI-subtree + harness invocation CPU and elapsed search wall. It checks consumed ceilings after the complete trial; these are eligibility thresholds, **not** enforced mid-run CPU admission. Verification costs are logged separately. Terminal-time discovery curves are deliberately conservative. Equal pair counts are not equal resource usage. Cost enabled-pair counts expose whether v15 actually used the empirical penalty. No external competitiveness, calibration-coverage probability, held-out promotion or SOTA claim follows from this development-only experiment.
+
+
+## Version 2 scientific successor (V3-01)
+
+Run a real-worker development diagnostic in a fresh folder:
+
+```sh
+python3 benchmarks/v3/run_scientific.py --binary build/phaseshift --out build/scientific --suite development --diagnostic
+python3 benchmarks/v3/run_scientific.py --out build/scientific --verify-only
+```
+
+Omit diagnostic for 20 seeds per scenario and all eligible incumbents, or use --shard with a declared scenario ID. The workflow dispatch supports full runs; the PR gate uses diagnostics. Evaluation must remain untuned. The manifests distinguish disjoint seed and parameter sets. Independent enumerated calibration truth matches a reported interval to a legal adjacent threshold only when it includes both endpoints; unmatched extra positives count as false promotions. Real cases are unlabelled. Confirmation is recorded and charged in the same per-trial clock ledger; raw nominal status alone never earns an under-budget success. Full-host observable CPU, wall, case counts and available timed-region sample CPU have separate curves; no fabricated complete descendant accounting. No direct v3 timing-vs-v2 work-unit ranking or calibrated population inference. See the implementation ledger for outstanding scenario and inference coverage.
