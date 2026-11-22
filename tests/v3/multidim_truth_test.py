@@ -63,7 +63,7 @@ class TruthTests(unittest.TestCase):
         f=self.fs["multi_context_steps"]
         e=truth(f)[0]
         def enc(coords):
-            return "".join(str(len(str(k)))+":"+str(k)+str(len(str(v)))+":"+str(v)
+            return "".join(str(len(str(k)))+":"+str(k)+str(len(str(v).lower()))+":"+str(v).lower()
                            for k,v in coords.items())
         def run(left,right,status="ok",effect=1.0):
             with tempfile.TemporaryDirectory() as tmp:
