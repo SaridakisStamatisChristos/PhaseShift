@@ -1,0 +1,162 @@
+name: v3-01d-independent-fresh-seed-confirmation
+
+on:
+  push:
+    branches: ['feature/phaseshift-v3-sota-research']
+    paths:
+      - '.github/workflows/v3-confirm-development.yml'
+      - 'benchmarks/v3/confirmation_protocol.py'
+      - 'benchmarks/v3/run_confirmation_development.py'
+      - 'benchmarks/v3/aggregate_confirmations.py'
+      - 'tests/v3/confirmation_contract.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: v3-01d-development-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Frozen 240-trial source evidence + confirmation contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Python and truth-blind selection contracts
+        run: |
+          set -euo pipefail
+          python3 -m py_compile benchmarks/v3/confirmation_protocol.py benchmarks/v3/run_confirmation_development.py benchmarks/v3/aggregate_confirmations.py tests/v3/confirmation_contract.py
+          python3 tests/v3/confirmation_contract.py
+      - name: Download the immutable V3-01c 240-trial development evidence
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 45026057899
+          pattern: v3c-development-*
+          path: build/v3c_source
+          merge-multiple: false
+          github-token: ${{ github.token }}
+      - name: Reaudit the complete original source before freezing hypotheses
+        run: |
+          set -euo pipefail
+          python3 benchmarks/v3/aggregate_full_development.py --artifacts build/v3c_source --out build/development_source_audit.json
+          python3 benchmarks/v3/aggregate_full_development.py --artifacts build/v3c_source --out build/development_source_audit.json --verify-only
+          python3 - <<'PY'
+          import json
+          p=json.load(open("build/development_source_audit.json"))
+          assert p["observed_trials"]==240
+          assert p["source_commit"]=="b8a713f2430578f3ae7ec5e00cadb348348bbcd6"
+          assert p["suite"]=="development" and not p["diagnostic"] and not p["sota_claim"]
+          print("PASS old frozen development evidence, independent of sealed evaluation")
+          PY
+
+  confirmation:
+    name: Fresh holdout families (${{ matrix.fixture }})
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        fixture: [multi_context_steps, rare_hidden_cliff, smooth_no_jump, multidim_null, sparse_multi_step, masked_interactions]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout exact experimental C++ engine revision
+        uses: actions/checkout@v4
+        with:
+          ref: b8a713f2430578f3ae7ec5e00cadb348348bbcd6
+          path: frozen_worker
+          persist-credentials: false
+      - name: Download exactly one frozen development evidence shard
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 45026057899
+          name: v3c-development-${{ matrix.fixture }}
+          path: build/source
+          github-token: ${{ github.token }}
+      - name: Build the original source revision, not a revised worker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libsqlite3-dev libjson-c-dev libssl-dev pkg-config
+          cmake -S frozen_worker -B build/frozen -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/frozen --target phaseshift_v3_pairs -j2
+      - name: Run fresh-seed frozen family tests and independent SQLite audits
+        env:
+          FIXTURE: ${{ matrix.fixture }}
+        run: |
+          set -euo pipefail
+          python3 benchmarks/v3/run_confirmation_development.py \
+            --source build/source \
+            --binary build/frozen/phaseshift_v3_pairs \
+            --out build/confirmation
+          python3 benchmarks/v3/run_confirmation_development.py \
+            --source build/source --out build/confirmation --verify-only
+      - name: Preserve all confirmation sidecars and raw command evidence
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v3d-confirmation-${{ matrix.fixture }}
+          path: build/confirmation/
+          retention-days: 30
+          if-no-files-found: warn
+
+  aggregate:
+    name: Independent all-240-trial holdout and error-exposure audit
+    needs: confirmation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reimport original six-shard source
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 45026057899
+          pattern: v3c-development-*
+          path: build/sources
+          github-token: ${{ github.token }}
+      - name: Import complete frozen family sidecars from this run
+        uses: actions/download-artifact@v4
+        with:
+          pattern: v3d-confirmation-*
+          path: build/confirmations
+      - name: Verify every source + family SQLite sidecar and Holm calculation
+        run: |
+          set -euo pipefail
+          python3 benchmarks/v3/aggregate_confirmations.py \
+            --sources build/sources --confirmations build/confirmations \
+            --out build/v3d_full_confirmation.json
+          python3 benchmarks/v3/aggregate_confirmations.py \
+            --sources build/sources --confirmations build/confirmations \
+            --out build/v3d_full_confirmation.json --verify-only
+          python3 - <<'PY'
+          import json,os
+          v=json.load(open("build/v3d_full_confirmation.json"))
+          assert v["trials"]==240 and not v["population_fwer_certified"]
+          assert not v["model_assumptions_validated"] and not v["sota_claim"]
+          print("V3-01d development fresh-seed families:", v["completed_families"],
+                "planned validation pairs observed:",v["observed_fresh_holdout_pairs"])
+          print("Conditional nominal rejections under unvalidated sign assumptions:",
+                v["nominal_rejections_under_declared_unverified_sign_model"])
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as f:
+              f.write("## V3-01d independent fresh-seed confirmation\n\n")
+              f.write(f"**{v['completed_families']} complete families**, ")
+              f.write(f"**{v['observed_fresh_holdout_pairs']} fresh holdout pairs**, ")
+              f.write("across 240 precommitted development trials.\n\n")
+              f.write("**No empirical validation of sign independence, no certified FWER, no SOTA claim.**\n\n")
+              f.write("| Scenario | v14 completed families | v15 completed families | v14 nominal model rejections | v15 nominal model rejections |\n")
+              f.write("|---|---:|---:|---:|---:|\n")
+              for s in v["outcomes"]:
+                  a=s["policies"]["conditional-tree"]; b=s["policies"]["acquisition-v3"]
+                  f.write(f"| {s['fixture']} | {a['completed_families']} | {b['completed_families']} | {a['nominal_sign_model_rejections']} | {b['nominal_sign_model_rejections']} |\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v3d-all-development-fresh-holdout-audit
+          path: build/v3d_full_confirmation.json
+          retention-days: 60
+          if-no-files-found: warn
