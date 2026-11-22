@@ -22,7 +22,7 @@ def read(path):
     return json.loads(path.read_text())
 
 def comparison_gate(left,right):
-    need(left["schema"] and right["schema"],"invalid inputs")
+    need(left.get("engine") and right.get("engine") and\n         left.get("endpoint") and right.get("endpoint"),"invalid inputs")
     reasons=[]
     if left["endpoint"]!=right["endpoint"]:
         reasons.append("Different endpoints: independent confirmed work-unit boundary versus unconfirmed timing nomination")
