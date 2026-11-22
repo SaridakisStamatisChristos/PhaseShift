@@ -41,7 +41,7 @@ class ConditionalPairPortfolio {
  const AdmissibleSearchSpace& space_;
  std::vector<LazySearchSpace::Axis> axes_;
  std::size_t primary_=0,max_contexts_,max_pairs_,completed_=0;
- bool region_tree_=false,acquisition_=false;
+ bool region_tree_=false,acquisition_=false,coverage_first_=false;
  EmpiricalCostModelV3 cost_model_;
  std::uint64_t seed_;
  double practical_log_ratio_;
@@ -248,15 +248,19 @@ public:
     std::vector<LazySearchSpace::Axis> axes,std::string primary,
     std::vector<AdmissibleSearchSpace::Subspace> declared_subspaces,
     std::uint64_t seed,std::size_t max_pairs,double min_ratio,
-    std::size_t max_contexts=64,bool region_tree=false,bool acquisition=false)
+    std::size_t max_contexts=64,bool region_tree=false,bool acquisition=false,
+    bool coverage_first=false)
  :space_(space),axes_(std::move(axes)),
-  max_contexts_(max_contexts),max_pairs_(max_pairs),region_tree_(region_tree),acquisition_(acquisition),seed_(seed),
+  max_contexts_(max_contexts),max_pairs_(max_pairs),region_tree_(region_tree),acquisition_(acquisition),
+  coverage_first_(coverage_first),seed_(seed),
   practical_log_ratio_(std::log(min_ratio)),
   global_(space.cardinality(),seed^0xacc705e4ULL){
   if(axes_.size()<2||axes_.size()>32||!max_contexts_||max_contexts_>128||
      !max_pairs_||max_pairs_>100 ||!std::isfinite(min_ratio) ||min_ratio<=1.)
    throw Error("v3 invalid bounded conditional portfolio contract");
   if(acquisition_&&!region_tree_)throw Error("v3 acquisition requires region tree");
+  if(coverage_first_&&(!acquisition_||!region_tree_))
+   throw Error("v3 coverage-first is an opt-in cost-aware region policy");
   if(declared_subspaces.size()>256)throw Error("v3 too many strata");
   const auto primary_it=std::find_if(axes_.begin(),axes_.end(),
    [&](const auto& axis){return axis.first==primary;});
@@ -288,7 +292,8 @@ public:
   }
  }
  std::string evidence_digest()const{
-  std::string data=acquisition_?"phaseshift.v3.cost-acquisition-pair.1":
+  std::string data=coverage_first_?"phaseshift.v3.coverage-cost-acquisition-pair.1":
+                   acquisition_?"phaseshift.v3.cost-acquisition-pair.1":
                    region_tree_?"phaseshift.v3.region-tree-pair.1":
                                  "phaseshift.v3.conditional-pair.1";
   append_u64(data,completed_);append_u64(data,max_pairs_);
@@ -327,7 +332,7 @@ public:
    // Thereafter the frozen 25% global reserve is never traded for a local fit.
    if(next_stratum_<strata_.size()||completed_<2||completed_%4==0)
     candidate=new_edge();
-   else if(acquisition_&&replicate&&completed_%5==3)
+   else if(acquisition_&&!coverage_first_&&replicate&&completed_%5==3)
     candidate=choice(replicate->first,replicate->second,"replicate");
    else candidate=region_refinement();
    if(!candidate&&replicate)
