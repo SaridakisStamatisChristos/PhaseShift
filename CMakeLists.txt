@@ -693,3 +693,9 @@ add_test(NAME v3_attempt_accounting_crash_and_replay
  --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/admissible_calibration.json
  --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_attempt_accounting)
 set_tests_properties(v3_attempt_accounting_crash_and_replay PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE)
+
+# V3-01b analytical synthetic worker shapes; strictly additive opt-in workloads.
+add_executable(phaseshift_v3_shapes_tests tests/v3/synthetic_shapes.cpp)
+target_link_libraries(phaseshift_v3_shapes_tests PRIVATE phaseshift_core)
+add_test(NAME v3_analytic_synthetic_worker_truth COMMAND phaseshift_v3_shapes_tests)
+set_tests_properties(v3_analytic_synthetic_worker_truth PROPERTIES TIMEOUT 20)
