@@ -58,7 +58,7 @@
       "distribution": "uniform"
     }
   ],
-  "objective": "minimize negative absolute matched log speed ratio difference on adjacent feasible structural edges; censored reward 0",
+  "objective": "minimize 1/(1+abs(matched log speed ratio change)) on adjacent feasible structural edges; censored reward has unit cost",
   "comparison": "same PhaseShift C++ workers and correctness oracle; SMAC ask/tell per native CLI pair; 12 queries per policy; startup/optimizer overhead not equivalent",
   "truth_status": "real algorithm boundary location not independently ground-truth labeled",
   "evaluation_reused": false,
