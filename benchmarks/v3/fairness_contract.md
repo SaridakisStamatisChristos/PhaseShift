@@ -49,3 +49,19 @@ python3 benchmarks/v3/run_scientific.py --out build/scientific --verify-only
 ```
 
 Omit diagnostic for 20 seeds per scenario and all eligible incumbents, or use --shard with a declared scenario ID. The workflow dispatch supports full runs; the PR gate uses diagnostics. Evaluation must remain untuned. The manifests distinguish disjoint seed and parameter sets. Independent enumerated calibration truth matches a reported interval to a legal adjacent threshold only when it includes both endpoints; unmatched extra positives count as false promotions. Real cases are unlabelled. Confirmation is recorded and charged in the same per-trial clock ledger; raw nominal status alone never earns an under-budget success. Full-host observable CPU, wall, case counts and available timed-region sample CPU have separate curves; no fabricated complete descendant accounting. No direct v3 timing-vs-v2 work-unit ranking or calibrated population inference. See the implementation ledger for outstanding scenario and inference coverage.
+
+
+## V3-01b natural commands and inference boundary
+
+```bash
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build --target phaseshift phaseshift_v3_pairs phaseshift_v3_shapes_tests -j2
+python3 tests/v3/multidim_truth_test.py
+ctest --test-dir build -R v3_analytic_synthetic_worker_truth --output-on-failure
+python3 benchmarks/v3/run_multidim.py --binary build/phaseshift_v3_pairs --out build/v3b_dev --suite development --diagnostic
+python3 benchmarks/v3/run_multidim.py --out build/v3b_dev --verify-only
+python3 benchmarks/v3/run_scientific.py --binary build/phaseshift --out build/v2_dev --suite development --shard early_cliff --diagnostic
+python3 benchmarks/v3/unified_score.py --incumbent-root build/v2_dev --multidim-root build/v3b_dev --out build/v3b_dev/unified.json
+```
+
+The multidimensional development/evaluation JSON files are separate, frozen and disjoint in seeds and task parameterizations. Use `--shard rare_hidden_cliff` for one scenario, or omit `--shard` for the full scenario matrix; omit `--diagnostic` for all 20 preregistered seeds. For a strict one-shard unified diagnostic, use `--shard multi_context_steps` in the v3b command. The original worker compares actual elapsed time, whereas the planted step/smooth oracle describes operation counts only; no claim that work-unit boundaries are guaranteed CPU-time changepoints. Every failed/censored outcome remains in the denominator. A v3 observation is a provisional nomination, not a fixed-family independent confirmation, and cross-version ranking is explicitly forbidden until endpoints become equivalent.
