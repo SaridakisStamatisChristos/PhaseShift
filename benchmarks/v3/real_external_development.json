@@ -61,5 +61,10 @@
     "cpu_ceiling_ns": 30000000000,
     "wall_ceiling_ns": 90000000000
   },
-  "evaluation_context_disclaimer": "This is a new real-worker development study, not the already-open 7101–7120 synthetic evaluation, no real-algorithm ground-truth set available."
+  "evaluation_context_disclaimer": "This is a new real-worker development study, not the already-open 7101–7120 synthetic evaluation, no real-algorithm ground-truth set available.",
+  "pinned_native_source_blobs": {
+    "include/phaseshift/v3/conditional_pair.hpp": "352649a791af583dd5e779500d2db9336119901b",
+    "include/phaseshift/v3/acquisition.hpp": "4af662731363c76d87955008d8d655beb0f76566",
+    "apps/phaseshift_v3_pairs.cpp": "780d32f50514bdccfc47658230d8795b10fc8918"
+  }
 }
