@@ -1,0 +1,245 @@
+{
+  "schema": 1,
+  "suite": "development",
+  "document_id": "PHASESHIFT-V3-01B-MULTIDIM-001",
+  "seeds": [
+    6101,
+    6102,
+    6103,
+    6104,
+    6105,
+    6106,
+    6107,
+    6108,
+    6109,
+    6110,
+    6111,
+    6112,
+    6113,
+    6114,
+    6115,
+    6116,
+    6117,
+    6118,
+    6119,
+    6120
+  ],
+  "diagnostic_seeds": [
+    6101
+  ],
+  "pairs": 12,
+  "policies": [
+    "conditional-tree",
+    "acquisition-v3"
+  ],
+  "cpu_ceiling_ns": 15000000000,
+  "wall_ceiling_ns": 60000000000,
+  "eligible_for_claim": false,
+  "sota_claim": false,
+  "fixtures": [
+    {
+      "id": "multi_context_steps",
+      "shape": "steps",
+      "x": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "threshold": [
+        3,
+        7,
+        12
+      ],
+      "negative": [
+        false
+      ],
+      "scopes": []
+    },
+    {
+      "id": "rare_hidden_cliff",
+      "shape": "single",
+      "x": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "threshold": [
+        4,
+        12
+      ],
+      "negative": [
+        false,
+        true
+      ],
+      "scopes": [
+        {
+          "negative": [
+            false
+          ],
+          "threshold": [
+            12
+          ]
+        },
+        {
+          "negative": [
+            true
+          ]
+        }
+      ]
+    },
+    {
+      "id": "smooth_no_jump",
+      "shape": "smooth",
+      "x": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "threshold": [
+        5,
+        10
+      ],
+      "negative": [
+        false
+      ],
+      "scopes": []
+    },
+    {
+      "id": "multidim_null",
+      "shape": "steps",
+      "x": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "threshold": [
+        4,
+        11
+      ],
+      "negative": [
+        true
+      ],
+      "scopes": []
+    },
+    {
+      "id": "sparse_multi_step",
+      "shape": "steps",
+      "x": [
+        0,
+        1,
+        3,
+        6,
+        9,
+        12,
+        15,
+        18
+      ],
+      "threshold": [
+        4,
+        10
+      ],
+      "negative": [
+        false
+      ],
+      "scopes": []
+    },
+    {
+      "id": "masked_interactions",
+      "shape": "steps",
+      "x": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "threshold": [
+        3,
+        9,
+        13
+      ],
+      "negative": [
+        false,
+        true
+      ],
+      "scopes": [
+        {
+          "negative": [
+            false
+          ],
+          "threshold": [
+            9
+          ]
+        },
+        {
+          "negative": [
+            true
+          ]
+        }
+      ]
+    }
+  ]
+}
