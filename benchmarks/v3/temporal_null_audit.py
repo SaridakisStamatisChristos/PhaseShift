@@ -139,12 +139,17 @@ def audit(roots):
                 sum(x["risk_flag_median_half_shift_ge_log_1_2"] for x in families),
             "censored_pairs":sum(x["censored_pairs"] for x in families),
             "mean_observed_minus_random_order_agreement":
-                statistics.fmean(
+                (statistics.fmean(v for v in [
                     x["adjacent_same_signs"]/x["adjacent_comparable"]-
                     x["conditional_random_order_same_probability"]
                     for x in families
                     if x["adjacent_comparable"] and
-                    x["conditional_random_order_same_probability"] is not None),
+                    x["conditional_random_order_same_probability"] is not None])
+                 if any(x["adjacent_comparable"] and
+                        x["conditional_random_order_same_probability"] is not None
+                        for x in families) else None),
+            "families_without_comparable_adjacent_signs":
+                sum(x["adjacent_comparable"]==0 for x in families),
             "families_raw":families
         })
     require(len(revisions)==1,"mixed original V3-01e source revisions")
