@@ -643,6 +643,14 @@ add_test(NAME v3_acquisition_real_worker_cost_replay
  --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_acquisition_workers)
 set_tests_properties(v3_acquisition_real_worker_cost_replay PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
 
+# Experimental V18 coverage-first acquisition keeps v14 and v15 immutable.
+add_executable(phaseshift_v3_coverage_acquisition_tests tests/v3/coverage_acquisition.cpp)
+target_link_libraries(phaseshift_v3_coverage_acquisition_tests PRIVATE phaseshift_core)
+add_test(NAME v18_coverage_acquisition_deterministic_and_legacy_replay
+ COMMAND phaseshift_v3_coverage_acquisition_tests)
+set_tests_properties(v18_coverage_acquisition_deterministic_and_legacy_replay
+ PROPERTIES TIMEOUT 30)
+
 # Real multi-family matched-pair development comparison (non-promotional smoke).
 add_test(NAME v3_paired_development_multifamily_scorecard
  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/paired_development_cli.py
