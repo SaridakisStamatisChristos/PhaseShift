@@ -55,7 +55,8 @@ int main(){
      require(output.values==ps::oracle(actual).values,"shared null correctness oracle");
      if(x==0)expected=output.work;
      require(output.work==expected,"same matched seed must share exact work across coordinates");
-     const auto formula=1024ULL<<((ps::splitmix64(seed^0x5d6c9e3a712bf084ULL)>>7)&3ULL);
+     auto shared_state=seed^0x5d6c9e3a712bf084ULL;
+     const auto formula=1024ULL<<((ps::splitmix64(shared_state)>>7)&3ULL);
      require(output.work==formula,"seed-only null independent operation count");
     }
    }
