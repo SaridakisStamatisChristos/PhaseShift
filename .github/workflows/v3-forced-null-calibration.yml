@@ -1,0 +1,117 @@
+name: v3-01e-empirical-forced-null-calibration
+on:
+  push:
+    branches: ['feature/phaseshift-v3-sota-research']
+    paths:
+      - '.github/workflows/v3-forced-null-calibration.yml'
+      - 'benchmarks/v3/forced_null_manifest.json'
+      - 'benchmarks/v3/run_forced_null_calibration.py'
+      - 'benchmarks/v3/aggregate_forced_null.py'
+      - 'benchmarks/v3/confirmation_protocol.py'
+      - 'tests/v3/forced_null_contract.py'
+      - 'src/algorithms.cpp'
+      - 'tests/v3/synthetic_shapes.cpp'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: v3-01e-forced-null-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  preflight:
+    name: Independent work/null and inventory preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Contracts, seed partitioning and adversarial falsifiers
+        run: |
+          set -euo pipefail
+          python3 -m py_compile benchmarks/v3/run_forced_null_calibration.py benchmarks/v3/aggregate_forced_null.py benchmarks/v3/confirmation_protocol.py tests/v3/forced_null_contract.py
+          python3 tests/v3/forced_null_contract.py
+          python3 tests/v3/confirmation_contract.py
+          python3 - <<'PY'
+          import sys
+          sys.path.insert(0,"benchmarks/v3")
+          from run_forced_null_calibration import manifest
+          m,_=manifest()
+          assert sum(len(s["seeds"]) for s in m["scenario"])==256
+          assert m["holdout_pairs_per_family"]==20
+          assert not m["population_sampling_independence_certified"]
+          print("PASS: 4 x 64 forced null families and 5120 predeclared fresh pairs")
+          PY
+  null_stratum:
+    name: Full 64-family null (${{ matrix.stratum }})
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        stratum: [flat_adjacent, flat_wide, seed_shared, seed_shared_contended]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Native worker dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libsqlite3-dev libjson-c-dev libssl-dev pkg-config
+      - name: Build C++ worker and exact-work falsifier
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target phaseshift_v3_pairs phaseshift_v3_shapes_tests -j2
+          ctest --test-dir build -R 'v3_analytic_synthetic_worker_truth|v3_fixed_family_exact_sign_oracle_and_holm' --output-on-failure
+      - name: Real frozen families and independent raw SQLite replay
+        env:
+          STRATUM: ${{ matrix.stratum }}
+        run: |
+          set -euo pipefail
+          python3 benchmarks/v3/run_forced_null_calibration.py --binary build/phaseshift_v3_pairs --out build/forced_null --scenario "$STRATUM"
+          python3 benchmarks/v3/run_forced_null_calibration.py --out build/forced_null --verify-only
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v3e-forced-null-${{ matrix.stratum }}
+          path: build/forced_null/
+          retention-days: 30
+          if-no-files-found: warn
+  aggregate:
+    name: Independent 256-family calibration and conditional CI audit
+    needs: null_stratum
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: v3e-forced-null-*
+          path: build/forced_null_evidence
+          merge-multiple: false
+      - name: Reconstruct and publish all predeclared null evidence
+        run: |
+          set -euo pipefail
+          python3 benchmarks/v3/aggregate_forced_null.py --artifacts build/forced_null_evidence --out build/v3e_full_null_scorecard.json
+          python3 benchmarks/v3/aggregate_forced_null.py --artifacts build/forced_null_evidence --out build/v3e_full_null_scorecard.json --verify-only
+          python3 - <<'PY'
+          import json,os
+          r=json.load(open("build/v3e_full_null_scorecard.json"))
+          assert r["observed_complete_families"]==256 and r["observed_holdout_pairs"]==5120
+          assert not r["population_fwer_certified"] and not r["family_independence_empirically_validated"]
+          print("FULL FORCED NULL",r["nominal_model_rejections"],"conditional rejections")
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as f:
+              f.write("## V3-01e forced null calibration\n\n")
+              f.write("256 predeclared exogenous null families, 5,120 fresh matched pairs, complete independent SQLite replay.\n\n")
+              f.write("Conditional bounds below ASSUME independent family outcomes; empirical independence is NOT established.\n\n")
+              f.write("| Stratum | Families | Nominal rejections | Observed fraction | Conditional exact one-sided 95% upper |\n")
+              f.write("|---|---:|---:|---:|---:|\n")
+              for s in r["strata"]:
+                  f.write(f"| {s['stratum']} | 64 | {s['nominal_false_rejections_relative_to_equal_work']} | {s['observed_rejection_fraction']:.2%} | {s['conditional_exact_one_sided_95_upper_if_independent']:.2%} |\n")
+              f.write("\nNo certified population FWER or equal wall-time null; SOTA verdict withheld; evaluation sealed.\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v3e-full-forced-null-calibration-audited-scorecard
+          path: build/v3e_full_null_scorecard.json
+          retention-days: 60
+          if-no-files-found: warn
