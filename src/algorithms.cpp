@@ -83,6 +83,9 @@ Result execute(const Case& c,const std::string& algorithm){
    throw Error("invalid calibration algorithm");
   auto a=decode_values(c.bytes);if(a.size()!=3||a[0]<0||a[1]<1||a[2]<0||a[2]>1)throw Error("invalid calibration payload");
   auto work=a[2]==1?1000ULL:(a[0]<a[1]?static_cast<std::uint64_t>(a[0]+10):static_cast<std::uint64_t>(a[0]+10000));
+  if((algorithm=="calibration_steps_v3"||algorithm=="calibration_smooth_v3")&&
+     (a[0]>1024||a[1]>1024))
+   throw Error("v3 synthetic calibration coordinate exceeds bounded 0..1024 domain");
   // Opt-in analytic cost landscapes: values are still checked against the
   // independent calibration correctness oracle, so only work varies.
   // Work is *not* a claim about elapsed time on a particular CPU.
