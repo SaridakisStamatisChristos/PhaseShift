@@ -122,6 +122,16 @@ class NullDependenceFalsifiers(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         two.independent_work_and_edges(db,scene,2,True)
 
+    def test_real_cli_output_contract_distinguishes_plaintext_and_json(self):
+        self.assertIsNone(two.cli_result("conditional-tree",""))
+        self.assertIsNone(two.cli_result("verify","v3 replay verified 2 committed matched pairs\\n"))
+        self.assertEqual(two.cli_result("family-freeze",'{"complete":false}'),
+                         {"complete":False})
+        with self.assertRaises(ValueError):
+            two.cli_result("family-confirm","v3 replay verified")
+        with self.assertRaises(ValueError):
+            two.cli_result("unrecognized","{}")
+
     def test_conditional_binomial_bound_not_certified(self):
         bound=upper_bound_if_independent(0,64)
         self.assertAlmostEqual(bound,1-.05**(1/64),places=12)
