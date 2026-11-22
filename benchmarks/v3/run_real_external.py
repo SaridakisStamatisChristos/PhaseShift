@@ -111,7 +111,7 @@ def config(scenario,source,seed,conditional):
     context=scenario["distribution"]
     c["experiment_id"]="v3-external-real-"+scenario["id"]
     c["seed"]=seed
-    c["search"]["max_cases"]=100
+    c["search"]["max_cases"]=40
     c["limits"]["total_wall_seconds"]=45
     c["measurement"]["paired_discovery_blocks"]=1
     c["measurement"]["paired_confirm_blocks"]=20
