@@ -82,6 +82,12 @@ def manifest():
             m["diagnostic_seeds"]==[32001] and
             m["limits"]=={"cpu_ceiling_ns":30000000000,"wall_ceiling_ns":90000000000},
             "unfrozen external real-worker competition contract")
+    pinned={"include/phaseshift/v3/conditional_pair.hpp":"352649a791af583dd5e779500d2db9336119901b",
+            "include/phaseshift/v3/acquisition.hpp":"4af662731363c76d87955008d8d655beb0f76566",
+            "apps/phaseshift_v3_pairs.cpp":"780d32f50514bdccfc47658230d8795b10fc8918"}
+    require(m["pinned_native_source_blobs"]==pinned and
+            all(git_blob(ROOT/filename)==sha for filename,sha in pinned.items()),
+            "native candidate changed since completed sealed V18 evaluation")
     require(set(m["seeds"]).isdisjoint(range(7101,7121)) and
             len(m["scenarios"])==2 and
             m["scenarios"]==[
@@ -186,6 +192,8 @@ def independent_raw_pair(db,number,cfg,policy,left,right):
                 "native worker pair differs from independent raw timing reconstruction")
     else:
         effect=None
+    require((effect is not None)==(status=="ok"),
+            "stored native status contradicts independent raw timing observations")
     return {"pair_number":number,"seed":seed,"status":status,
             "effect":effect,"pair_wall_ns":wall,
             "worker_cpu_ns":raw_cpu,"left":left,"right":right}
