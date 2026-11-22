@@ -39,7 +39,8 @@ def structural_truth_labels(source,fixture,trial,choices):
 
 def compose(manifest,per_shard,source_roots,confirmation_roots):
     ids={f["id"] for f in manifest["fixtures"]}
-    require(set(per_shard)==ids and set(source_roots)==ids and\n            set(confirmation_roots)==ids,
+    require(set(per_shard)==ids and set(source_roots)==ids and
+            set(confirmation_roots)==ids,
             "missing/duplicate confirmation or source shard")
     all_rows=[]
     per_fixture=[]
