@@ -45,12 +45,12 @@ jobs:
       - name: Execute real ruptures.Pelt and independently audit raw C++ generated signals
         run: |
           set -euo pipefail
-          build/ruptures_env/bin/python benchmarks/v2/external_ruptures.py --dataset-root build/ctest_v2_noisy --out build/ctest_v2_noisy/ruptures_comparison.json
-          build/ruptures_env/bin/python benchmarks/v3/audit_real_ruptures.py --dataset-root build/ctest_v2_noisy --external build/ctest_v2_noisy/ruptures_comparison.json --out build/ctest_v2_noisy/independent_ruptures_audit.json
-          build/ruptures_env/bin/python benchmarks/v3/audit_real_ruptures.py --dataset-root build/ctest_v2_noisy --external build/ctest_v2_noisy/ruptures_comparison.json --out build/ctest_v2_noisy/independent_ruptures_audit.json --verify-only
+          build/ruptures_env/bin/python benchmarks/v2/external_ruptures.py --dataset-root build/native/ctest_v2_noisy --out build/native/ctest_v2_noisy/ruptures_comparison.json
+          build/ruptures_env/bin/python benchmarks/v3/audit_real_ruptures.py --dataset-root build/native/ctest_v2_noisy --external build/native/ctest_v2_noisy/ruptures_comparison.json --out build/native/ctest_v2_noisy/independent_ruptures_audit.json
+          build/ruptures_env/bin/python benchmarks/v3/audit_real_ruptures.py --dataset-root build/native/ctest_v2_noisy --external build/native/ctest_v2_noisy/ruptures_comparison.json --out build/native/ctest_v2_noisy/independent_ruptures_audit.json --verify-only
           python3 - <<'PY'
           import json,os
-          p=json.load(open("build/ctest_v2_noisy/independent_ruptures_audit.json"))
+          p=json.load(open("build/native/ctest_v2_noisy/independent_ruptures_audit.json"))
           assert p["total_series"]==100 and not p["sota_claim"]
           with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as f:
             f.write("## Genuine ruptures 1.1.10 versus PhaseShift native exact DP (detector only)\n\n")
@@ -63,6 +63,6 @@ jobs:
         if: always()
         with:
           name: v3-ruptures-100-real-cpp-series-audited-results
-          path: build/ctest_v2_noisy/
+          path: build/native/ctest_v2_noisy/
           retention-days: 90
           if-no-files-found: warn
