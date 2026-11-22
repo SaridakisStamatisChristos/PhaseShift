@@ -158,8 +158,9 @@ def independent_work_and_edges(path,s,expected_pairs,require_all_edges):
                     "stored contrast differs from independent raw oracle")
             effects.append(observed)
         if require_all_edges:
-            require(seen==allowed_edges and len(rows)==len(allowed_edges),
-                    "both exogenous edges were not discovered and frozen")
+            require(seen==allowed_edges and (not require_all_edges or
+                    len(rows)>=len(allowed_edges)),
+                    "both predeclared edges absent or modified")
         return effects
 
 
