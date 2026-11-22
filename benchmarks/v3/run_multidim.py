@@ -35,7 +35,7 @@ def write(path,obj):
         f.write("\n")
 
 def as_pilot(f):
-    return {"name":f["id"],"truth":"calibration_threshold",
+    return {"name":f["id"],"truth":"unlabelled",
             "config":config(f,0)}
 
 def adjudication(f,path,pairs):
