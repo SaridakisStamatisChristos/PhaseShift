@@ -33,10 +33,11 @@ static void abundant_unseen_edges_reinvest_replication_budget(){
   CHECK(!p->acquisition_audit.empty());
   exploration_incumbent+=(old->arm=="explore");
   exploration_candidate+=(p->arm=="explore");
-  if(i==3||i==8){
+  if(i==3){
    CHECK(old->arm=="replicate"); // existing v15 forced modulo-5 replication
    CHECK(p->arm=="explore"); // v18 uses legally unseen interval edges
   }
+  if(i==8){CHECK(old->arm=="explore");CHECK(p->arm=="explore");} // global reserve wins before modulo-5 replication
   const double effect=i%3==0?0.38:0.07;
   const PairMeasuredCost cost{15000+static_cast<std::int64_t>(i)*127,2000};
   incumbent.on_committed(*old,Cohort::Discovery,effect,cost);
@@ -44,7 +45,7 @@ static void abundant_unseen_edges_reinvest_replication_budget(){
   replay.on_committed(*q,Cohort::Discovery,effect,cost);
   CHECK(candidate.evidence_digest()==replay.evidence_digest());
  }
- CHECK(exploration_incumbent==10);
+ CHECK(exploration_incumbent==11);
  CHECK(exploration_candidate==12);
  CHECK(exploration_candidate>exploration_incumbent);
  CHECK(!incumbent.next()&&!candidate.next()&&!replay.next());
