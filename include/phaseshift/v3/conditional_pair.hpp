@@ -3,6 +3,7 @@
 // The only upstream evidence is committed discovery contrast feedback.
 // This is a ranking policy, not a significance test or calibrated model.
 #include "phaseshift/v3/types.hpp"
+#include "phaseshift/v3/acquisition.hpp"
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -22,6 +23,7 @@ struct ConditionalPairChoice {
  std::vector<AxisValue> left,right;
  std::size_t context=0,edge=0;
  std::string arm,prior_evidence_digest;
+ std::string acquisition_audit{};
  bool operator==(const ConditionalPairChoice&)const=default;
 };
 class ConditionalPairPortfolio {
@@ -39,7 +41,8 @@ class ConditionalPairPortfolio {
  const AdmissibleSearchSpace& space_;
  std::vector<LazySearchSpace::Axis> axes_;
  std::size_t primary_=0,max_contexts_,max_pairs_,completed_=0;
- bool region_tree_=false;
+ bool region_tree_=false,acquisition_=false;
+ EmpiricalCostModelV3 cost_model_;
  std::uint64_t seed_;
  double practical_log_ratio_;
  SparsePermutation global_;
@@ -123,6 +126,39 @@ class ConditionalPairPortfolio {
   }
   return std::nullopt;
  }
+ AcquisitionComponentsV3 components(std::size_t id,std::size_t edge,bool replicate)const{
+  const auto& c=contexts_.at(id);
+  AcquisitionComponentsV3 out;out.replication=replicate;
+  const auto n=c.legal.size()-1;
+  std::size_t nearest=n;
+  double positive=0.,negative=0.;
+  for(const auto& [other,obs]:c.observed){
+   const auto distance=edge>other?edge-other:other-edge;
+   nearest=std::min(nearest,distance);
+   if(replicate&&other!=edge)continue;
+   const double proximity=1./(1.+static_cast<double>(distance));
+   if(!obs.valid.empty()){
+    const double center=median(obs.valid);
+    const double magnitude=std::min(1.,std::abs(center));
+    out.contrast=std::max(out.contrast,magnitude*proximity);
+    positive=std::max(positive,center>0.?magnitude:0.);
+    negative=std::max(negative,center<0.?magnitude:0.);
+    if(replicate){
+     const double ambiguity=1./(1.+std::abs(std::abs(center)-practical_log_ratio_));
+     out.uncertainty=ambiguity/std::sqrt(static_cast<double>(obs.valid.size()));
+    }
+   }
+   if(obs.censored)out.status=std::max(out.status,proximity);
+  }
+  if(!replicate)out.uncertainty=1./(1.+static_cast<double>(c.observed.size()));
+  out.diversity=replicate?0.:static_cast<double>(nearest)/static_cast<double>(n);
+  // Rival sign evidence is a ranking proxy only, not an interaction estimate.
+  out.interaction=std::min(positive,negative);
+  return out;
+ }
+ double cost_rank(std::size_t id,std::size_t edge,bool replicate)const{
+  return acquisition_score_v3(components(id,edge,replicate),cost_model_.estimate(id));
+ }
  // Deterministic conditional interval frontier: select a legal, unseen
  // midpoint and bisect only that context. No Cartesian partition in memory.
  std::optional<ConditionalPairChoice> region_refinement(){
@@ -137,8 +173,8 @@ class ConditionalPairPortfolio {
     for(const auto& [edge,obs]:c.observed)
      if(edge>=node.lo&&edge<=node.hi&&!obs.valid.empty())
       maximum=std::max(maximum,std::min(4.,std::abs(median(obs.valid))));
-    const double score=static_cast<double>(width)*(1.+maximum)/
-                       (1.+static_cast<double>(node.depth));
+    const double score=acquisition_?cost_rank(id,midpoint,false):
+      static_cast<double>(width)*(1.+maximum)/(1.+static_cast<double>(node.depth));
     if(!best||score>best->score||
        (score==best->score&&std::pair{id,midpoint}<
                               std::pair{best->id,best->edge}))
@@ -197,8 +233,8 @@ class ConditionalPairPortfolio {
     for(const double v:obs.valid)errors.push_back(std::abs(v-center));
     const double mad=obs.valid.size()>=3?1.4826*median(errors):0.;
     const double distance=std::abs(std::abs(center)-practical_log_ratio_);
-    const double rank=(1.+std::min(10.,mad))/
-       ((.10+distance)*std::sqrt(static_cast<double>(obs.valid.size())));
+    const double rank=acquisition_?cost_rank(id,edge,true):
+      (1.+std::min(10.,mad))/((.10+distance)*std::sqrt(static_cast<double>(obs.valid.size())));
     if(!std::isfinite(rank))throw Error("v3 conditional nonfinite acquisition");
     const auto key=std::pair{id,edge};
     if(rank>best||(rank==best&&(!target||key<*target))){
@@ -212,14 +248,15 @@ public:
     std::vector<LazySearchSpace::Axis> axes,std::string primary,
     std::vector<AdmissibleSearchSpace::Subspace> declared_subspaces,
     std::uint64_t seed,std::size_t max_pairs,double min_ratio,
-    std::size_t max_contexts=64,bool region_tree=false)
+    std::size_t max_contexts=64,bool region_tree=false,bool acquisition=false)
  :space_(space),axes_(std::move(axes)),
-  max_contexts_(max_contexts),max_pairs_(max_pairs),region_tree_(region_tree),seed_(seed),
+  max_contexts_(max_contexts),max_pairs_(max_pairs),region_tree_(region_tree),acquisition_(acquisition),seed_(seed),
   practical_log_ratio_(std::log(min_ratio)),
   global_(space.cardinality(),seed^0xacc705e4ULL){
   if(axes_.size()<2||axes_.size()>32||!max_contexts_||max_contexts_>128||
      !max_pairs_||max_pairs_>100 ||!std::isfinite(min_ratio) ||min_ratio<=1.)
    throw Error("v3 invalid bounded conditional portfolio contract");
+  if(acquisition_&&!region_tree_)throw Error("v3 acquisition requires region tree");
   if(declared_subspaces.size()>256)throw Error("v3 too many strata");
   const auto primary_it=std::find_if(axes_.begin(),axes_.end(),
    [&](const auto& axis){return axis.first==primary;});
@@ -251,7 +288,8 @@ public:
   }
  }
  std::string evidence_digest()const{
-  std::string data=region_tree_?"phaseshift.v3.region-tree-pair.1":
+  std::string data=acquisition_?"phaseshift.v3.cost-acquisition-pair.1":
+                   region_tree_?"phaseshift.v3.region-tree-pair.1":
                                  "phaseshift.v3.conditional-pair.1";
   append_u64(data,completed_);append_u64(data,max_pairs_);
   append_u64(data,next_stratum_);append_u64(data,global_.state());
@@ -274,6 +312,7 @@ public:
     }
    }
   }
+  if(acquisition_)append_str(data,cost_model_.canonical_state());
   return ps::sha256(data);
  }
  std::optional<ConditionalPairChoice> next(){
@@ -288,6 +327,8 @@ public:
    // Thereafter the frozen 25% global reserve is never traded for a local fit.
    if(next_stratum_<strata_.size()||completed_<2||completed_%4==0)
     candidate=new_edge();
+   else if(acquisition_&&replicate&&completed_%5==3)
+    candidate=choice(replicate->first,replicate->second,"replicate");
    else candidate=region_refinement();
    if(!candidate&&replicate)
     candidate=choice(replicate->first,replicate->second,"replicate");
@@ -301,17 +342,24 @@ public:
   }
   if(!candidate)return std::nullopt;
   candidate->prior_evidence_digest=prior;
+  if(acquisition_)candidate->acquisition_audit=acquisition_audit_v3(
+     components(candidate->context,candidate->edge,candidate->arm=="replicate"),
+     cost_model_.estimate(candidate->context));
   pending_=*candidate;
   return candidate;
  }
  void on_committed(const ConditionalPairChoice& c,Cohort cohort,
-                   std::optional<double> contrast){
+                   std::optional<double> contrast,std::optional<PairMeasuredCost> cost=std::nullopt){
   if(cohort!=Cohort::Discovery)
    throw Error("v3 sealed confirmation cannot update conditional portfolio");
   if(!pending_||*pending_!=c)
    throw Error("v3 conditional stale/forged pending decision feedback");
   if(contrast&&!std::isfinite(*contrast))
    throw Error("v3 nonfinite conditional matched contrast");
+  if(acquisition_){
+   if(!cost)throw Error("v3 acquisition requires actual committed cost");
+   cost_model_.add(c.context,cohort,*cost,contrast.has_value());
+  }
   auto& item=contexts_.at(c.context).observed[c.edge];
   if(contrast)item.valid.push_back(*contrast);
   else ++item.censored;

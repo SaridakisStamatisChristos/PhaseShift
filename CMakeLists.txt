@@ -629,3 +629,16 @@ add_test(NAME v3_region_tree_real_worker_replay
  --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_region_tree_workers)
 set_tests_properties(v3_region_tree_real_worker_replay PROPERTIES
  TIMEOUT 180 RUN_SERIAL TRUE)
+
+# V3-05 bounded empirical cost acquisition, opt-in schema v15.
+add_executable(phaseshift_v3_acquisition_tests tests/v3/acquisition.cpp)
+target_link_libraries(phaseshift_v3_acquisition_tests PRIVATE phaseshift_core)
+add_test(NAME v3_acquisition_cost_calibration_drift_and_ablations
+ COMMAND phaseshift_v3_acquisition_tests)
+set_tests_properties(v3_acquisition_cost_calibration_drift_and_ablations PROPERTIES TIMEOUT 30)
+add_test(NAME v3_acquisition_real_worker_cost_replay
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/acquisition_worker_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/admissible_calibration.json
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_acquisition_workers)
+set_tests_properties(v3_acquisition_real_worker_cost_replay PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)

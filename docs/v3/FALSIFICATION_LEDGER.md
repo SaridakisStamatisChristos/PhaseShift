@@ -71,3 +71,8 @@ Independent finite oracle exhausts 62 legal edge pairs in two disjoint categoric
 ## F-020 — No-op arm corruption falsifier (v14 first CI)
 
 First exact-head GCC CTest (`f26d5da5`, test 106) failed because the v14 Python tamper test assigned a fixed `replicate` label to an already-replicate pair, so `verify` correctly accepted an **unchanged** transcript. This is a testing-oracle error, not evidence that the verifier accepts a changed policy decision. The repaired falsifier atomically toggles `explore` ↔ `replicate` using SQL `CASE` regardless of the original arm, guaranteeing actual corruption. Re-run GCC, Clang, sanitizer and coverage on the repaired exact SHA before accepting this check. State: REPAIR WRITTEN; new-head results pending.
+
+
+## F-021 — Cost preference confounds discovery or leaks evaluation observations
+
+V15 cost learning consumes only committed discovery data. The independent fixture reserves every fourth pair for prequential evaluation; check that an extreme heldout cost changes coverage but cannot enter the fitted empirical envelope. Miscoverage, cold start and a censored pair force neutral cost weighting; missing CPU remains missing. A separate real-worker Python reconstruction checks the empirical median/envelope, heldout/training counts, component score and raw CPU totals, then corrupts cost and diagnostic records and tests both crash boundaries. Isolated cost/uncertainty/diversity/interaction/replication score ablations receive deterministic unit falsifiers. This checks engineering behavior, not population coverage or policy superiority. **State: authored; current CI pending.**

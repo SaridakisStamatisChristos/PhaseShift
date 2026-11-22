@@ -100,6 +100,7 @@ struct Plan {
  bool conditional=false;
  bool implication=false; // opt-in v13 frozen implication semantics
  bool region_tree=false; // opt-in v14, previous schedules unchanged
+ bool acquisition=false; // opt-in v15 empirical cost acquisition
 };
 std::vector<LazySearchSpace::Axis> ordered_axes(const Config& cfg){
  return {cfg.axes.begin(),cfg.axes.end()};
@@ -180,11 +181,11 @@ conditional_scopes(const Plan& plan){
  return plan.config.admissible_subspaces;
 }
 Plan make_conditional_plan(const std::string& source,int count,bool implication=false,
-                           bool region_tree=false){
+                           bool region_tree=false,bool acquisition=false){
  const auto cfg=config_from_json(Json::parse(source));
  Plan result;result.source=source;result.config=cfg;result.axis=cfg.axis;
  result.pairs=count;result.conditional=true;result.implication=implication;
- result.region_tree=region_tree;
+ result.region_tree=region_tree;result.acquisition=acquisition;
  require(cfg.axes.count(result.axis)!=0,"v12 primary axis not in frozen declared space");
  const auto& labels=cfg.axes.at(result.axis);
  require(labels.size()>=2,"v12 requires at least two primary labels");
@@ -194,12 +195,12 @@ Plan make_conditional_plan(const std::string& source,int count,bool implication=
  const auto scopes=conditional_scopes(result);
  const AdmissibleSearchSpace legal(axes,scopes);
  ConditionalPairPortfolio probe(legal,axes,result.axis,scopes,
-  cfg.seed,static_cast<std::size_t>(count),cfg.min_ratio,64,region_tree);
+  cfg.seed,static_cast<std::size_t>(count),cfg.min_ratio,64,region_tree,acquisition);
  require(probe.next().has_value(),"v12 no feasible conditional pair");
  return result;
 }
 void enable_adaptive_schema(Sqlite& db);
-void enable_conditional_schema(Sqlite& db,bool implication,bool region_tree);
+void enable_conditional_schema(Sqlite& db,bool implication,bool region_tree,bool acquisition);
 void create_schema(Sqlite& db,const Plan& plan){
  db.exec(R"SQL(
  BEGIN IMMEDIATE;
@@ -241,7 +242,7 @@ void create_schema(Sqlite& db,const Plan& plan){
  st.bind(3,plan.axis);st.bind(4,plan.left);st.bind(5,plan.right);
  st.bind(6,static_cast<std::int64_t>(plan.pairs));st.done();
  if(plan.adaptive)enable_adaptive_schema(db); // same atomic schema/plan commit
- if(plan.conditional)enable_conditional_schema(db,plan.implication,plan.region_tree);
+ if(plan.conditional)enable_conditional_schema(db,plan.implication,plan.region_tree,plan.acquisition);
  db.exec("COMMIT");
 }
 void enable_adaptive_schema(Sqlite& db){
@@ -255,7 +256,7 @@ void enable_adaptive_schema(Sqlite& db){
  PRAGMA user_version=11;
  )SQL");
 }
-void enable_conditional_schema(Sqlite& db,bool implication,bool region_tree){
+void enable_conditional_schema(Sqlite& db,bool implication,bool region_tree,bool acquisition){
  db.exec(R"SQL(
  CREATE TABLE v3_conditional_decisions(
   pair_number INTEGER PRIMARY KEY REFERENCES v3_pairs(pair_number),
@@ -264,7 +265,13 @@ void enable_conditional_schema(Sqlite& db,bool implication,bool region_tree){
   prior_evidence_digest TEXT NOT NULL CHECK(length(prior_evidence_digest)=64),
   CHECK(left_coords<>right_coords));
  )SQL");
- db.exec(region_tree?"PRAGMA user_version=14;":
+ if(acquisition)db.exec(R"SQL(
+ CREATE TABLE v3_acquisition_decisions(
+  pair_number INTEGER PRIMARY KEY REFERENCES v3_pairs(pair_number),
+  diagnostic TEXT NOT NULL, actual_wall_ns INTEGER NOT NULL CHECK(actual_wall_ns>0),
+  actual_worker_cpu_ns INTEGER CHECK(actual_worker_cpu_ns>=0));
+ )SQL");
+ db.exec(acquisition?"PRAGMA user_version=15;":region_tree?"PRAGMA user_version=14;":
          implication?"PRAGMA user_version=13;":"PRAGMA user_version=12;");
 }
 std::string encode_coords(const std::vector<AxisValue>& coords){
@@ -279,7 +286,7 @@ Plan read_plan(Sqlite& db){
  Statement version(db,"PRAGMA user_version");
  require(version.row(),"cannot inspect v3 schema version");
  const auto schema=version.number(0);
- require(schema==10||schema==11||schema==12||schema==13||schema==14,"not a supported v3 pilot SQLite database");
+ require(schema==10||schema==11||schema==12||schema==13||schema==14||schema==15,"not a supported v3 pilot SQLite database");
  Statement st(db,"SELECT source_json,source_sha256,axis,left_label,right_label,max_pairs,protocol FROM v3_plan WHERE id=1");
  require(st.row(),"missing immutable v3 plan");
  const auto source=st.str(0),digest=st.str(1),axis=st.str(2),left=st.str(3),right=st.str(4);
@@ -287,10 +294,10 @@ Plan read_plan(Sqlite& db){
  const auto protocol=st.str(6);
  require(sha256(source)==digest,"frozen plan digest mismatch");
  require(protocol=="v3_matched_discovery_pilot_1"&&count>0&&count<=100,"invalid v3 protocol/count");
- auto result=(schema==12||schema==13||schema==14)?
+ auto result=(schema>=12)?
    make_conditional_plan(source,static_cast<int>(count),
-       schema==13||(schema==14&&!config_from_json(Json::parse(source)).conditional_rules.empty()),
-       schema==14):
+       schema==13||(schema>=14&&!config_from_json(Json::parse(source)).conditional_rules.empty()),
+       schema>=14,schema==15):
    make_plan(source,left,right,static_cast<int>(count));
  result.adaptive=schema==11;
  if(result.adaptive){
@@ -368,7 +375,7 @@ std::optional<double> per_side_metric(const std::vector<Observation>& rows,
  const std::string& main,const std::string& competitor);
 std::size_t replay(Sqlite& db,const Plan& plan,ReplicatePlanner& planner,
                    AdaptivePairPolicy* adaptive,ConditionalPairPortfolio* conditional){
- Statement rows(db,"SELECT pair_number,seed,left_first,left_case_id,right_case_id,status,log_contrast,pair_wall_ns FROM v3_pairs ORDER BY pair_number");
+ Statement rows(db,"SELECT pair_number,seed,left_first,left_case_id,right_case_id,status,log_contrast,pair_wall_ns,worker_timed_cpu_ns FROM v3_pairs ORDER BY pair_number");
  std::size_t completed=0;
  while(rows.row()){
   require(completed<static_cast<std::size_t>(plan.pairs),"persisted pairs exceed frozen cap");
@@ -420,7 +427,7 @@ std::size_t replay(Sqlite& db,const Plan& plan,ReplicatePlanner& planner,
   }
   std::vector<std::vector<Observation>> persisted(2);
   for(int side=0;side<2;++side){
-   Statement sample(db,"SELECT status,ns,case_id,batch,algorithm,ordinal FROM v3_samples WHERE pair_number=? AND side=? ORDER BY ordinal");
+   Statement sample(db,"SELECT status,ns,case_id,batch,algorithm,ordinal,cpu_ns FROM v3_samples WHERE pair_number=? AND side=? ORDER BY ordinal");
    sample.bind(1,static_cast<std::int64_t>(completed));
    sample.bind(2,static_cast<std::int64_t>(side));
    const auto expected=static_cast<std::size_t>(plan.config.blocks)*(plan.config.b.empty()?1U:4U);
@@ -436,6 +443,7 @@ std::size_t replay(Sqlite& db,const Plan& plan,ReplicatePlanner& planner,
     Observation raw;
     raw.status=sample.str(0);raw.algorithm=sample.str(4);
     raw.ns=valid?sample.number(1):0;raw.batch=valid?sample.number(3):0;
+    raw.cpu_ns=sqlite3_column_type(sample.stmt,6)==SQLITE_NULL?-1:sample.number(6);
     persisted[static_cast<std::size_t>(side)].push_back(std::move(raw));
     ++seen;
    }
@@ -453,10 +461,28 @@ std::size_t replay(Sqlite& db,const Plan& plan,ReplicatePlanner& planner,
     std::abs(stored-*recalculated)<=1e-12*(1.+std::abs(*recalculated)),
     "stored pair contrast differs from independent raw sample reconstruction");
   }
+  std::optional<PairMeasuredCost> cost;
+  if(plan.acquisition){
+   std::int64_t total=0;bool known=true;
+   for(const auto& group:persisted)for(const auto& raw:group){
+    if(raw.cpu_ns<0||raw.cpu_ns>std::numeric_limits<std::int64_t>::max()-total)known=false;
+    else if(known)total+=raw.cpu_ns;
+   }
+   require(known==(sqlite3_column_type(rows.stmt,8)!=SQLITE_NULL)&&
+           (!known||rows.number(8)==total),"v15 worker CPU contradicts raw observations");
+   cost=PairMeasuredCost{rows.number(7),known?std::optional<std::int64_t>{total}:std::nullopt};
+   Statement audit(db,"SELECT diagnostic,actual_wall_ns,actual_worker_cpu_ns FROM v3_acquisition_decisions WHERE pair_number=?");
+   audit.bind(1,static_cast<std::int64_t>(completed));
+   require(audit.row()&&audit.str(0)==selected.conditional_choice->acquisition_audit&&
+           audit.number(1)==cost->wall_ns&&
+           known==(sqlite3_column_type(audit.stmt,2)!=SQLITE_NULL)&&
+           (!known||audit.number(2)==total),"v15 acquisition cost/diagnostic replay mismatch");
+   require(!audit.row(),"duplicate v15 acquisition diagnostic");
+  }
   if(adaptive)adaptive->on_committed(*selected.adaptive_choice,
                                   Cohort::Discovery,recalculated);
   if(conditional)conditional->on_committed(*selected.conditional_choice,
-                                  Cohort::Discovery,recalculated);
+                                  Cohort::Discovery,recalculated,cost);
   ++completed;
  }
  return completed;
@@ -578,6 +604,13 @@ void execute_pairs(Sqlite& db,const Plan& plan,ReplicatePlanner& planner,
     st.bind(3,encode_coords(chosen.left));st.bind(4,encode_coords(chosen.right));
     st.bind(5,chosen.arm);st.bind(6,chosen.prior_evidence_digest);st.done();
    }
+   if(plan.acquisition){
+    Statement audit(db,"INSERT INTO v3_acquisition_decisions VALUES(?,?,?,?)");
+    audit.bind(1,static_cast<std::int64_t>(completed));
+    audit.bind(2,selected.conditional_choice->acquisition_audit);audit.bind(3,wall);
+    if(cpu_known)audit.bind(4,cpu);else audit.bind_null(4);
+    audit.done();
+   }
    insert_samples(db,completed,0,a,left);insert_samples(db,completed,1,b,right);
    db.exec("COMMIT");
   }catch(...){db.exec("ROLLBACK");throw;}
@@ -586,7 +619,9 @@ void execute_pairs(Sqlite& db,const Plan& plan,ReplicatePlanner& planner,
   if(adaptive)adaptive->on_committed(*selected.adaptive_choice,
                                   Cohort::Discovery,contrast);
   if(conditional)conditional->on_committed(*selected.conditional_choice,
-                                  Cohort::Discovery,contrast);
+                                  Cohort::Discovery,contrast,
+     plan.acquisition?std::optional<PairMeasuredCost>{PairMeasuredCost{wall,
+         cpu_known?std::optional<std::int64_t>{cpu}:std::nullopt}}:std::nullopt);
   ++completed;++this_call;
  }
  std::cout<<"v3 matched discovery committed "<<completed<<"/"<<plan.pairs
@@ -606,7 +641,7 @@ int numeric_option(int argc,char** argv,const std::string& key,int fallback){
 void syntax(int argc,char** argv,const std::string& command){
  const std::set<std::string> accepted=command=="run"?
   std::set<std::string>{"--config","--out","--left","--right","--pairs","--pause-after"}:
-  command=="adaptive"||command=="conditional"||command=="conditional-rules"||command=="conditional-tree"?
+  command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||command=="acquisition-v3")?
   std::set<std::string>{"--config","--out","--pairs","--pause-after"}:
   command=="verify"?std::set<std::string>{"--run"}:
   std::set<std::string>{"--run","--pause-after"};
@@ -623,22 +658,22 @@ int main(int argc,char** argv){
  try{
   require(argc>=2,"expected run, resume or verify");
   const std::string command=argv[1];
-  require(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||command=="conditional-tree"||command=="resume"||command=="verify","unknown pilot command");
+  require(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||command=="acquisition-v3")||command=="resume"||command=="verify","unknown pilot command");
   syntax(argc,argv,command);
   const auto pause=numeric_option(argc,argv,"--pause-after",0);
-  if(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||command=="conditional-tree"){
+  if(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||command=="acquisition-v3")){
    const auto config=option(argc,argv,"--config"),out=option(argc,argv,"--out");
    require(!config.empty()&&!out.empty(),"run needs config and output path");
    Plan plan;
    if(command=="adaptive")
     plan=make_adaptive_plan(read_file(config),numeric_option(argc,argv,"--pairs",3));
-   else if(command=="conditional"||command=="conditional-rules"||command=="conditional-tree"){
+   else if(command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||command=="acquisition-v3")){
     const auto frozen=read_file(config);
-    const auto rules=command=="conditional-tree"?
+    const auto rules=(command=="conditional-tree"||command=="acquisition-v3")?
       !config_from_json(Json::parse(frozen)).conditional_rules.empty():
       command=="conditional-rules";
     plan=make_conditional_plan(frozen,numeric_option(argc,argv,"--pairs",3),
-                               rules,command=="conditional-tree");
+                               rules,(command=="conditional-tree"||command=="acquisition-v3"),command=="acquisition-v3");
    }
    else{
     const auto left=option(argc,argv,"--left"),right=option(argc,argv,"--right");
@@ -661,7 +696,7 @@ int main(int argc,char** argv){
     legal.emplace(axes,scopes);
     conditional.emplace(*legal,axes,plan.axis,scopes,
       plan.config.seed,static_cast<std::size_t>(plan.pairs),plan.config.min_ratio,
-      64,plan.region_tree);
+      64,plan.region_tree,plan.acquisition);
    }
    execute_pairs(db,plan,planner,adaptive?&*adaptive:nullptr,
                  conditional?&*conditional:nullptr,0,static_cast<std::size_t>(pause));
@@ -684,7 +719,7 @@ int main(int argc,char** argv){
    legal.emplace(axes,scopes);
    conditional.emplace(*legal,axes,plan.axis,scopes,
      plan.config.seed,static_cast<std::size_t>(plan.pairs),plan.config.min_ratio,
-     64,plan.region_tree);
+     64,plan.region_tree,plan.acquisition);
   }
   const auto completed=replay(db,plan,planner,adaptive?&*adaptive:nullptr,
                               conditional?&*conditional:nullptr);
