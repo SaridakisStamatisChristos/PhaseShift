@@ -108,6 +108,14 @@ def paired_bootstrap(rows_a,rows_b,metric,identity,replicates=2000):
     need(set(aa)==set(bb) and len(aa)>0,"nonmatched seed cohorts")
     differences=[metric(bb[s])-metric(aa[s]) for s in sorted(aa)]
     n=len(differences)
+    if n<20:
+        return {"n":n,"mean_v15_minus_v14":sum(differences)/n,
+                "exploratory_percentile95":None,
+                "interval_reason":"precommitted twenty-seed cohort not complete",
+                "positive":sum(d>0 for d in differences),
+                "negative":sum(d<0 for d in differences),
+                "ties":sum(d==0 for d in differences),
+                "inferential_claim":False}
     rng=random.Random(int(seal([identity,"paired_bootstrap_seed_1"]),16))
     sampled=sorted(sum(differences[rng.randrange(n)] for _ in range(n))/n
                    for _ in range(replicates))
@@ -191,6 +199,8 @@ def main():
         need(read(root/"scorecard.json")==verify(root),"scorecard drift")
         print("PASS independent multidimensional replay and truth audit; NO SOTA")
         return
+    need(not (a.suite=="evaluation" and a.diagnostic),
+         "sealed evaluation prohibits exploratory diagnostic subsampling")
     need(a.binary and a.binary.is_file(),"v3 CLI binary required")
     m,mh=load(a.suite);split_check()
     need(not root.exists(),"immutable output directory exists")
