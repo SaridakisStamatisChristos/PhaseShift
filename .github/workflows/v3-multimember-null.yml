@@ -1,0 +1,195 @@
+name: v3-01f-temporal-and-two-member-null-calibration
+on:
+  push:
+    branches: ['feature/phaseshift-v3-sota-research']
+    paths:
+      - '.github/workflows/v3-multimember-null.yml'
+      - 'benchmarks/v3/multimember_null_manifest.json'
+      - 'benchmarks/v3/run_multimember_null.py'
+      - 'benchmarks/v3/aggregate_multimember_null.py'
+      - 'benchmarks/v3/temporal_null_audit.py'
+      - 'tests/v3/multimember_null_contract.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: v3-01f-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    name: Temporal/seed-separation/Holm/source falsification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Strict static checks and adversarial protocol tests
+        run: |
+          set -euo pipefail
+          python3 -m py_compile benchmarks/v3/temporal_null_audit.py benchmarks/v3/run_multimember_null.py benchmarks/v3/aggregate_multimember_null.py tests/v3/multimember_null_contract.py
+          python3 tests/v3/multimember_null_contract.py
+          python3 tests/v3/forced_null_contract.py
+          python3 tests/v3/confirmation_contract.py
+          python3 - <<'PY'
+          import sys
+          sys.path.insert(0,"benchmarks/v3")
+          from run_multimember_null import manifest
+          m,_=manifest()
+          assert sum(len(s["seeds"]) for s in m["strata"])==128
+          assert 2*64*2*20==5120
+          assert not m["population_fwer_certified"]
+          print("PASS predeclared 128 families x two edges x 20 fresh paired seeds")
+          PY
+
+  smoke:
+    name: Real C++ two-edge family freeze and independent smoke replay
+    needs: contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up native worker build
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libsqlite3-dev libjson-c-dev libssl-dev pkg-config
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target phaseshift_v3_pairs phaseshift_v3_shapes_tests phaseshift_v3_fixed_family_tests -j2
+          ctest --test-dir build -R 'v3_analytic_synthetic_worker_truth|v3_fixed_family_exact_sign_oracle_and_holm' --output-on-failure
+      - name: Run diagnostic one-family complete two-member holdout
+        run: |
+          set -euo pipefail
+          python3 benchmarks/v3/run_multimember_null.py \
+            --binary build/phaseshift_v3_pairs --stratum flat_two_edge \
+            --out build/diagnostic --diagnostic
+          python3 benchmarks/v3/run_multimember_null.py \
+            --out build/diagnostic --verify-only
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v3f-smoke-full-protocol
+          path: build/diagnostic/
+          retention-days: 14
+          if-no-files-found: warn
+
+  archived_temporal:
+    name: Reconstruct archived 5120-pair null sign chronology
+    needs: contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Import immutable completed V3-01e evidence
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 45038398487
+          pattern: v3e-forced-null-*
+          path: build/old_null
+          merge-multiple: false
+          github-token: ${{ github.token }}
+      - name: Independently recompute lag-1, sign-runs, drift and censored spans
+        run: |
+          set -euo pipefail
+          python3 benchmarks/v3/temporal_null_audit.py \
+            --artifacts build/old_null --out build/temporal_evidence.json
+          python3 benchmarks/v3/temporal_null_audit.py \
+            --artifacts build/old_null --out build/temporal_evidence.json --verify-only
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v3f-archived-temporal-independent-audit
+          path: build/temporal_evidence.json
+          retention-days: 60
+          if-no-files-found: warn
+
+  family:
+    name: Complete two-member null (${{ matrix.stratum }})
+    needs: smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        stratum:
+          - flat_two_edge
+          - seed_shared_two_edge_contended
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build source-pinned C++ family sidecar and oracle
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libsqlite3-dev libjson-c-dev libssl-dev pkg-config
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target phaseshift_v3_pairs phaseshift_v3_shapes_tests phaseshift_v3_fixed_family_tests -j2
+          ctest --test-dir build -R 'v3_analytic_synthetic_worker_truth|v3_fixed_family_exact_sign_oracle_and_holm' --output-on-failure
+      - name: All 64 predeclared families, both members, forty fresh pairs each
+        env:
+          STRATUM: ${{ matrix.stratum }}
+        run: |
+          set -euo pipefail
+          python3 benchmarks/v3/run_multimember_null.py \
+            --binary build/phaseshift_v3_pairs --stratum "$STRATUM" \
+            --out build/multimember_null
+          python3 benchmarks/v3/run_multimember_null.py \
+            --out build/multimember_null --verify-only
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v3f-multimember-null-${{ matrix.stratum }}
+          path: build/multimember_null/
+          retention-days: 30
+          if-no-files-found: warn
+
+  aggregate:
+    name: Cross-host archived temporal + 128-family Holm replay
+    needs: [family, archived_temporal]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: v3f-multimember-null-*
+          path: build/new_null
+          merge-multiple: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: v3f-archived-temporal-independent-audit
+          path: build/archived
+      - name: Reconstruct all 128 two-member Holm families and linked chronology
+        run: |
+          set -euo pipefail
+          python3 benchmarks/v3/aggregate_multimember_null.py \
+            --artifacts build/new_null --temporal build/archived/temporal_evidence.json \
+            --out build/v3f_scorecard.json
+          python3 benchmarks/v3/aggregate_multimember_null.py \
+            --artifacts build/new_null --temporal build/archived/temporal_evidence.json \
+            --out build/v3f_scorecard.json --verify-only
+          python3 - <<'PY'
+          import json,os
+          s=json.load(open("build/v3f_scorecard.json"))
+          assert s["verified_complete_families"]==128
+          assert s["verified_members"]==256
+          assert s["verified_fresh_pairs"]==5120
+          assert s["sealed_evaluation_touched"] is False
+          assert not s["population_fwer_certified"] and not s["sign_independence_established"]
+          print("V3-01f complete:",s["nominal_familywise_false_rejections"],"nominal familywise null rejections")
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as out:
+              out.write("## V3-01f: multi-member Holm and temporal dependence\n\n")
+              out.write("**128 complete families, 256 predeclared members, 5,120 fresh paired holdouts**, and replay of 5,120 archived null pairs.\n\n")
+              out.write("| Stratum | Families | Any rejected family | Conditional exact upper if independent | Temporal long runs |\n")
+              out.write("|---|---:|---:|---:|---:|\n")
+              for f in s["strata"]:
+                  out.write(f"| {f['stratum']} | 64 | {f['nominal_familywise_false_rejections']} | {f['conditional_exact_95_upper_if_independent_families']:.2%} | {f['families_with_run_ge_16']} |\n")
+              out.write("\n**Not certified:** elapsed-time null, independent families, population FWER, SOTA. Evaluation remains sealed.\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v3f-full-independent-temporal-and-holm-calibration
+          path: build/v3f_scorecard.json
+          retention-days: 60
+          if-no-files-found: warn
