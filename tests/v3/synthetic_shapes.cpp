@@ -1,6 +1,8 @@
 #include "phaseshift/algorithms.hpp"
 #include "phaseshift/core.hpp"
 #include <algorithm>
+#include <array>
+#include <vector>
 #include <cstdint>
 #include <iostream>
 #include <stdexcept>
@@ -30,6 +32,16 @@ int main(){
      require(steps.work==want_step,"independent two-step truth");
      require(smooth.work==want_smooth,"independent smooth truth");
     }
+   }
+  }
+  for(auto name:{"calibration_steps_v3","calibration_smooth_v3"}){
+   for(auto invalid:std::array<std::vector<std::int64_t>,2>{
+       std::vector<std::int64_t>{1025,8,0},
+       std::vector<std::int64_t>{4,1025,0}}){
+    ps::Case malformed;malformed.family="calibration";malformed.bytes=ps::encode_values(invalid);
+    bool rejected=false;
+    try{(void)ps::execute(malformed,name);}catch(const ps::Error&){rejected=true;}
+    require(rejected,"reject unbounded synthetic workload");
    }
   }
   ps::Case c;c.family="calibration";c.x=4;c.threshold=8;c.negative=false;
