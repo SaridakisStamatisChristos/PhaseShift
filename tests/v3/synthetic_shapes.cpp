@@ -44,6 +44,31 @@ int main(){
     require(rejected,"reject unbounded synthetic workload");
    }
   }
+  require(std::find(registered.begin(),registered.end(),"calibration_seed_shared_null_v3")!=registered.end(),"seed shared null registration");
+  for(const std::uint64_t seed:{1ULL,137ULL,(1ULL<<62)+127ULL}){
+   for(std::int64_t threshold:{3,8,19}){
+    std::uint64_t expected=0;
+    for(std::int64_t x=0;x<=24;++x){
+     ps::Case c;c.family="calibration";c.x=x;c.threshold=threshold;c.negative=true;c.seed=seed;
+     auto actual=ps::make_case(c);
+     const auto output=ps::execute(actual,"calibration_seed_shared_null_v3");
+     require(output.values==ps::oracle(actual).values,"shared null correctness oracle");
+     if(x==0)expected=output.work;
+     require(output.work==expected,"same matched seed must share exact work across coordinates");
+     const auto formula=1024ULL<<((ps::splitmix64(seed^0x5d6c9e3a712bf084ULL)>>7)&3ULL);
+     require(output.work==formula,"seed-only null independent operation count");
+    }
+   }
+  }
+  for(const auto negative: {false,true}){
+   ps::Case c;c.family="calibration";c.x=2;c.threshold=8;c.negative=negative;c.seed=137;
+   if(!negative){
+    bool rejected=false;
+    try{(void)ps::execute(ps::make_case(c),"calibration_seed_shared_null_v3");}
+    catch(const ps::Error&){rejected=true;}
+    require(rejected,"shared null refuses non-null context");
+   }
+  }
   ps::Case c;c.family="calibration";c.x=4;c.threshold=8;c.negative=false;
   auto low=ps::make_case(c);
   require(ps::execute(low,"calibration").work==14ULL,"legacy calibration low unchanged");
