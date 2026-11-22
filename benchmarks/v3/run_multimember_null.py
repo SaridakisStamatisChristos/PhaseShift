@@ -252,6 +252,16 @@ def reconstruct(root):
     }
 
 
+def cli_result(command, stdout):
+    """Only family sidecar commands emit JSON; verify/run emit plain text."""
+    require(command in ("conditional-tree","verify","family-freeze",
+                        "family-confirm","family-report"),"unexpected CLI")
+    if command in ("conditional-tree","verify"):
+        require(isinstance(stdout,str),"missing non-JSON CLI text")
+        return None
+    return json.loads(stdout)
+
+
 def execute(binary,root,target,diagnostic):
     m,mh=manifest()
     scene=next((s for s in m["strata"] if s["id"]==target),None)
@@ -281,7 +291,7 @@ def execute(binary,root,target,diagnostic):
                     commands.append(record)
                     (folder/"commands.json").write_text(
                         json.dumps(commands,sort_keys=True,indent=2,allow_nan=False)+"\n")
-                    return json.loads(record["stdout"])
+                    return cli_result(args[0],record["stdout"])
                 call("conditional-tree","--config",folder/"config.json",
                      "--out",folder/"run","--pairs","2")
                 call("verify","--run",folder/"run")
