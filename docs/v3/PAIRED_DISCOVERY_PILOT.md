@@ -112,3 +112,14 @@ The count must equal the original configuration's confirm_blocks, 20–100. Dire
 ```
 
 One sidecar per run directory, schema 16, no discovery-schema mutation. Frozen source snapshot, source revision, exact edge endpoints, seed list and protocol are independently reconstructed; worker measurements execute in round-robin member order. Resume requires same source revision; report never changes the ledger. No early member results are emitted while incomplete; raw DB is not protected against deliberate peeking or copying. Censored or unverified-assumption members are conservatively p=1 and remain in Holm denominator. Even a rejection under declared model is not yet scientifically CONFIRMED: no empirical correlated-null or external assumption validation yet. Only directed edge contrasts are supported, not a full multi-hypothesis taxonomy confirmation. Complete family and source DB should be kept together. If interrupted during initial freeze before SQLite creation finishes, retain the failed reservation and investigate rather than silently re-freeze. Per-invocation wall limit is not a campaign-global budget or abandoned-worker cost guarantee.
+
+
+## V3-08 correlated-null development suite
+
+```bash
+python3 benchmarks/v3/run_null_calibration.py --binary build/phaseshift_v3_pairs --out /tmp/v3-null-diagnostic --diagnostic
+python3 benchmarks/v3/run_null_calibration.py --binary build/phaseshift_v3_pairs --out /tmp/v3-null-diagnostic --diagnostic --verify-only
+python3 benchmarks/v3/run_null_calibration.py --binary build/phaseshift_v3_pairs --out /tmp/v3-null-full
+```
+
+Linux only (temporal-load scenario uses inherited CPU affinity). Output directory must not exist. Four diagnostic or 128 full campaigns with frozen manifest, raw discovery/confirmation SQLite, exact command logs, terminal outcomes and reconstructed scorecard. The `calibration_null_v3` and `calibration_null_fault_v3` algorithms are opt-in synthetic work generators; original calibration is unchanged. The fixed symmetric log-work construction does not imply an exact elapsed-time null. Temporal-load uses actual competing computation and measures chronological correlation rather than injecting fabricated samples. The family declaration exercises the nominal test under stress, not empirically validated inference. Every scenario reports denominator and failures; no population interval unless independence can be justified. These artifacts are research diagnostics, never scientific confirmation or SOTA evidence.

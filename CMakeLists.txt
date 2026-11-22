@@ -677,3 +677,11 @@ add_test(NAME v3_fixed_family_real_worker_sealed_holdout
  --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/admissible_calibration.json
  --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_fixed_family)
 set_tests_properties(v3_fixed_family_real_worker_sealed_holdout PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE)
+
+# V3-08 real-worker null stress and frozen-family scorecard replay.
+add_test(NAME v3_null_calibration_real_worker_campaigns
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/null_calibration_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --runner ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/v3/run_null_calibration.py
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_null_calibration)
+set_tests_properties(v3_null_calibration_real_worker_campaigns PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE)

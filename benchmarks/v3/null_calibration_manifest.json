@@ -1,0 +1,73 @@
+{
+  "schema": 1,
+  "suite": "v3_null_calibration_development",
+  "eligible_for_claim": false,
+  "discovery_pairs": 12,
+  "members": 2,
+  "holdout_pairs": 20,
+  "alpha": 0.05,
+  "minimum_ratio": 1.2,
+  "campaign_seeds": [
+    84001,
+    84002,
+    84003,
+    84004,
+    84005,
+    84006,
+    84007,
+    84008,
+    84009,
+    84010,
+    84011,
+    84012,
+    84013,
+    84014,
+    84015,
+    84016,
+    84017,
+    84018,
+    84019,
+    84020,
+    84021,
+    84022,
+    84023,
+    84024,
+    84025,
+    84026,
+    84027,
+    84028,
+    84029,
+    84030,
+    84031,
+    84032
+  ],
+  "diagnostic_seeds": [
+    84001
+  ],
+  "scenarios": [
+    {
+      "id": "constant",
+      "algorithm": "calibration",
+      "load": false
+    },
+    {
+      "id": "seeded_heteroscedastic",
+      "algorithm": "calibration_null_v3",
+      "load": false
+    },
+    {
+      "id": "fault_censor",
+      "algorithm": "calibration_null_fault_v3",
+      "load": false
+    },
+    {
+      "id": "temporal_load",
+      "algorithm": "calibration_null_v3",
+      "load": true
+    }
+  ],
+  "selection": "top_two_distinct_valid_discovery_edges_by_absolute_median_with_stable_ties",
+  "sampling_assumptions": "unverified_for_wall_time; declared_model_stress_only",
+  "truth": "constant_work_or_symmetric_log_work_center; wall_time_null_not_certified",
+  "policy": "acquisition-v3"
+}
