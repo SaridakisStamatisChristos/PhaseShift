@@ -685,3 +685,11 @@ add_test(NAME v3_null_calibration_real_worker_campaigns
  --runner ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/v3/run_null_calibration.py
  --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_null_calibration)
 set_tests_properties(v3_null_calibration_real_worker_campaigns PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE)
+
+# V3-09 opt-in schema 17: durable attempts and honest partial Linux accounting.
+add_test(NAME v3_attempt_accounting_crash_and_replay
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/attempt_accounting_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/admissible_calibration.json
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_attempt_accounting)
+set_tests_properties(v3_attempt_accounting_crash_and_replay PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE)

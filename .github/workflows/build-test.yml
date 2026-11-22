@@ -32,5 +32,6 @@ jobs:
             build/ctest_b10_b11/
             build/ctest_v3_paired_development/
             build/ctest_v3_null_calibration/
+            build/ctest_v3_attempt_accounting/
           retention-days: 14
           if-no-files-found: error

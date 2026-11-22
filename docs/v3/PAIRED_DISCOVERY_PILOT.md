@@ -123,3 +123,15 @@ python3 benchmarks/v3/run_null_calibration.py --binary build/phaseshift_v3_pairs
 ```
 
 Linux only (temporal-load scenario uses inherited CPU affinity). Output directory must not exist. Four diagnostic or 128 full campaigns with frozen manifest, raw discovery/confirmation SQLite, exact command logs, terminal outcomes and reconstructed scorecard. The `calibration_null_v3` and `calibration_null_fault_v3` algorithms are opt-in synthetic work generators; original calibration is unchanged. The fixed symmetric log-work construction does not imply an exact elapsed-time null. Temporal-load uses actual competing computation and measures chronological correlation rather than injecting fabricated samples. The family declaration exercises the nominal test under stress, not empirically validated inference. Every scenario reports denominator and failures; no population interval unless independence can be justified. These artifacts are research diagnostics, never scientific confirmation or SOTA evidence.
+
+
+## V3-09a accounted discovery experiment (Linux)
+
+```bash
+./build/phaseshift_v3_pairs accounted-v3 --config configs/v2/admissible_calibration.json --out /tmp/v3-accounted --pairs 6 --pause-after 2
+./build/phaseshift_v3_pairs accounting --run /tmp/v3-accounted
+./build/phaseshift_v3_pairs resume --run /tmp/v3-accounted
+./build/phaseshift_v3_pairs verify --run /tmp/v3-accounted
+```
+
+Schema 17 uses the existing v15 acquisition policy. The separate attempt ledger reserves an identity before worker launch, atomically commits successful/censored observation blocks, and records interrupted attempts as abandoned without fabricated cost measurements. Resume requires the original executable and dedicated worker binary hashes. The same advisory writer lock prevents concurrent cooperating resumes; read-only inspection is allowed. `accounting` reports actual observed proposal-to-precommit wall, parent CPU, waited-child CPU, and timed worker CPU separately, plus started/abandoned/committed counts. Worker-timed CPU overlaps waited-child CPU and is not an additional system-CPU charge. The report always marks ACCOUNTING_INCOMPLETE because abandoned operations, unobserved descendants, pre-reservation and post-precommit work are not fully accounted. This is a discovery-only protocol, not proof of orphan containment or a complete campaign budget. V12–v15 and v16 holdout data remain unchanged; old discovery runs do not gain retrospective attempt costs.

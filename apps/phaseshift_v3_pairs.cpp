@@ -22,6 +22,12 @@
 #include <set>
 #include <string>
 #include <vector>
+#include <tuple>
+#include <csignal>
+#include <fcntl.h>
+#include <sys/file.h>
+#include <sys/resource.h>
+#include <unistd.h>
 
 namespace {
 using namespace ps;
@@ -96,6 +102,156 @@ struct Statement {
   return reinterpret_cast<const char*>(p);
  }
 };
+// Linux accounting for opt-in discovery schema 17. Counters cover the
+// proposal-to-precommit window, not the entire process tree or invocation.
+struct AccountedRunLock {
+ int fd=-1;
+ explicit AccountedRunLock(const fs::path& path){
+  fd=::open(path.c_str(),O_RDONLY|O_CLOEXEC|O_NOFOLLOW);
+  require(fd>=0,"accounted run lock open failed");
+  if(::flock(fd,LOCK_EX|LOCK_NB)!=0){
+   ::close(fd);fd=-1;throw Error("accounted run already has a writer");
+  }
+ }
+ ~AccountedRunLock(){if(fd>=0)::close(fd);}
+ AccountedRunLock(const AccountedRunLock&)=delete;
+ AccountedRunLock& operator=(const AccountedRunLock&)=delete;
+};
+std::string executable_digest_v3(bool worker){
+ const auto executable=fs::read_symlink("/proc/self/exe");
+ return sha256_file((worker?executable.parent_path()/"phaseshift_worker":executable).string());
+}
+void create_accounting_schema(Sqlite& db){
+ db.exec(R"SQL(
+ CREATE TABLE v3_accounting_origin(
+  id INTEGER PRIMARY KEY CHECK(id=1),
+  executable_sha256 TEXT NOT NULL CHECK(length(executable_sha256)=64),
+  worker_sha256 TEXT NOT NULL CHECK(length(worker_sha256)=64),
+  protocol TEXT NOT NULL CHECK(protocol='linux_rusage_precommit_v1'));
+ CREATE TABLE v3_attempts(
+  attempt_id INTEGER PRIMARY KEY CHECK(attempt_id BETWEEN 0 AND 9999),
+  pair_number INTEGER NOT NULL CHECK(pair_number BETWEEN 0 AND 99),
+  seed INTEGER NOT NULL CHECK(seed>=0),
+  left_case_id TEXT NOT NULL CHECK(length(left_case_id)=64),
+  right_case_id TEXT NOT NULL CHECK(length(right_case_id)=64),
+  state TEXT NOT NULL CHECK(state IN ('STARTED','ABANDONED','COMMITTED')),
+  committed_pair INTEGER UNIQUE REFERENCES v3_pairs(pair_number),
+  elapsed_ns INTEGER,parent_cpu_ns INTEGER,waited_child_cpu_ns INTEGER,
+  CHECK((state='COMMITTED' AND committed_pair IS NOT NULL AND committed_pair=pair_number
+    AND elapsed_ns IS NOT NULL AND elapsed_ns>0
+    AND parent_cpu_ns IS NOT NULL AND parent_cpu_ns>=0
+    AND waited_child_cpu_ns IS NOT NULL AND waited_child_cpu_ns>=0)
+    OR (state!='COMMITTED' AND committed_pair IS NULL AND elapsed_ns IS NULL
+     AND parent_cpu_ns IS NULL AND waited_child_cpu_ns IS NULL)));
+ CREATE UNIQUE INDEX v3_attempt_active ON v3_attempts(state) WHERE state='STARTED';
+ PRAGMA user_version=17;
+ )SQL");
+ Statement origin(db,"INSERT INTO v3_accounting_origin VALUES(1,?,?,'linux_rusage_precommit_v1')");
+ origin.bind(1,executable_digest_v3(false));origin.bind(2,executable_digest_v3(true));origin.done();
+}
+void check_accounting_origin(Sqlite& db,bool writer){
+ Statement q(db,"SELECT executable_sha256,worker_sha256,protocol FROM v3_accounting_origin WHERE id=1");
+ require(q.row()&&q.str(0).size()==64&&q.str(1).size()==64&&q.str(2)=="linux_rusage_precommit_v1",
+         "missing accounted run provenance");
+ if(writer)require(q.str(0)==executable_digest_v3(false)&&q.str(1)==executable_digest_v3(true),
+                   "accounted run executable/worker digest changed");
+}
+struct RusageWindowV3 {
+ std::chrono::steady_clock::time_point wall;
+ std::int64_t parent=0,children=0;
+};
+std::int64_t process_cpu_ns_v3(int who){
+ struct rusage u{};
+ require(::getrusage(who,&u)==0,"cannot read Linux CPU counter");
+ const auto seconds=static_cast<std::int64_t>(u.ru_utime.tv_sec)+static_cast<std::int64_t>(u.ru_stime.tv_sec);
+ const auto micros=static_cast<std::int64_t>(u.ru_utime.tv_usec)+static_cast<std::int64_t>(u.ru_stime.tv_usec);
+ require(seconds>=0&&micros>=0&&seconds<=(std::numeric_limits<std::int64_t>::max()-2000000000LL)/1000000000LL,
+         "CPU counter overflow");
+ return seconds*1000000000LL+micros*1000LL;
+}
+RusageWindowV3 start_window_v3(){
+ return {std::chrono::steady_clock::now(),process_cpu_ns_v3(RUSAGE_SELF),
+         process_cpu_ns_v3(RUSAGE_CHILDREN)};
+}
+std::int64_t reserve_attempt_v3(Sqlite& db,std::size_t pair,std::uint64_t seed,const Case& a,const Case& b){
+ Statement count(db,"SELECT COUNT(*) FROM v3_attempts");
+ require(count.row()&&count.number(0)<10000,"attempt ledger capacity exhausted");
+ const auto id=count.number(0);
+ Statement prior(db,"SELECT seed,left_case_id,right_case_id FROM v3_attempts WHERE pair_number=? ORDER BY attempt_id DESC LIMIT 1");
+ prior.bind(1,static_cast<std::int64_t>(pair));
+ if(prior.row())require(prior.number(0)==static_cast<std::int64_t>(seed)&&prior.str(1)==a.id&&prior.str(2)==b.id,
+                        "retry changed reserved proposal");
+ Statement st(db,"INSERT INTO v3_attempts(attempt_id,pair_number,seed,left_case_id,right_case_id,state) VALUES(?,?,?,?,?,'STARTED')");
+ st.bind(1,id);st.bind(2,static_cast<std::int64_t>(pair));st.bind(3,static_cast<std::int64_t>(seed));
+ st.bind(4,a.id);st.bind(5,b.id);st.done(); // autocommit before worker launch
+ return id;
+}
+void commit_attempt_v3(Sqlite& db,std::int64_t id,std::size_t pair,const RusageWindowV3& start){
+ const auto parent=process_cpu_ns_v3(RUSAGE_SELF)-start.parent;
+ const auto child=process_cpu_ns_v3(RUSAGE_CHILDREN)-start.children;
+ const auto wall=std::chrono::duration_cast<std::chrono::nanoseconds>(
+  std::chrono::steady_clock::now()-start.wall).count();
+ require(wall>0&&parent>=0&&child>=0,"invalid attempt counter delta");
+ Statement st(db,"UPDATE v3_attempts SET state='COMMITTED',committed_pair=?,elapsed_ns=?,parent_cpu_ns=?,waited_child_cpu_ns=? WHERE attempt_id=? AND state='STARTED'");
+ st.bind(1,static_cast<std::int64_t>(pair));st.bind(2,wall);st.bind(3,parent);st.bind(4,child);st.bind(5,id);st.done();
+ require(sqlite3_changes(db.db)==1,"attempt completion mismatch");
+}
+struct AccountingSummaryV3{
+ std::int64_t attempts=0,committed=0,abandoned=0,started=0;
+ std::int64_t elapsed=0,parent=0,child=0,timed=0,timed_unknown=0;
+};
+AccountingSummaryV3 audit_accounting_v3(Sqlite& db,std::size_t completed,std::size_t cap){
+ check_accounting_origin(db,false);
+ AccountingSummaryV3 out;
+ auto add=[](std::int64_t& total,std::int64_t value){
+  require(value>=0&&value<=std::numeric_limits<std::int64_t>::max()-total,"attempt accounting overflow");
+  total+=value;
+ };
+ Statement q(db,"SELECT a.attempt_id,a.pair_number,a.seed,a.left_case_id,a.right_case_id,a.state,a.committed_pair,a.elapsed_ns,a.parent_cpu_ns,a.waited_child_cpu_ns,p.seed,p.left_case_id,p.right_case_id,p.pair_wall_ns,p.worker_timed_cpu_ns FROM v3_attempts a LEFT JOIN v3_pairs p ON p.pair_number=a.pair_number ORDER BY a.attempt_id");
+ std::optional<std::tuple<std::int64_t,std::string,std::string>> expected;
+ while(q.row()){
+  require(q.number(0)==out.attempts&&out.attempts<10000&&q.number(1)==out.committed&&
+          q.number(1)<static_cast<std::int64_t>(cap)&&out.started==0,"attempt sequence or cap mismatch");
+  ++out.attempts;
+  const auto identity=std::tuple{q.number(2),q.str(3),q.str(4)};
+  require(q.number(2)>=0&&q.number(2)<=0x7fffffff&&q.str(3).size()==64&&q.str(4).size()==64&&q.str(3)!=q.str(4),
+         "invalid attempt identity");
+  require(!expected||*expected==identity,"retry changed attempt identity");
+  expected=identity;
+  const auto state=q.str(5);
+  if(sqlite3_column_type(q.stmt,10)!=SQLITE_NULL)
+   require(q.number(2)==q.number(10)&&q.str(3)==q.str(11)&&q.str(4)==q.str(12),"attempt does not bind committed proposal");
+  if(state=="COMMITTED"){
+   require(sqlite3_column_type(q.stmt,6)==SQLITE_INTEGER&&
+           q.number(6)==q.number(1)&&sqlite3_column_type(q.stmt,10)==SQLITE_INTEGER&&
+           sqlite3_column_type(q.stmt,7)==SQLITE_INTEGER&&sqlite3_column_type(q.stmt,8)==SQLITE_INTEGER&&
+           sqlite3_column_type(q.stmt,9)==SQLITE_INTEGER&&q.number(7)>=q.number(13)&&q.number(7)>0,
+           "invalid committed attempt/cost linkage");
+   ++out.committed;expected.reset();
+   add(out.elapsed,q.number(7));add(out.parent,q.number(8));add(out.child,q.number(9));
+   if(sqlite3_column_type(q.stmt,14)==SQLITE_NULL)++out.timed_unknown;
+   else add(out.timed,q.number(14));
+  }else{
+   require(state=="STARTED"||state=="ABANDONED","unknown attempt state");
+   for(int col=6;col<=9;++col)require(sqlite3_column_type(q.stmt,col)==SQLITE_NULL,"fabricated abandoned cost");
+   if(state=="STARTED")++out.started;else ++out.abandoned;
+  }
+ }
+ require(out.committed==static_cast<std::int64_t>(completed),"committed pair lacks attempt");
+ return out;
+}
+void report_accounting_v3(Sqlite& db,std::size_t completed,std::size_t cap){
+ const auto a=audit_accounting_v3(db,completed,cap);
+ Json j;j.put("schema","phaseshift.v3.attempt_accounting.1");
+ j.put("state","ACCOUNTING_INCOMPLETE");
+ j.put("reason","Linux waited-child rusage does not prove descendant attribution; abandoned attempts and costs outside precommit windows are unmeasured");
+ j.put("attempts",a.attempts);j.put("committed",a.committed);j.put("abandoned",a.abandoned);j.put("started",a.started);
+ j.put("observed_precommit_wall_ns",a.elapsed);j.put("observed_parent_cpu_ns",a.parent);
+ j.put("observed_waited_child_cpu_ns",a.child);j.put("observed_worker_timed_cpu_ns",a.timed);
+ j.put("committed_pairs_without_worker_cpu",a.timed_unknown);
+ std::cout<<j.str()<<"\n";
+}
+
 struct Plan {
  std::string source,axis,left,right;
  Config config;
@@ -105,6 +261,7 @@ struct Plan {
  bool implication=false; // opt-in v13 frozen implication semantics
  bool region_tree=false; // opt-in v14, previous schedules unchanged
  bool acquisition=false; // opt-in v15 empirical cost acquisition
+ bool accounted=false; // opt-in v17 attempt accounting, unchanged v15 policy
 };
 std::vector<LazySearchSpace::Axis> ordered_axes(const Config& cfg){
  return {cfg.axes.begin(),cfg.axes.end()};
@@ -247,6 +404,7 @@ void create_schema(Sqlite& db,const Plan& plan){
  st.bind(6,static_cast<std::int64_t>(plan.pairs));st.done();
  if(plan.adaptive)enable_adaptive_schema(db); // same atomic schema/plan commit
  if(plan.conditional)enable_conditional_schema(db,plan.implication,plan.region_tree,plan.acquisition);
+ if(plan.accounted)create_accounting_schema(db);
  db.exec("COMMIT");
 }
 void enable_adaptive_schema(Sqlite& db){
@@ -290,7 +448,7 @@ Plan read_plan(Sqlite& db){
  Statement version(db,"PRAGMA user_version");
  require(version.row(),"cannot inspect v3 schema version");
  const auto schema=version.number(0);
- require(schema==10||schema==11||schema==12||schema==13||schema==14||schema==15,"not a supported v3 pilot SQLite database");
+ require(schema==10||schema==11||schema==12||schema==13||schema==14||schema==15||schema==17,"not a supported v3 pilot SQLite database");
  Statement st(db,"SELECT source_json,source_sha256,axis,left_label,right_label,max_pairs,protocol FROM v3_plan WHERE id=1");
  require(st.row(),"missing immutable v3 plan");
  const auto source=st.str(0),digest=st.str(1),axis=st.str(2),left=st.str(3),right=st.str(4);
@@ -301,9 +459,10 @@ Plan read_plan(Sqlite& db){
  auto result=(schema>=12)?
    make_conditional_plan(source,static_cast<int>(count),
        schema==13||(schema>=14&&!config_from_json(Json::parse(source)).conditional_rules.empty()),
-       schema>=14,schema==15):
+       schema>=14,schema==15||schema==17):
    make_plan(source,left,right,static_cast<int>(count));
  result.adaptive=schema==11;
+ result.accounted=schema==17;
  if(result.adaptive){
   validate_plan(result);
   const auto labels=adaptive_legal_labels(result);
@@ -571,11 +730,19 @@ void execute_pairs(Sqlite& db,const Plan& plan,ReplicatePlanner& planner,
   std::vector<std::string>{plan.config.a,plan.config.b};
  std::size_t this_call=0;
  while(completed<static_cast<std::size_t>(plan.pairs)&&(pause==0||this_call<pause)){
+  std::optional<RusageWindowV3> window;
+  if(plan.accounted)window=start_window_v3();
   const auto selected=select_pair(planner,plan,adaptive,conditional);
   const auto& proposal=selected.matched;
   const auto seed=proposal.first.key.replicate.seed;
   const auto a=materialize_selected(plan,selected,0,seed),
              b=materialize_selected(plan,selected,1,seed);
+  std::optional<std::int64_t> attempt;
+  if(plan.accounted){
+   attempt=reserve_attempt_v3(db,completed,seed,a,b);
+   if(const auto* fault=std::getenv("PHASESHIFT_V3_FAILPOINT");fault&&std::string(fault)=="stop_after_attempt_reservation")
+    std::raise(SIGSTOP);
+  }
   const auto started=std::chrono::steady_clock::now();
   auto measure_one=[&](const Case& c){
    return measure(c,algorithms,plan.config.blocks,plan.config.warmup,
@@ -640,6 +807,11 @@ void execute_pairs(Sqlite& db,const Plan& plan,ReplicatePlanner& planner,
     audit.done();
    }
    insert_samples(db,completed,0,a,left);insert_samples(db,completed,1,b,right);
+   if(attempt){
+    commit_attempt_v3(db,*attempt,completed,*window);
+    if(const auto* fault=std::getenv("PHASESHIFT_V3_FAILPOINT");fault&&std::string(fault)=="during_pair_commit")
+     std::_Exit(90);
+   }
    db.exec("COMMIT");
   }catch(...){db.exec("ROLLBACK");throw;}
   if(const auto* fault=std::getenv("PHASESHIFT_V3_FAILPOINT");fault&&std::string(fault)=="after_pair_commit")
@@ -735,6 +907,10 @@ std::string source_digest_v3(Sqlite& db,const Plan& plan){
  record("SELECT * FROM v3_samples ORDER BY pair_number,side,ordinal");
  record("SELECT * FROM v3_conditional_decisions ORDER BY pair_number");
  if(plan.acquisition)record("SELECT * FROM v3_acquisition_decisions ORDER BY pair_number");
+ if(plan.accounted){
+  record("SELECT * FROM v3_accounting_origin ORDER BY id");
+  record("SELECT * FROM v3_attempts ORDER BY attempt_id");
+ }
  return sha256(bytes);
 }
 FamilySpecV3 make_family_spec(const Plan& plan,const std::vector<MatchedBoundaryObservationV3>& discovery,
@@ -1055,10 +1231,10 @@ int numeric_option(int argc,char** argv,const std::string& key,int fallback){
 void syntax(int argc,char** argv,const std::string& command){
  const std::set<std::string> accepted=command=="run"?
   std::set<std::string>{"--config","--out","--left","--right","--pairs","--pause-after"}:
-  command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||command=="acquisition-v3")?
+  command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||command=="acquisition-v3"||command=="accounted-v3")?
   std::set<std::string>{"--config","--out","--pairs","--pause-after"}:
   command=="family-freeze"?std::set<std::string>{"--run","--manifest"}:
-  (command=="verify"||command=="taxonomy"||command=="family-report")?std::set<std::string>{"--run"}:
+  (command=="verify"||command=="taxonomy"||command=="family-report"||command=="accounting")?std::set<std::string>{"--run"}:
   std::set<std::string>{"--run","--pause-after"};
  require((argc-2)%2==0,"options require key/value pairs");
  std::set<std::string> used;
@@ -1073,22 +1249,23 @@ int main(int argc,char** argv){
  try{
   require(argc>=2,"expected run, resume or verify");
   const std::string command=argv[1];
-  require(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||command=="acquisition-v3")||command=="resume"||command=="verify"||command=="taxonomy"||command=="family-freeze"||command=="family-confirm"||command=="family-report","unknown pilot command");
+  require(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||command=="acquisition-v3"||command=="accounted-v3")||command=="resume"||command=="verify"||command=="taxonomy"||command=="family-freeze"||command=="family-confirm"||command=="family-report"||command=="accounting","unknown pilot command");
   syntax(argc,argv,command);
   const auto pause=numeric_option(argc,argv,"--pause-after",0);
-  if(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||command=="acquisition-v3")){
+  if(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||command=="acquisition-v3"||command=="accounted-v3")){
    const auto config=option(argc,argv,"--config"),out=option(argc,argv,"--out");
    require(!config.empty()&&!out.empty(),"run needs config and output path");
    Plan plan;
    if(command=="adaptive")
     plan=make_adaptive_plan(read_file(config),numeric_option(argc,argv,"--pairs",3));
-   else if(command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||command=="acquisition-v3")){
+   else if(command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||command=="acquisition-v3"||command=="accounted-v3")){
     const auto frozen=read_file(config);
-    const auto rules=(command=="conditional-tree"||command=="acquisition-v3")?
+    const auto rules=(command=="conditional-tree"||command=="acquisition-v3"||command=="accounted-v3")?
       !config_from_json(Json::parse(frozen)).conditional_rules.empty():
       command=="conditional-rules";
     plan=make_conditional_plan(frozen,numeric_option(argc,argv,"--pairs",3),
-                               rules,(command=="conditional-tree"||command=="acquisition-v3"),command=="acquisition-v3");
+                               rules,(command=="conditional-tree"||command=="acquisition-v3"||command=="accounted-v3"),command=="acquisition-v3"||command=="accounted-v3");
+    plan.accounted=command=="accounted-v3";
    }
    else{
     const auto left=option(argc,argv,"--left"),right=option(argc,argv,"--right");
@@ -1096,8 +1273,10 @@ int main(int argc,char** argv){
     plan=make_plan(read_file(config),left,right,numeric_option(argc,argv,"--pairs",3));
    }
    require(!fs::exists(out),"run directory exists; cannot overwrite immutable evidence");
-   fs::create_directories(out);
+   require(fs::create_directories(out),"run directory already reserved");
    Sqlite db(fs::path(out)/"run.sqlite");
+   std::optional<AccountedRunLock> lock;
+   if(plan.accounted){lock.emplace(fs::path(out)/"run.sqlite");db.exec("PRAGMA synchronous=FULL");}
    create_schema(db,plan);
    auto planner=planner_for(plan);
    std::optional<AdaptivePairPolicy> adaptive;
@@ -1121,11 +1300,17 @@ int main(int argc,char** argv){
   require(!run.empty(),"resume/verify need --run");
   require(fs::is_regular_file(fs::path(run)/"run.sqlite"),"missing authoritative run.sqlite");
   const bool family=command=="family-freeze"||command=="family-confirm"||command=="family-report";
-  const bool readonly=command=="taxonomy"||family;
+  const bool needs_taxonomy=command=="taxonomy"||family;
+  const bool readonly=needs_taxonomy||command=="accounting"||command=="verify";
   Sqlite db(fs::path(run)/"run.sqlite",readonly);
   if(readonly)db.exec("BEGIN"); // one read-only snapshot for replay and report
   const auto plan=read_plan(db);
-  if(readonly)require(plan.conditional,"taxonomy/family requires v12-v15 conditional evidence");
+  if(needs_taxonomy)require(plan.conditional,"taxonomy/family requires conditional evidence");
+  if(command=="accounting")require(plan.accounted,"accounting requires schema 17");
+  std::optional<AccountedRunLock> lock;
+  if(plan.accounted&&!readonly){
+   lock.emplace(fs::path(run)/"run.sqlite");db.exec("PRAGMA synchronous=FULL");check_accounting_origin(db,true);
+  }
   auto planner=planner_for(plan);
   std::optional<AdaptivePairPolicy> adaptive;
   if(plan.adaptive)adaptive.emplace(adaptive_legal_labels(plan),
@@ -1142,7 +1327,14 @@ int main(int argc,char** argv){
   }
   std::vector<MatchedBoundaryObservationV3> taxonomy;
   const auto completed=replay(db,plan,planner,adaptive?&*adaptive:nullptr,
-                              conditional?&*conditional:nullptr,readonly?&taxonomy:nullptr);
+                              conditional?&*conditional:nullptr,needs_taxonomy?&taxonomy:nullptr);
+  if(plan.accounted){
+   (void)audit_accounting_v3(db,completed,static_cast<std::size_t>(plan.pairs));
+   if(!readonly)db.exec("UPDATE v3_attempts SET state='ABANDONED' WHERE state='STARTED'");
+  }
+  if(command=="accounting"){
+   report_accounting_v3(db,completed,static_cast<std::size_t>(plan.pairs));db.exec("COMMIT");return 0;
+  }
   if(family){
    family_command_v3(command,fs::path(run),option(argc,argv,"--manifest"),plan,taxonomy,
                      source_digest_v3(db,plan),static_cast<std::size_t>(pause));
@@ -1152,7 +1344,7 @@ int main(int argc,char** argv){
    taxonomy_json(plan,taxonomy,completed);db.exec("COMMIT");return 0;
   }
   if(command=="verify"){
-   std::cout<<"v3 replay verified "<<completed<<" committed matched pairs\n";return 0;
+   db.exec("COMMIT");std::cout<<"v3 replay verified "<<completed<<" committed matched pairs\n";return 0;
   }
   execute_pairs(db,plan,planner,adaptive?&*adaptive:nullptr,
                 conditional?&*conditional:nullptr,completed,static_cast<std::size_t>(pause));
