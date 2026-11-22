@@ -21,7 +21,7 @@ class SMACContract(unittest.TestCase):
    c=lab.config(f,source,33001,True)
    e=lab.config(f,source,33001,False)
    self.assertEqual(c["algorithms"],e["algorithms"])
-   self.assertEqual(c["fixed"].get("n"),e["fixed"].get("n"))
+   self.assertEqual(c.get("fixed",{}).get("n"),e.get("fixed",{}).get("n"))
    self.assertEqual(len(lab.allowed_edges(source))+1,len(source["config"]["axes"][source["config"]["primary_axis"]]["values"]))
  def test_loss_censor_and_effect(self):
   self.assertEqual(lab.smac_loss(None),1.)
