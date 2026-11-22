@@ -1,0 +1,57 @@
+name: v3-historical-compatibility
+on:
+  pull_request:
+    paths:
+      - 'apps/**'
+      - 'src/**'
+      - 'include/**'
+      - 'tests/**'
+      - 'configs/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/v3-historical-compatibility.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  historical-replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: candidate
+      - uses: actions/checkout@v4
+        with:
+          ref: 279a8c65ad7ec3741a727ff49aa7f84e0628a6f1
+          path: baseline
+      - run: sudo apt-get update && sudo apt-get install -y cmake ninja-build g++ libsqlite3-dev libjson-c-dev libssl-dev pkg-config jq
+      - name: Build immutable baseline and exact candidate
+        run: |
+          set -euo pipefail
+          for tree in baseline candidate; do
+            git -C "$tree" rev-parse HEAD
+            cmake -S "$tree" -B "$tree/build" -G Ninja -DCMAKE_BUILD_TYPE=Release
+            cmake --build "$tree/build" -j2
+          done
+      - name: Generate historical schema 8 and 9 fixtures with old binaries
+        run: |
+          ctest --test-dir baseline/build --output-on-failure --no-tests=error -R '^(hybrid_mixed_v2_replay|v2_campaign_two_real_worker_hypotheses)$'
+      - name: Verify cross-revision replay and immutable source evidence
+        run: |
+          python3 candidate/tests/v3/historical_compatibility.py --baseline baseline --candidate candidate --scratch compatibility
+          git -C baseline rev-parse HEAD > compatibility/baseline-sha.txt
+          git -C candidate rev-parse HEAD > compatibility/candidate-sha.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: historical-compatibility-${{ github.run_id }}
+          path: compatibility/*.json
+          retention-days: 14
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: historical-compatibility-revisions-${{ github.run_id }}
+          path: compatibility/*-sha.txt
+          retention-days: 14
