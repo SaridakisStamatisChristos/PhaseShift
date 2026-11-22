@@ -23,7 +23,7 @@ HERE=Path(__file__).resolve().parent
 ROOT=HERE.parents[1]
 MANIFEST=HERE/"paired_development_manifest.json"
 POLICIES=("conditional-tree","acquisition-v3")
-SCHEMAS=dict(zip(POLICIES,(14,15)))
+SCHEMAS={**dict(zip(POLICIES,(14,15))),"acquisition-v3-coverage":18}
 
 def need(ok,msg):
     if not ok:
@@ -158,7 +158,7 @@ def read_trial(dbpath,f,policy,seed,pairs,complete):
         cpu=0
         known=True
         total_wall=0
-        enabled=None if policy!="acquisition-v3" else 0
+        enabled=0 if policy in ("acquisition-v3","acquisition-v3-coverage") else None
         for i,(number,rep,status,effect,wall,stored_cpu,axis,l,r,arm) in enumerate(rows):
             need(number==i and wall>0 and arm in ("explore","replicate"),"pair identity")
             left,right=decode(l),decode(r)
