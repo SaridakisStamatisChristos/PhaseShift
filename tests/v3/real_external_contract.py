@@ -36,7 +36,7 @@ class RealExternalContract(unittest.TestCase):
             self.assertEqual(external["fixed"]["distribution"],
                              native["axes"]["distribution"]["values"][0])
             self.assertEqual(native["algorithms"],external["algorithms"])
-            self.assertEqual(native["fixed"].get("n"),external["fixed"].get("n"))
+            self.assertEqual(native.get("fixed",{}).get("n"),external.get("fixed",{}).get("n"))
             self.assertEqual(len(lab.allowed_edges(source)),
                              len(source["config"]["axes"][source["config"]["primary_axis"]]["values"])-1)
 
