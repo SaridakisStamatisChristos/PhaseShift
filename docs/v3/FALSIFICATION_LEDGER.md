@@ -106,3 +106,15 @@ Exercise real Linux SIGKILL after durable reservation while writer lock is held;
 ## V3-00 historical compatibility falsification (22 November 2026)
 
 Run 44986318671, job 137097561518: baseline and candidate built, both baseline fixture-generation CTests passed, but schema 7 full snapshot after report/replay differed. Code inspection: `report()` deliberately refreshes derived `aggregates` and upserts timestamped `artifacts`; `replay()` uses a read-only Store. The initial test incorrectly required report to be entirely read-only. Repair runs reporting and export on separate copies, requires full original logical snapshot equality after both replays, and checks report-copy authoritative rows and raw report equality. Only the two explicitly derived table row sets are excluded from the report-copy comparison, not from replay. No legacy production behavior changed. Re-execution pending; no gate closure claimed.
+
+
+## V3-01b independent adversarial gates — 22 November 2026
+
+- F1: smooth change in synthetic operation count must not be relabelled a planted discrete cliff; generated context oracle must enumerate zero planted jump edges. Check `tests/v3/multidim_truth_test.py` and C++ work formula tests.
+- F2: a rare positive context must not be silently assumed to cover the full hypercube; union-of-scopes enumeration validates only admissible coordinates. Mutating a scope or context should be rejected before scoring.
+- F3: repeated correct edge nominations must not double-count independent discovered edges; wrong-sign nominating a true positive edge is false for signed truth evaluation. Check unit test.
+- F4: a pair whose endpoints skip a legal neighbor is rejected, even if its interval contains a true jump; a censored pair cannot contain finite effect. Independent SQLite falsification fixture.
+- F5: a missing seed, policy, run.sqlite, raw log, plan SHA, or mismatched exact source config fails replay; run with `--verify-only` after real CLI campaign.
+- F6: even if exploratory seed-paired intervals look positive, no cross-engine winner is computable because endpoints and budget protocols differ. The gate rejects apparent score comparability rather than silently pooling outcomes.
+
+No successful execution evidence is asserted here until GitHub Actions for the exact commit complete. Keep raw negative/censored results and the original schema 7/8/9 historical compatibility lane.
