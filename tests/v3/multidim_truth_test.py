@@ -12,6 +12,7 @@ HERE=Path(__file__).resolve().parents[2]/"benchmarks"/"v3"
 sys.path.insert(0,str(HERE))
 from multidim_truth import config, domain, groups, truth, classify, order, load, split_check
 from run_multidim import adjudication, paired_bootstrap
+from unified_score import comparison_gate
 
 class TruthTests(unittest.TestCase):
     @classmethod
@@ -85,6 +86,21 @@ class TruthTests(unittest.TestCase):
             run(left,{**right,"x":right["x"]+2})
         with self.assertRaises(ValueError):
             run(left,right,"censored",1.0)
+    def test_comparison_ineligibility_and_positive_same_protocol(self):
+        v2={"engine":"incumbent-v1-v2","endpoint":"independent_work_unit_confirmation",
+            "fixture":"early_cliff","suite":"development","budget_protocol":"case_boundary_cpu_wall",
+            "source_commit":"a"*40}
+        v3={"engine":"v3-matched-pairs","endpoint":"unconfirmed_timing_nomination",
+            "fixture":"multi_context_steps","suite":"development",
+            "budget_protocol":"fixed_pair_count_cpu_wall","source_commit":"a"*40}
+        rejected=comparison_gate(v2,v3)
+        self.assertFalse(rejected["comparable"])
+        self.assertIsNone(rejected["winner"])
+        self.assertFalse(rejected["superiority_claim"])
+        self.assertTrue(comparison_gate(v3,dict(v3))["comparable"])
+        with self.assertRaises(ValueError):
+            comparison_gate({},v3)
+
     def test_smooth_is_not_flat_work_claim(self):
         self.assertEqual(truth(self.fs["smooth_no_jump"]),[])
         self.assertGreater(len(domain(config(self.fs["smooth_no_jump"],0))),10)
