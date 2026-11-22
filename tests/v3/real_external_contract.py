@@ -31,6 +31,10 @@ class RealExternalContract(unittest.TestCase):
             source=self.by[scenario["source"]]
             native=lab.config(scenario,source,32001,True)
             external=lab.config(scenario,source,32001,False)
+            self.assertEqual(native["search"]["max_cases"],40)
+            self.assertEqual(external["search"]["max_cases"],40)
+            self.assertGreaterEqual(native["search"]["max_cases"],2*self.m["confirmation_pairs"])
+            self.assertLessEqual(native["search"]["max_cases"],native["limits"]["max_search_queue"])
             self.assertEqual(len(native["axes"]),2)
             self.assertEqual(len(external["axes"]),1)
             self.assertEqual(external["fixed"]["distribution"],
