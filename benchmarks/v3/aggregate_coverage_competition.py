@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+"""Independent 360-trial three-policy native development aggregate.
+
+Do not treat 120 repeated fixture observations as 120 independent clusters.
+Seed is the matched resampling unit across all six fixtures.
+Retain nulls, misses, censored, over-budget trials and cost consumption.
+"""
+from __future__ import annotations
+import argparse
+import json
+from pathlib import Path
+import random
+
+from multidim_truth import truth
+from protocol import seal,sha256_file
+from run_coverage_competition import manifest,verification,require,read,POLICIES
+
+
+def aggregate(roots):
+    m,mh=manifest()
+    names={f["id"] for f in m["fixtures"]}
+    require(set(roots)==names,"incomplete, extra or duplicated fixture shards")
+    revisions=set()
+    all_rows=[]
+    source={}
+    for f in m["fixtures"]:
+        id=f["id"];root=roots[id]
+        result=verification(root)
+        require(read(root/"scorecard.json")==result and
+                result["source_commit"] and
+                result["manifest_sha256"]==mh and
+                result["scenario"]==id and
+                result["diagnostic"] is False and
+                result["expected_trials"]==result["observed_trials"]==60 and
+                result["eligible_for_claim"] is False and
+                result["sota_claim"] is False,
+                "not all 60 native-workload trials independently validated")
+        revisions.add(result["source_commit"])
+        all_rows.extend(result["results"])
+        source[id]={
+            "plan_sha256":sha256_file(root/"frozen_plan.json"),
+            "scorecard_sha256":sha256_file(root/"scorecard.json"),
+            "source_commit":result["source_commit"]}
+    require(len(revisions)==1,"mixed source revisions")
+    lookup={(r["fixture"],r["seed"],r["policy"]):r for r in all_rows}
+    expected={(f["id"],seed,p) for f in m["fixtures"]
+             for seed in m["seeds"] for p in POLICIES}
+    require(len(all_rows)==len(expected)==360 and set(lookup)==expected,
+            "incomplete paired 360-trial matched experiment")
+    positive={f["id"] for f in m["fixtures"] if truth(f)}
+    negative={f["id"] for f in m["fixtures"] if not truth(f)}
+    require(len(positive)==4 and len(negative)==2,
+            "positive and negative-control fixture separation changed")
+    by_fixture=[]
+    for f in m["fixtures"]:
+        out={}
+        for p in POLICIES:
+            rs=[lookup[(f["id"],seed,p)] for seed in m["seeds"]]
+            out[p]={
+                "trials":20,
+                "under_budget_true_hit_trials":sum(r["true_hit_under_budget"]>0 for r in rs),
+                "distinct_planted_truth_edges_nominated":sum(r["true_hit_under_budget"] for r in rs),
+                "false_nomination_events":sum(r["adjudication"]["false_observations"] for r in rs),
+                "replication_queries":sum(r["replication_pairs"] for r in rs),
+                "exploration_queries":sum(r["exploratory_pairs"] for r in rs),
+                "failures":sum(r["raw_trial"]["status"]!="ok" for r in rs),
+                "out_of_consumed_budget":sum(not r["raw_trial"]["within_consumed_ceilings"] for r in rs),
+                "total_cpu_ns":sum(r["raw_trial"]["observed_total_cpu_ns"] for r in rs),
+                "total_wall_ns":sum(r["raw_trial"]["observed_total_wall_ns"] for r in rs)
+            }
+        by_fixture.append({"fixture":f["id"],
+                           "truth_edges":len(truth(f)),
+                           "policies":out})
+    cluster=[]
+    for seed in m["seeds"]:
+        arms={}
+        for policy in POLICIES:
+            rows=[lookup[(f["id"],seed,policy)] for f in m["fixtures"]]
+            pp=[r for r in rows if r["fixture"] in positive]
+            nn=[r for r in rows if r["fixture"] in negative]
+            arms[policy]={
+                "positive_hit_fraction":sum(r["true_hit_under_budget"]>0 for r in pp)/len(pp),
+                "null_false_per_trial":sum(r["adjudication"]["false_observations"] for r in nn)/len(nn),
+                "replications_per_trial":sum(r["replication_pairs"] for r in rows)/len(rows),
+                "observed_total_cpu_ns":sum(r["raw_trial"]["observed_total_cpu_ns"] for r in rows),
+            }
+        cluster.append({"seed":seed,"arms":arms})
+
+    def compare(new,old,metric):
+        diffs=[c["arms"][new][metric]-c["arms"][old][metric] for c in cluster]
+        n=len(diffs)
+        mean=sum(diffs)/n
+        rng=random.Random(int(seal([m["protocol"],metric,new,old,"bootstrap_v1"]),16))
+        draws=sorted(sum(diffs[rng.randrange(n)] for _ in range(n))/n for _ in range(2000))
+        return {"seed_clusters":n,"mean_new_minus_old":mean,
+                "descriptive_seed_cluster_percentile95":
+                    [draws[int(.025*len(draws))],draws[int(.975*len(draws))-1]],
+                "new_better_seed_clusters":sum(d>0 for d in diffs),
+                "new_worse_seed_clusters":sum(d<0 for d in diffs),
+                "tied_seed_clusters":sum(d==0 for d in diffs),
+                "statistical_superiority_claim":False}
+    comparative={}
+    for old in POLICIES[:2]:
+        comparative["coverage_vs_"+old]={
+            metric:compare("acquisition-v3-coverage",old,metric)
+            for metric in ("positive_hit_fraction","null_false_per_trial",
+                           "replications_per_trial","observed_total_cpu_ns")}
+    return {
+        "schema":1,"protocol":m["protocol"],"suite":"development",
+        "source_commit":revisions.pop(),
+        "source_manifest_sha256":mh,
+        "expected_trials":360,"observed_trials":360,
+        "seed_cluster_count":20,"positive_fixtures":sorted(positive),
+        "null_fixtures":sorted(negative),
+        "scenario_results":by_fixture,
+        "seed_cluster_paired_differences":comparative,
+        "raw_cluster_metrics":cluster,"source_provenance":source,
+        "eligible_for_claim":False,"sota_claim":False,"evaluation_opened":False,
+        "decision":None,
+        "limitations":[
+            "Only synthetic work-unit edges are labelled ground truth",
+            "Observed CLI CPU is not exact pure-worker CPU nor a standardized hardware benchmark",
+            "Equal query counts and same CI fixture do not imply exactly equal consumed CPU",
+            "Twenty seed clusters support only exploratory paired bootstrap intervals",
+            "No fresh-seed confirmation of these timed nominations",
+            "Policy choice from this development analysis is not evaluation validation",
+            "No external competitor or SOTA claim, sealed evaluation never opened"]
+    }
+
+
+def main():
+    p=argparse.ArgumentParser()
+    p.add_argument("--artifacts",required=True,type=Path)
+    p.add_argument("--out",required=True,type=Path)
+    p.add_argument("--verify-only",action="store_true")
+    a=p.parse_args()
+    roots={}
+    for folder in a.artifacts.iterdir():
+        if folder.is_dir() and (folder/"frozen_plan.json").is_file():
+            id=read(folder/"frozen_plan.json")["shard"]
+            require(id not in roots,"duplicate source evidence shard")
+            roots[id]=folder
+    report=aggregate(roots)
+    if a.verify_only:
+        require(read(a.out)==report,"independent competitive aggregate scorecard drift")
+    else:
+        with a.out.open("x") as out:
+            json.dump(report,out,indent=2,sort_keys=True,allow_nan=False)
+            out.write("\n")
+    print(json.dumps({
+        "status":"PASS","trials":report["observed_trials"],
+        "source_revision":report["source_commit"],"matched_seed_clusters":20,
+        "scenarios":[{
+            "fixture":f["fixture"],
+            "hit":{k:v["under_budget_true_hit_trials"] for k,v in f["policies"].items()},
+            "replication_pairs":{k:v["replication_queries"] for k,v in f["policies"].items()}
+        } for f in report["scenario_results"]],
+        "sota_claim":False
+    },sort_keys=True),flush=True)
+
+
+if __name__=="__main__":
+    main()
