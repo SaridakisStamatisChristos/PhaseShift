@@ -1,0 +1,267 @@
+{
+  "schema": 1,
+  "protocol": "phaseshift.v18.coverage-cost.3way-one-time-evaluation.1",
+  "suite": "evaluation",
+  "source_fixture_path": "benchmarks/v3/multidim_evaluation.json",
+  "source_fixture_blob_sha1": "2413676e519aeaed8bb275d5e7f2d118788851ed",
+  "frozen_candidate_base_commit": "cfd0e8bc4ee7040866a95651c8bd8b183b8fa0ac",
+  "pinned_code_blobs": {
+    "include/phaseshift/v3/conditional_pair.hpp": "352649a791af583dd5e779500d2db9336119901b",
+    "include/phaseshift/v3/acquisition.hpp": "4af662731363c76d87955008d8d655beb0f76566",
+    "apps/phaseshift_v3_pairs.cpp": "780d32f50514bdccfc47658230d8795b10fc8918"
+  },
+  "endpoint": "unconfirmed_native_timing_nomination_vs_planted_work_unit_edges",
+  "benchmarked_since_initial_dev": false,
+  "eligible_for_claim": false,
+  "sota_claim": false,
+  "sealed_evaluation_one_time": true,
+  "seeds": [
+    7101,
+    7102,
+    7103,
+    7104,
+    7105,
+    7106,
+    7107,
+    7108,
+    7109,
+    7110,
+    7111,
+    7112,
+    7113,
+    7114,
+    7115,
+    7116,
+    7117,
+    7118,
+    7119,
+    7120
+  ],
+  "diagnostic_seeds": [],
+  "pairs": 12,
+  "policies": [
+    "conditional-tree",
+    "acquisition-v3",
+    "acquisition-v3-coverage"
+  ],
+  "cpu_ceiling_ns": 15000000000,
+  "wall_ceiling_ns": 60000000000,
+  "fixtures": [
+    {
+      "id": "multi_context_steps",
+      "shape": "steps",
+      "x": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18
+      ],
+      "threshold": [
+        5,
+        9,
+        13
+      ],
+      "negative": [
+        false
+      ],
+      "scopes": []
+    },
+    {
+      "id": "rare_hidden_cliff",
+      "shape": "single",
+      "x": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18
+      ],
+      "threshold": [
+        6,
+        14
+      ],
+      "negative": [
+        false,
+        true
+      ],
+      "scopes": [
+        {
+          "negative": [
+            false
+          ],
+          "threshold": [
+            14
+          ]
+        },
+        {
+          "negative": [
+            true
+          ]
+        }
+      ]
+    },
+    {
+      "id": "smooth_no_jump",
+      "shape": "smooth",
+      "x": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18
+      ],
+      "threshold": [
+        6,
+        13
+      ],
+      "negative": [
+        false
+      ],
+      "scopes": []
+    },
+    {
+      "id": "multidim_null",
+      "shape": "steps",
+      "x": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18
+      ],
+      "threshold": [
+        7,
+        15
+      ],
+      "negative": [
+        true
+      ],
+      "scopes": []
+    },
+    {
+      "id": "sparse_multi_step",
+      "shape": "steps",
+      "x": [
+        0,
+        2,
+        5,
+        7,
+        10,
+        13,
+        16,
+        20
+      ],
+      "threshold": [
+        5,
+        12
+      ],
+      "negative": [
+        false
+      ],
+      "scopes": []
+    },
+    {
+      "id": "masked_interactions",
+      "shape": "steps",
+      "x": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18
+      ],
+      "threshold": [
+        5,
+        10,
+        15
+      ],
+      "negative": [
+        false,
+        true
+      ],
+      "scopes": [
+        {
+          "negative": [
+            false
+          ],
+          "threshold": [
+            10
+          ]
+        },
+        {
+          "negative": [
+            true
+          ]
+        }
+      ]
+    }
+  ],
+  "primary_decision": "compare_under_budget_one_or_more_correct_edge_nominations_in_all_four_positive_scenarios_20_seed_clusters;report_all_false_nomination_and_cpu_costs;do_not_tune_after_opening",
+  "no_reruns_for_policy_selection": true
+}
