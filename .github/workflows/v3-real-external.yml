@@ -29,8 +29,15 @@ jobs:
           python3 - <<'PY'
           import sys
           sys.path.insert(0,"benchmarks/v3")
-          from run_real_external import manifest
-          m,_=manifest()
+          from run_real_external import manifest,config
+          m,fixtures=manifest()
+          for scenario in m["scenarios"]:
+              for conditional in (True,False):
+                  c=config(scenario,fixtures[scenario["source"]],m["seeds"][0],conditional)
+                  assert c["search"]["max_cases"]==40
+                  assert c["search"]["max_cases"]<=c["limits"]["max_search_queue"], "native v2 candidate memory bound"
+                  assert c["search"]["max_cases"]>=2*m["confirmation_pairs"], "confirmation case capacity"
+          print("PASS native v2 memory bound for both v18 and external legal-edge configs")
           assert m["pair_budget"]==12 and m["confirmation_pairs"]==20
           assert m["seeds"]==list(range(32001,32021))
           assert set(m["seeds"]).isdisjoint(range(7101,7121))
