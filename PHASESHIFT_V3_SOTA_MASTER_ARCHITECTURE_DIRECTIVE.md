@@ -9,6 +9,12 @@
 **Implementation:** C++20; CPU-only; offline; Linux x86-64 primary; Python permitted **only** for isolated benchmarking/adapters.  
 **Status:** Forward-looking architecture/research specification, **not implemented**, **not evidence of SOTA**, and **not a proof of a novel algorithm**.
 
+> **Execution record (23 November 2026).** The status line above describes the directive at planning time and is kept unchanged as history. The v3 program was executed on `feature/phaseshift-v3-sota-research` (PR #6) and merged into `main` with explicit owner approval.
+>
+> **Outcome:** engineering gates verified at exact SHAs. The one-time, pre-registered external confirmation against genuine SMAC3 2.4.1 and Optuna 4.6.0 TPE found **no advantage**, so **no SOTA claim is made**.
+>
+> See [§21](#21-execution-outcome-and-final-verdict-23-november-2026) and [`docs/v3/V3_CLAIM_AUDIT.md`](docs/v3/V3_CLAIM_AUDIT.md). This document is still a specification, not evidence; evidence lives in source, tests, Git history, CI runs and `docs/v3/`.
+
 **Relationship to existing documents.** This plan advances—not replaces—the original `docs/PHASESHIFT_SPEC.md` and the prior `PHASESHIFT_V2_SOTA_UPGRADE_MASTER_PLAN.md`. All previously verified interfaces, scientific constraints, v1 defaults, v2 opt-in functionality and immutable evidence remain binding. Historical `docs/v2/*` reports may describe draft PR #5 as unmerged; they are historical snapshots, not current repository status.
 
 ---
@@ -947,3 +953,32 @@ These are **comparison and mechanism inspirations**, not authority to claim Phas
 # 20. Final standing directive
 
 **Deliver verified code, then evidence.** Preserve the tested v1/v2 engine. Fix fair comparison and sample allocation first. Introduce region-aware mixed-dimensional search, fresh paired replicates, cost and uncertainty calibration, shape-aware multi-boundary discovery and independent family-wide confirmation. Prove compatibility by executable tests and source-hashed evidence. Make the design *capable* of SOTA performance, then let independent experiments decide whether it is actually SOTA. Never merge or declare victory without the user's explicit command and the relevant acceptance gates.
+
+---
+
+# 21. Execution outcome and final verdict (23 November 2026)
+
+This section records what happened when the directive was executed. Every statement points to evidence in `docs/v3/`. Where this section and that evidence disagree, the evidence governs.
+
+**Merge:** PR #6 (`feature/phaseshift-v3-sota-research`) was merged into `main` with explicit owner approval, after this record's own commit also passed CI. The last head before this record was `4a18a00`, where every triggered CI workflow passed: GCC and Clang 123/123, ASan/UBSan 123/123, production line coverage 7386/7724 = 95.62%, v1/v2 historical compatibility, the scientific benchmark and multidim truth.
+
+| Milestone | Outcome |
+|---|---|
+| V3-00 | Baseline and historical schema 7/8/9 replay gate implemented and CI-verified. No post-merge expensive v2 heldout rerun |
+| V3-01 – V3-08 | Implemented as opt-in protocols (schemas 10–19) with falsifying tests. States PARTIAL per `IMPLEMENTATION_LEDGER.md`; no policy promoted |
+| V3-06 | Not attempted (optional) |
+| V3-09 | Journaled holdout attempts, Ed25519-signed witnesses, scope-preserving minimization with fresh-seed reproduction, live-worker containment and storage-fault matrix. Two real evidence-integrity defects were found and fixed. Limits: no cgroups, no genuine ENOSPC, v1/v2 store not hardened |
+| V3-10 | Development comparisons executed and archived. A one-time frozen confirmation (cohort 51001–51020, run 45211496039) found H1 V18 > SMAC3 2.4.1 and H2 V18 > Optuna TPE both **NOT SUPPORTED** (Holm p = 1.0). ruptures PELT parity is detector-only |
+| V3-11 | `docs/v3/V3_CLAIM_AUDIT.md` final. The opened V18 sealed internal evaluation showed no superiority |
+
+**Verdict against §17 "Definition of done":**
+
+- The engineering criteria are met for the implemented scope.
+- The scientific criteria for a SOTA claim are **not** met. The required "at least one real matched external acquisition competitor" comparison was executed, and it found no advantage.
+- PhaseShift v3 is therefore an auditable, falsifiable boundary-discovery engine whose **external competitiveness is unproven**.
+
+**Standing constraints for any future work on `main`:**
+
+- **Burned cohorts.** Cohorts 7101–7120 and 51001–51020 are opened and must never be reused.
+- **New claims need a new confirmation.** Any new external claim requires a newly frozen protocol on a new, derived-seed-disjoint cohort, preferably with workloads less saturated than `sort_ascending`.
+- **Preserved evidence.** The archived evidence and frozen manifests stay unchanged.
