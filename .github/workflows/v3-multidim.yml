@@ -6,6 +6,13 @@ on:
       - 'src/algorithms.cpp'
       - 'tests/v3/**'
       - '.github/workflows/v3-multidim.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'benchmarks/v3/**'
+      - 'src/algorithms.cpp'
+      - 'tests/v3/**'
+      - '.github/workflows/v3-multidim.yml'
   workflow_dispatch:
     inputs:
       suite:

@@ -5,6 +5,12 @@ on:
       - 'benchmarks/v3/**'
       - 'tests/v3/**'
       - '.github/workflows/v3-scientific-benchmark.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'benchmarks/v3/**'
+      - 'tests/v3/**'
+      - '.github/workflows/v3-scientific-benchmark.yml'
   workflow_dispatch:
     inputs:
       suite:

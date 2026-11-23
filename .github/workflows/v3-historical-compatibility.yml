@@ -9,6 +9,16 @@ on:
       - 'configs/**'
       - 'CMakeLists.txt'
       - '.github/workflows/v3-historical-compatibility.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/**'
+      - 'src/**'
+      - 'include/**'
+      - 'tests/**'
+      - 'configs/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/v3-historical-compatibility.yml'
   workflow_dispatch:
 permissions:
   contents: read

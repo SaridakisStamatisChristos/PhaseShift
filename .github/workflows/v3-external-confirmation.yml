@@ -5,7 +5,7 @@ name: v3-external-confirmation
 # the exact token, at most once ever; it is never rerun or extended.
 on:
   push:
-    branches: ['feature/phaseshift-v3-sota-research']
+    branches: [main]
     paths:
       - '.github/workflows/v3-external-confirmation.yml'
       - 'benchmarks/v3/external_confirmation.json'

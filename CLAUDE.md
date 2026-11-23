@@ -32,8 +32,8 @@
 5. Report only what was actually run. Say when a step was skipped or failed, with output.
 
 ## Git
-- Work on `feature/phaseshift-v3-sota-research` unless told otherwise. Verify the branch and `git status` before changes.
-- Preserve draft PR #6. Do not force-push, rewrite history, merge into `main`, or discard unrelated edits.
+- Work directly on `main` (owner instruction, 2026-11-23, after v3 PR #6 was merged as `e7169dd`). Verify the branch and `git status` before changes.
+- Do not force-push, rewrite history, or discard unrelated edits. Never re-run opened cohorts (7101-7120, 51001-51020) or the one-time `v18-sealed-evaluation` / `v3-external-confirmation` openings.
 - Make atomic commits, each coherent and tested. Do not commit secrets.
 - Push verified milestones, then check GitHub CI. Do not invent CI results.
 
