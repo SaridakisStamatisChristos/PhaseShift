@@ -710,6 +710,14 @@ add_test(NAME v3_holdout_attempt_journal_crash_tamper_and_legacy
  --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_holdout_journal)
 set_tests_properties(v3_holdout_attempt_journal_crash_tamper_and_legacy PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE)
 
+# V3-09 signed boundary witness: Ed25519 export, openssl-independent verify, replay-bound evidence.
+add_test(NAME v3_signed_witness_export_verify_and_forgery
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/signed_witness_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/admissible_calibration.json
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_signed_witness)
+set_tests_properties(v3_signed_witness_export_verify_and_forgery PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE)
+
 # V3-01b analytical synthetic worker shapes; strictly additive opt-in workloads.
 add_executable(phaseshift_v3_shapes_tests tests/v3/synthetic_shapes.cpp)
 target_link_libraries(phaseshift_v3_shapes_tests PRIVATE phaseshift_core)

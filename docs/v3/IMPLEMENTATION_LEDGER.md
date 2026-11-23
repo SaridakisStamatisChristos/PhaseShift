@@ -209,3 +209,43 @@ New opt-in `family-freeze-journaled` creates a schema-19 sidecar. It has the sam
 - unchanged legacy schema-16 freeze and confirm.
 
 **State:** V3-09 PARTIAL. Exact-head CI pending. No statistical, performance or SOTA claim.
+
+
+## V3-09c signed boundary witness export (23 November 2026)
+
+Predecessor `158011e`: all seven exact-head CI workflows succeeded (GCC/Clang build-test, ASan/UBSan, production coverage 118/118, historical compatibility, scientific benchmark, multidim, v18 coverage).
+
+**New read-only commands on `phaseshift_v3_pairs`:**
+
+- `witness-export --run RUN --key ED25519_PRIVATE_PEM --out DIR`. It fully replays the discovery run and a **complete** frozen family sidecar (v16 or v19) and refuses partial families, unresolved STARTED attempts and non-Ed25519 keys. It writes three files into a newly created directory and never overwrites one:
+  - `witness.json`, the evidence bound to the exporter executable and worker digests and the source revision;
+  - `witness.sig`, a detached 64-byte Ed25519 signature over the exact `witness.json` bytes;
+  - `public_key.pem`.
+
+  The private key is only read. Export is deterministic: the same evidence and key give byte-identical files.
+- `witness-verify --run RUN --witness DIR --public-key TRUSTED_PEM`. The trusted key must be supplied separately; the bundled key must equal it and is never trusted alone. It checks the signature and header, then rebuilds the evidence from a full raw replay and requires deep JSON equality with the signed evidence. Any change since signing fails closed. The output also reports whether the exporter executable matches the verifier.
+
+**Evidence bound in `witness.json`:**
+
+- the discovery source-config digest, the existing family source-snapshot digest, the primary axis and the algorithms;
+- the frozen family spec and its digest, the sidecar schema and the frozen source revision;
+- a documented length-prefixed logical digest of the whole sidecar: the schema DDL from `sqlite_master`, the family, cases (without BLOBs, which are regenerated and checked by replay), pairs, raw samples and, for v19, the journal tables;
+- member endpoints and context, and the complete family report;
+- the attempt journal state (`ABSENT_SCHEMA_16` with `retries_observable=false` for legacy sidecars);
+- explicit claim limits: not confirmed, assumptions not validated, not hardware-general, no SOTA.
+
+**F-027 residual partly closed.** A journal strip, or a delete-and-renumber rewrite, made *after* signing is now detected by `witness-verify`. Rewrites made *before* export remain undetectable; the test shows the renumber rewrite is still accepted by `family-report`.
+
+**Not provided:** key custody or rotation, revocation, trusted timestamps, transparency logging, fresh-seed re-execution by the verifier, and witness minimization. Verification is replay against the stored raw evidence, not a re-run of workers.
+
+**Test:** `tests/v3/signed_witness_cli.py` (CTest `v3_signed_witness_export_verify_and_forgery`). It checks:
+
+- independent Ed25519 verification with the stock `openssl pkeyutl -rawin` CLI;
+- an independent Python reimplementation of both logical digests;
+- spec, report, journal and member endpoint bindings, and deterministic re-export;
+- the fail-closed export gates: no sidecar, pending attempt, partial family, RSA key, existing output;
+- each forgery rejected for its asserted reason: unsigned edit, attacker re-signing with a swapped bundled key, genuine-key re-signing of altered evidence, a truncated signature, a byte flip, a bundled-key swap, the wrong trusted key and a missing trusted key;
+- post-signing journal strip, renumbered journal, altered holdout raw CPU and altered discovery wall-clock, all rejected;
+- legacy v16 disclosure, and a cross-run witness rejected.
+
+**State:** V3-09 PARTIAL. Exact-head CI pending. Still open: type-preserving witness minimization on fresh seeds, the full crash and descendant-accounting matrix, and derived-cache poisoning.

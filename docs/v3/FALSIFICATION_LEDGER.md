@@ -130,3 +130,17 @@ Attack: kill `family-confirm` after the worker measured a holdout pair but befor
 - rejection of deleted abandoned or committed attempts, uncommitted links, altered seed, order or case identity, extra or beyond-schedule attempts, a missing protocol row and a `user_version` downgrade.
 
 Residual, deliberately recorded: a full journal strip to a valid v16 layout is undetectable without signing (V3-09 signed export remains OPEN).
+
+
+## F-028 — Forged, re-signed or post-hoc rewritten boundary witness
+
+The attacks are listed in the V3-09c entry of the implementation ledger, and each must be rejected with its asserted error, not merely a nonzero exit:
+
+- an altered witness without re-signing;
+- an attacker key with a swapped bundled public key;
+- the genuine key re-signing altered evidence (caught by full-replay equality);
+- a truncated signature, a byte flip, a wrong or missing trusted key;
+- a journal strip, a renumbered abandoned-attempt deletion, a raw holdout CPU edit or a discovery wall-clock edit made after signing;
+- a witness checked against a different run.
+
+The signature is independently checked with the `openssl` CLI and both digests are independently recomputed. Residual: evidence rewritten *before* export is signed as-is; the signature attests to replay-consistency at export time, not to the history before it.

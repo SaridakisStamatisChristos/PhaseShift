@@ -9,6 +9,11 @@
 #include "phaseshift/v3/fixed_family.hpp"
 #include <bit>
 #include <sqlite3.h>
+#include <openssl/bio.h>
+#include <openssl/evp.h>
+#include <openssl/pem.h>
+#include <openssl/x509.h>
+#include <memory>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -1320,8 +1325,8 @@ void run_journaled_family_pair(Sqlite& db,const Plan& plan,const FamilySpecV3& f
  }
  if(const auto* fault=std::getenv("PHASESHIFT_V3_FAILPOINT");fault&&std::string(fault)=="after_holdout_commit")std::_Exit(89);
 }
-void report_family_v3(const Plan& plan,const FamilySpecV3& f,const HoldoutEffectsV3& effects,
-                     std::size_t count,const std::optional<HoldoutJournalV3>& journal=std::nullopt){
+Json family_result_v3(const Plan& plan,const FamilySpecV3& f,const HoldoutEffectsV3& effects,
+                      std::size_t count,const std::optional<HoldoutJournalV3>& journal=std::nullopt){
  const auto outcome=fixed_family_v3(f.members,effects,f.n,std::log(plan.config.min_ratio),f.alpha,f.assumptions);
  Json result;
  result.put("schema",journal?"phaseshift.v3.fixed_edge_family_journaled.1":"phaseshift.v3.fixed_edge_family.1");
@@ -1355,7 +1360,11 @@ void report_family_v3(const Plan& plan,const FamilySpecV3& f,const HoldoutEffect
   }
   result.put("members",std::move(rows));
  }
- std::cout<<result.str()<<"\n";
+ return result;
+}
+void report_family_v3(const Plan& plan,const FamilySpecV3& f,const HoldoutEffectsV3& effects,
+                     std::size_t count,const std::optional<HoldoutJournalV3>& journal=std::nullopt){
+ std::cout<<family_result_v3(plan,f,effects,count,journal).str()<<"\n";
 }
 void family_command_v3(const std::string& command,const fs::path& run,const std::string& manifest_path,
  const Plan& plan,const std::vector<MatchedBoundaryObservationV3>& discovery,
@@ -1405,6 +1414,229 @@ void family_command_v3(const std::string& command,const fs::path& run,const std:
  report_family_v3(plan,f,effects,count,journal);
 }
 
+// ---------------------------------------------------------------------------
+// V3-09 signed boundary witness. The witness binds a complete frozen family
+// outcome to logical digests of the replayed discovery and holdout evidence.
+// It is an offline Ed25519 detached signature; key custody, revocation and
+// trusted timestamps are the operator's responsibility and are not provided.
+using PkeyV3=std::unique_ptr<EVP_PKEY,decltype(&EVP_PKEY_free)>;
+PkeyV3 read_ed25519_key_v3(const std::string& path,bool is_private){
+ std::unique_ptr<BIO,decltype(&BIO_free)> bio(BIO_new_file(path.c_str(),"rb"),&BIO_free);
+ require(bio!=nullptr,"cannot open Ed25519 key file");
+ PkeyV3 key(is_private?PEM_read_bio_PrivateKey(bio.get(),nullptr,nullptr,nullptr):
+                       PEM_read_bio_PUBKEY(bio.get(),nullptr,nullptr,nullptr),&EVP_PKEY_free);
+ require(key!=nullptr,is_private?"invalid private key PEM":"invalid public key PEM");
+ require(EVP_PKEY_get_base_id(key.get())==EVP_PKEY_ED25519,"witness key must be Ed25519");
+ return key;
+}
+std::string public_key_der_v3(EVP_PKEY* key){
+ unsigned char* der=nullptr;
+ const int size=i2d_PUBKEY(key,&der);
+ require(size>0&&der!=nullptr,"cannot encode Ed25519 public key");
+ std::string out(reinterpret_cast<const char*>(der),static_cast<std::size_t>(size));
+ OPENSSL_free(der);
+ return out;
+}
+std::string public_key_pem_v3(EVP_PKEY* key){
+ std::unique_ptr<BIO,decltype(&BIO_free)> bio(BIO_new(BIO_s_mem()),&BIO_free);
+ require(bio!=nullptr&&PEM_write_bio_PUBKEY(bio.get(),key)==1,"cannot encode public key PEM");
+ char* data=nullptr;
+ const auto size=BIO_get_mem_data(bio.get(),&data);
+ require(size>0&&data!=nullptr,"empty public key PEM");
+ return {data,static_cast<std::size_t>(size)};
+}
+std::string ed25519_sign_v3(EVP_PKEY* key,const std::string& message){
+ std::unique_ptr<EVP_MD_CTX,decltype(&EVP_MD_CTX_free)> ctx(EVP_MD_CTX_new(),&EVP_MD_CTX_free);
+ std::string sig(64,'\0');std::size_t size=sig.size();
+ require(ctx&&EVP_DigestSignInit(ctx.get(),nullptr,nullptr,nullptr,key)==1&&
+         EVP_DigestSign(ctx.get(),reinterpret_cast<unsigned char*>(sig.data()),&size,
+           reinterpret_cast<const unsigned char*>(message.data()),message.size())==1&&size==64,
+         "Ed25519 signing failed");
+ return sig;
+}
+bool ed25519_verify_v3(EVP_PKEY* key,const std::string& message,const std::string& sig){
+ if(sig.size()!=64)return false;
+ std::unique_ptr<EVP_MD_CTX,decltype(&EVP_MD_CTX_free)> ctx(EVP_MD_CTX_new(),&EVP_MD_CTX_free);
+ require(ctx&&EVP_DigestVerifyInit(ctx.get(),nullptr,nullptr,nullptr,key)==1,"Ed25519 verifier setup failed");
+ return EVP_DigestVerify(ctx.get(),reinterpret_cast<const unsigned char*>(sig.data()),sig.size(),
+          reinterpret_cast<const unsigned char*>(message.data()),message.size())==1;
+}
+// Documented logical digest (reproduced independently by the witness test):
+// domain, then for each query: len:query, and per row "3:row" plus for each
+// column len:type-code and len:value (integer decimal, REAL as IEEE-754 bit
+// pattern decimal, TEXT bytes, NULL no value). BLOBs are excluded by query.
+std::string logical_digest_v3(Sqlite& db,const std::string& domain,const std::vector<std::string>& queries){
+ std::string bytes=domain;
+ auto append=[&](const std::string& value){bytes+=std::to_string(value.size())+":"+value;};
+ for(const auto& query:queries){
+  append(query);
+  Statement rows(db,query.c_str());
+  while(rows.row()){
+   append("row");
+   for(int i=0;i<sqlite3_column_count(rows.stmt);++i){
+    const auto type=sqlite3_column_type(rows.stmt,i);
+    append(std::to_string(type));
+    if(type==SQLITE_INTEGER)append(std::to_string(rows.number(i)));
+    else if(type==SQLITE_FLOAT)append(std::to_string(std::bit_cast<std::uint64_t>(sqlite3_column_double(rows.stmt,i))));
+    else if(type==SQLITE_TEXT)
+     append(std::string(reinterpret_cast<const char*>(sqlite3_column_text(rows.stmt,i)),
+                        static_cast<std::size_t>(sqlite3_column_bytes(rows.stmt,i))));
+    else require(type==SQLITE_NULL,"unexpected witness digest column type");
+   }
+  }
+ }
+ return sha256(bytes);
+}
+std::vector<std::string> sidecar_digest_queries_v3(int version){
+ std::vector<std::string> q{
+  "PRAGMA user_version",
+  "SELECT type,name,tbl_name,sql FROM sqlite_master ORDER BY type,name",
+  "SELECT * FROM v3_family ORDER BY id",
+  "SELECT case_id,family,params,seed,input_sha256 FROM v3_cases ORDER BY case_id",
+  "SELECT * FROM v3_pairs ORDER BY pair_number",
+  "SELECT * FROM v3_samples ORDER BY pair_number,side,ordinal"};
+ if(version==19){
+  q.emplace_back("SELECT * FROM v3_holdout_journal_origin ORDER BY id");
+  q.emplace_back("SELECT * FROM v3_holdout_attempts ORDER BY attempt_id");
+ }
+ return q;
+}
+Json json_array_v3(){return Json(json_object_new_array());}
+void json_push_v3(Json& array,const Json& item){json_object_array_add(array.p,json_object_get(item.p));}
+// Rebuild the signed evidence purely from replayed raw run + sidecar state.
+Json witness_evidence_v3(const fs::path& run,const Plan& plan,
+ const std::vector<MatchedBoundaryObservationV3>& discovery,const std::string& fingerprint){
+ const auto path=run/"confirmation"/"family.sqlite";
+ require(fs::is_regular_file(path),"witness requires a frozen family sidecar");
+ Sqlite ledger(path,true);
+ ledger.exec("BEGIN");
+ const auto version=family_sidecar_version(ledger);
+ const auto f=read_family_sidecar(ledger,plan,discovery,fingerprint);
+ HoldoutEffectsV3 effects;
+ const auto count=replay_family_sidecar(ledger,plan,f,discovery,effects);
+ std::optional<HoldoutJournalV3> journal;
+ if(version==19)journal=audit_holdout_journal_v3(ledger,plan,f,discovery,count);
+ const auto sidecar_digest=logical_digest_v3(ledger,"phaseshift.v3.family-sidecar.1",sidecar_digest_queries_v3(version));
+ ledger.exec("COMMIT");
+ require(count==f.seeds.size(),"witness requires a complete frozen holdout family");
+ require(!journal||journal->started==0,"witness refuses an unresolved STARTED holdout attempt");
+ auto report=family_result_v3(plan,f,effects,count,journal);
+ require(report.b("complete"),"witness requires complete family outcome");
+
+ Json evidence;
+ evidence.put("protocol","phaseshift.v3.boundary_witness_evidence.1");
+ Json source;
+ source.put("source_config_sha256",sha256(plan.source));
+ source.put("source_snapshot_sha256",fingerprint);
+ source.put("committed_discovery_pairs",static_cast<std::int64_t>(discovery.size()));
+ source.put("primary_axis",plan.axis);
+ source.put("algorithm_a",plan.config.a);source.put("algorithm_b",plan.config.b);
+ evidence.put("discovery",std::move(source));
+ Json family;
+ family.put("sidecar_schema",static_cast<std::int64_t>(version));
+ family.put("family_sha256",f.digest);
+ family.put("specification",f.canonical);
+ family.put("frozen_source_revision",f.revision);
+ family.put("sidecar_logical_sha256",sidecar_digest);
+ evidence.put("family",std::move(family));
+ Json attempts;
+ if(journal){
+  attempts.put("state",journal->abandoned?"RETRIED_AFTER_INTERRUPTION":"CLEAN");
+  attempts.put("retries_observable",true);
+  attempts.put("holdout_attempts",journal->attempts);
+  attempts.put("abandoned_attempts",journal->abandoned);
+  attempts.put("pairs_with_abandoned_attempts",journal->interrupted_pairs);
+ }else{
+  attempts.put("state","ABSENT_SCHEMA_16");
+  attempts.put("retries_observable",false);
+ }
+ evidence.put("holdout_attempt_journal",std::move(attempts));
+ auto edges=json_array_v3();
+ const auto& labels=plan.config.axes.at(plan.axis);
+ for(std::size_t i=0;i<f.members.size();++i){
+  const auto& member=f.members[i];
+  const auto& edge=discovery.at(member.discovery_pair);
+  Json row;Json context;
+  row.put("member_index",static_cast<std::int64_t>(i));
+  row.put("discovery_pair",static_cast<std::int64_t>(member.discovery_pair));
+  row.put("direction",static_cast<std::int64_t>(member.direction));
+  row.put("left",labels.at(edge.left));row.put("right",labels.at(edge.right));
+  for(const auto& [axis,label]:edge.context)context.put(axis.c_str(),label);
+  row.put("context",std::move(context));
+  json_push_v3(edges,row);
+ }
+ evidence.put("members",std::move(edges));
+ evidence.put("family_report",std::move(report));
+ Json limits;
+ limits.put("confirmed",false);
+ limits.put("assumptions_empirically_validated",false);
+ limits.put("hardware_general",false);
+ limits.put("scope","frozen fixed-edge family under the declared sign model on the recorded host; not a SOTA claim");
+ evidence.put("claim_limits",std::move(limits));
+ return evidence;
+}
+std::string option(int argc,char** argv,const std::string& name);
+void witness_command_v3(const std::string& command,const fs::path& run,int argc,char** argv,
+ const Plan& plan,const std::vector<MatchedBoundaryObservationV3>& discovery,const std::string& fingerprint){
+ if(command=="witness-export"){
+  const auto key_path=option(argc,argv,"--key"),out=option(argc,argv,"--out");
+  require(!key_path.empty()&&!out.empty(),"witness-export needs --key and --out");
+  const auto key=read_ed25519_key_v3(key_path,true);
+  // Build and sign before reserving the output, so failure leaves nothing.
+  auto evidence=witness_evidence_v3(run,plan,discovery,fingerprint);
+  Json exporter;
+  exporter.put("source_revision",Json::parse(environment()).s("source_revision"));
+  exporter.put("executable_sha256",executable_digest_v3(false));
+  exporter.put("worker_sha256",executable_digest_v3(true));
+  Json witness;
+  witness.put("schema","phaseshift.v3.signed_boundary_witness.1");
+  witness.put("signature_algorithm","ed25519");
+  witness.put("public_key_sha256",sha256(public_key_der_v3(key.get())));
+  witness.put("exporter",std::move(exporter));
+  witness.put("evidence",std::move(evidence));
+  const auto bytes=witness.str()+"\n";
+  const auto signature=ed25519_sign_v3(key.get(),bytes);
+  require(ed25519_verify_v3(key.get(),bytes,signature),"self-verification of new witness failed");
+  require(!fs::exists(out)&&fs::create_directories(out),"witness directory exists; immutable export");
+  write_file((fs::path(out)/"witness.json").string(),bytes);
+  write_file((fs::path(out)/"witness.sig").string(),signature);
+  write_file((fs::path(out)/"public_key.pem").string(),public_key_pem_v3(key.get()));
+  Json summary;
+  summary.put("schema","phaseshift.v3.signed_boundary_witness.1");
+  summary.put("witness_sha256",sha256(bytes));
+  summary.put("public_key_sha256",witness.s("public_key_sha256"));
+  std::cout<<summary.str()<<"\n";
+  return;
+ }
+ const auto dir=option(argc,argv,"--witness"),trusted_path=option(argc,argv,"--public-key");
+ require(!dir.empty()&&!trusted_path.empty(),"witness-verify needs --witness and a separately trusted --public-key");
+ const auto trusted=read_ed25519_key_v3(trusted_path,false);
+ const auto trusted_der=public_key_der_v3(trusted.get());
+ const auto bytes=read_file((fs::path(dir)/"witness.json").string());
+ const auto signature=read_file((fs::path(dir)/"witness.sig").string());
+ require(ed25519_verify_v3(trusted.get(),bytes,signature),"witness signature invalid for trusted key");
+ const auto bundled=read_ed25519_key_v3((fs::path(dir)/"public_key.pem").string(),false);
+ require(public_key_der_v3(bundled.get())==trusted_der,"bundled public key differs from trusted key");
+ const auto witness=Json::parse(bytes);
+ require(witness.s("schema")=="phaseshift.v3.signed_boundary_witness.1"&&
+         witness.s("signature_algorithm")=="ed25519"&&
+         witness.s("public_key_sha256")==sha256(trusted_der),"unsupported or mismatched witness header");
+ json_object* signed_evidence=witness.get("evidence");
+ require(signed_evidence!=nullptr,"witness lacks evidence");
+ // Independent full replay; any evidence change since signing fails closed.
+ const auto rebuilt=Json::parse(witness_evidence_v3(run,plan,discovery,fingerprint).str());
+ require(json_object_equal(signed_evidence,rebuilt.p)==1,"replayed evidence differs from signed witness");
+ json_object* exporter=witness.get("exporter");
+ json_object* exe=exporter?json_object_object_get(exporter,"executable_sha256"):nullptr;
+ Json result;
+ result.put("schema","phaseshift.v3.signed_boundary_witness_verification.1");
+ result.put("verified",true);
+ result.put("witness_sha256",sha256(bytes));
+ result.put("exporter_executable_matches_verifier",
+            exe!=nullptr&&json_object_get_string(exe)==executable_digest_v3(false));
+ std::cout<<result.str()<<"\n";
+}
+
 std::string option(int argc,char** argv,const std::string& name){
  for(int i=2;i+1<argc;i+=2)if(argv[i]==name)return argv[i+1];
  return {};
@@ -1422,6 +1654,8 @@ void syntax(int argc,char** argv,const std::string& command){
   command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||(command=="acquisition-v3"||command=="acquisition-v3-coverage")||command=="accounted-v3")?
   std::set<std::string>{"--config","--out","--pairs","--pause-after"}:
   (command=="family-freeze"||command=="family-freeze-journaled")?std::set<std::string>{"--run","--manifest"}:
+  command=="witness-export"?std::set<std::string>{"--run","--key","--out"}:
+  command=="witness-verify"?std::set<std::string>{"--run","--witness","--public-key"}:
   (command=="verify"||command=="taxonomy"||command=="family-report"||command=="accounting")?std::set<std::string>{"--run"}:
   std::set<std::string>{"--run","--pause-after"};
  require((argc-2)%2==0,"options require key/value pairs");
@@ -1437,7 +1671,7 @@ int main(int argc,char** argv){
  try{
   require(argc>=2,"expected run, resume or verify");
   const std::string command=argv[1];
-  require(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||(command=="acquisition-v3"||command=="acquisition-v3-coverage")||command=="accounted-v3")||command=="resume"||command=="verify"||command=="taxonomy"||command=="family-freeze"||command=="family-freeze-journaled"||command=="family-confirm"||command=="family-report"||command=="accounting","unknown pilot command");
+  require(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||(command=="acquisition-v3"||command=="acquisition-v3-coverage")||command=="accounted-v3")||command=="resume"||command=="verify"||command=="taxonomy"||command=="family-freeze"||command=="family-freeze-journaled"||command=="family-confirm"||command=="family-report"||command=="accounting"||command=="witness-export"||command=="witness-verify","unknown pilot command");
   syntax(argc,argv,command);
   const auto pause=numeric_option(argc,argv,"--pause-after",0);
   if(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||(command=="acquisition-v3"||command=="acquisition-v3-coverage")||command=="accounted-v3")){
@@ -1488,7 +1722,8 @@ int main(int argc,char** argv){
   require(!run.empty(),"resume/verify need --run");
   require(fs::is_regular_file(fs::path(run)/"run.sqlite"),"missing authoritative run.sqlite");
   const bool family=command=="family-freeze"||command=="family-freeze-journaled"||command=="family-confirm"||command=="family-report";
-  const bool needs_taxonomy=command=="taxonomy"||family;
+  const bool witness=command=="witness-export"||command=="witness-verify";
+  const bool needs_taxonomy=command=="taxonomy"||family||witness;
   const bool readonly=needs_taxonomy||command=="accounting"||command=="verify";
   Sqlite db(fs::path(run)/"run.sqlite",readonly);
   if(readonly)db.exec("BEGIN"); // one read-only snapshot for replay and report
@@ -1526,6 +1761,10 @@ int main(int argc,char** argv){
   if(family){
    family_command_v3(command,fs::path(run),option(argc,argv,"--manifest"),plan,taxonomy,
                      source_digest_v3(db,plan),static_cast<std::size_t>(pause));
+   db.exec("COMMIT");return 0;
+  }
+  if(witness){
+   witness_command_v3(command,fs::path(run),argc,argv,plan,taxonomy,source_digest_v3(db,plan));
    db.exec("COMMIT");return 0;
   }
   if(command=="taxonomy"){
