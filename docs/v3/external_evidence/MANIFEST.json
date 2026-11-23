@@ -1,0 +1,64 @@
+{
+ "schema": 1,
+ "purpose": "durable git copy of executed external/sealed CI evidence before 14-day artifact expiry",
+ "downloaded_on": "2026-11-23",
+ "copied_verbatim": true,
+ "evidence_class": "exploratory development (Optuna/SMAC), opened one-time sealed internal evaluation (V18), detector-only (ruptures)",
+ "sota_claim": false,
+ "files": [
+  {
+   "file": "optuna_tpe_random_vs_v18_development_final.json",
+   "sha256": "ba184fcbfe9cacfe9c2f666eb2b62a6e04b2a3492baba1617b13813342cf1624",
+   "bytes": 14082,
+   "github_actions_run_id": "45142307852",
+   "artifact": "v3-external-real-120-campaign-final-audited-report",
+   "recorded_source_commit": "8cef6a70e1c47e84a26d015a53ef85c333296894",
+   "scope": "development seeds 32001-32020"
+  },
+  {
+   "file": "smac3_vs_v18_development_final.json",
+   "sha256": "efd5b6ab14aaccae574da96afe56cf6865f81141386311c5e877626e1cdfefe4",
+   "bytes": 6492,
+   "github_actions_run_id": "45143027905",
+   "artifact": "v3-real-smac-full-audited-scorecard",
+   "recorded_source_commit": "848e2b7df770a50c5070c0a80caf920a5d939765",
+   "scope": "development seeds 33001-33020"
+  },
+  {
+   "file": "v18_sealed_internal_final_scorecard.json",
+   "sha256": "e14df177ef2d9417807443b0136bac2870b9d024f0068abc15560f413f9c32e6",
+   "bytes": 28977,
+   "github_actions_run_id": "45071082096",
+   "artifact": "v18-sealed-360-independent-final-scorecard",
+   "recorded_source_commit": "b5491873ccf534c6d2c26562a07f0d1b9f068d9c",
+   "scope": "opened sealed synthetic cohort 7101-7120; internal policies only"
+  },
+  {
+   "file": "ruptures_detector_scorecard.json",
+   "sha256": "360777f0ba615cecfca3644b38c0560ec3164d43a690c9c251c3ca010235f10d",
+   "bytes": 1029,
+   "github_actions_run_id": "45117904998",
+   "artifact": "v3-ruptures-100-real-cpp-series-audited-results",
+   "recorded_source_commit": "b3fde1aec2c9b65dff7aa17785ab230c8c091089",
+   "scope": "detector-only, 100 series"
+  },
+  {
+   "file": "ruptures_pelt_comparison.json",
+   "sha256": "a61a338eff1c1898451a138642cca72bdd7bf8b6e2557c490df08bdd5a87a9da",
+   "bytes": 44575,
+   "github_actions_run_id": "45117904998",
+   "artifact": "v3-ruptures-100-real-cpp-series-audited-results",
+   "recorded_source_commit": "b3fde1aec2c9b65dff7aa17785ab230c8c091089",
+   "scope": "detector-only, 100 series"
+  },
+  {
+   "file": "ruptures_independent_audit.json",
+   "sha256": "e4c5445c5dc32753d0b15e41e697a29bea33242cfd954c2426c38200724a0296",
+   "bytes": 2184,
+   "github_actions_run_id": "45117904998",
+   "artifact": "v3-ruptures-100-real-cpp-series-audited-results",
+   "recorded_source_commit": "b3fde1aec2c9b65dff7aa17785ab230c8c091089",
+   "scope": "detector-only, 100 series"
+  }
+ ]
+}

@@ -1,0 +1,73 @@
+{
+  "detector_only": true,
+  "experiment": "C++_v2_exact_DP_and_unconstrained_ruptures_PELT_l2",
+  "external_report_sha256": "a61a338eff1c1898451a138642cca72bdd7bf8b6e2557c490df08bdd5a87a9da",
+  "incomparable_feasible_rows": 0,
+  "length_per_series": 48,
+  "matched_feasible_rows": 100,
+  "native_exact_DP_has_K_le_3": true,
+  "ruptures_version": "v1.1.10",
+  "scenarios": {
+    "0": {
+      "cpp_near_planted": 0,
+      "cpp_nonempty": 0,
+      "matched_K_feasible": 20,
+      "objective_mismatches": 0,
+      "ruptures_near_planted": 0,
+      "ruptures_nonempty": 0,
+      "trials": 20,
+      "unmatched_K_feasible": 0
+    },
+    "1": {
+      "cpp_near_planted": 20,
+      "cpp_nonempty": 20,
+      "matched_K_feasible": 20,
+      "objective_mismatches": 0,
+      "ruptures_near_planted": 20,
+      "ruptures_nonempty": 20,
+      "trials": 20,
+      "unmatched_K_feasible": 0
+    },
+    "2": {
+      "cpp_near_planted": 20,
+      "cpp_nonempty": 20,
+      "matched_K_feasible": 20,
+      "objective_mismatches": 0,
+      "ruptures_near_planted": 20,
+      "ruptures_nonempty": 20,
+      "trials": 20,
+      "unmatched_K_feasible": 0
+    },
+    "3": {
+      "cpp_near_planted": 0,
+      "cpp_nonempty": 20,
+      "matched_K_feasible": 20,
+      "objective_mismatches": 0,
+      "ruptures_near_planted": 0,
+      "ruptures_nonempty": 20,
+      "trials": 20,
+      "unmatched_K_feasible": 0
+    },
+    "4": {
+      "cpp_near_planted": 0,
+      "cpp_nonempty": 16,
+      "matched_K_feasible": 20,
+      "objective_mismatches": 0,
+      "ruptures_near_planted": 0,
+      "ruptures_nonempty": 16,
+      "trials": 20,
+      "unmatched_K_feasible": 0
+    }
+  },
+  "schema": 1,
+  "sealed_v18_evaluation_reused": false,
+  "search_acquisition_compared": false,
+  "shared_l2_penalty": 2.5,
+  "shared_min_segment_length": 3,
+  "sota_claim": false,
+  "source_cpp_observations_sha256": "fef2cf46f5efe49215f86c4e91db390241214c877345360588a390b1ec250b7b",
+  "source_dataset_sha256": "d11e924142f51e1f89f7f69069da87e640c18ee479a5e9a225836ef90d1cad37",
+  "statistical_superiority_established": false,
+  "sum_absolute_penalized_objective_gap_comparable": 0.0006815179227872559,
+  "total_series": 100
+}
