@@ -59,6 +59,39 @@
    "artifact": "v3-ruptures-100-real-cpp-series-audited-results",
    "recorded_source_commit": "b3fde1aec2c9b65dff7aa17785ab230c8c091089",
    "scope": "detector-only, 100 series"
+  },
+  {
+   "file": "external_confirmation_one_time_final.json",
+   "sha256": "80e996fbcd733330f25ccdae67423345bdd27ee3b0c6d981c6158af3a94ed845",
+   "bytes": 35376,
+   "github_actions_run_id": "45211496039",
+   "artifact": "v3-external-confirmation-final-scorecard",
+   "recorded_source_commit": "4525c501036dda0cb3e0a393bcd404c005462bf6",
+   "scope": "ONE-TIME CONFIRMATION, cohort 51001-51020 opened 2026-11-23 by workflow_dispatch; native binary built from 848e2b7 (sha256 a60e1adc..., identical to the development SMAC binary); independently recomputed byte-identical from raw artifacts"
   }
- ]
+ ],
+ "raw_confirmation_artifacts": [
+  {
+   "artifact": "v3-external-confirmation-sort_ascending",
+   "id": 14836803488,
+   "bytes": 5247510,
+   "digest": "sha256:47d44aad59c6100465d1bc99bf2d4f802b27db2558cceb508411fba4ff04cf1b",
+   "expires_at": "2027-02-21"
+  },
+  {
+   "artifact": "v3-external-confirmation-topk_uniform",
+   "id": 14836423557,
+   "bytes": 17233760,
+   "digest": "sha256:f33793e3359f82e84a135da8927c42722730f7e14531842b383cb6a88922b126",
+   "expires_at": "2027-02-21"
+  },
+  {
+   "artifact": "v3-external-confirmation-final-scorecard",
+   "id": 14837995678,
+   "bytes": 12590,
+   "digest": "sha256:fdff0e6ffcf0bd4849866f83eeb17490b3b26014783d431ab967641b8e691359",
+   "expires_at": "2027-02-21"
+  }
+ ],
+ "raw_artifact_note": "Raw trial trees (about 22 MB) are not committed; they remain CI artifacts until 2027-02-21. Retain them durably (for example as a release asset) before expiry if the result is to be cited."
 }

@@ -1,6 +1,6 @@
-# PhaseShift v3 claim audit (V3-11, provisional)
+# PhaseShift v3 claim audit (V3-11)
 
-**Date:** 2026-11-23. **Branch:** `feature/phaseshift-v3-sota-research` (draft PR #6, not merged). **Status:** PROVISIONAL. The external verdict is pending the one-time confirmation, and merging needs owner approval.
+**Date:** 2026-11-23. **Branch:** `feature/phaseshift-v3-sota-research` (draft PR #6, not merged). **Status:** the evidence verdict is FINAL. The one-time external confirmation was executed and both hypotheses were not supported. Merging still needs owner approval.
 
 This audit states, per claim, what the evidence supports. Source, tests, Git history and recorded CI runs are the only evidence; a document describing a feature is not. "Verified" means observed execution on the exact commit named.
 
@@ -12,9 +12,11 @@ This audit states, per claim, what the evidence supports. Source, tests, Git his
 | v1/v2 behaviour preserved | **VERIFIED (sampled)** | `v3-historical-compatibility` green at every head from `158011e` to `4da55d7`: frozen schema 7/8/9 fixtures, replay and report identity |
 | Evidence integrity (journaled holdout, signed and minimized witnesses, fault containment, storage faults) | **VERIFIED engineering, with stated limits** | V3-09b–f, F-027–F-031; each mechanism has falsifying tests, several mutation-checked |
 | Internal v3 policy superiority | **NOT ESTABLISHED** | One-time sealed V18 evaluation (opened, 360 trials): 53/52/50 positive hits, point estimates only, `superiority_established: false` |
-| External competitiveness vs SMAC3 / Optuna | **UNPROVEN — confirmation frozen, not opened** | Development only (see below); frozen one-time confirmation `phaseshift.v3-external-confirmation.1` awaits execution |
+| External advantage over SMAC3 2.4.1 | **NOT SUPPORTED (confirmed negative)** | One-time frozen confirmation, run 45211496039: 5 better / 4 worse / 11 tied clusters, Holm p = 1.0. The development signal (+0.4) did not replicate |
+| External advantage over Optuna 4.6.0 TPE | **NOT SUPPORTED (confirmed negative)** | Same run: 5 better / 7 worse / 8 tied, mean −0.10, Holm p = 1.0 |
+| External competitiveness in general | **UNPROVEN** | No external advantage is established on any tested endpoint |
 | Change-point detector parity with ruptures PELT | **VERIFIED, detector-only scope** | Identical penalised objective on all 100 matched series (abs diff ≤ 2.2e-16); not an acquisition or end-to-end claim |
-| State of the art | **NOT CLAIMED** | No confirmatory external result exists |
+| State of the art | **NOT CLAIMED, and not supported** | The only confirmatory external test found no advantage |
 
 ## External comparison evidence (V3-10)
 
@@ -28,7 +30,33 @@ All executed results are archived verbatim with SHA-256 in [`external_evidence/`
 
 These are **hypothesis-generating** results. They were not frozen in advance, use no labelled ground truth, and their percentile intervals are exploratory.
 
-### Frozen one-time confirmation
+### One-time confirmation result (executed 2026-11-23)
+
+[Run 45211496039](https://github.com/SaridakisStamatisChristos/PhaseShift/actions/runs/45211496039) ran on harness commit `4525c50` and was opened by `workflow_dispatch` after the guard confirmed no previous opening.
+
+- **Completeness:** status `COMPLETE`, 40/40 trials, no failed or missing trials.
+- **Binary identity:** native binary built from `848e2b7`, SHA-256 `a60e1adc…`, byte-identical to the development SMAC study's binary.
+- **Archive:** the audited scorecard is [`external_evidence/external_confirmation_one_time_final.json`](external_evidence/external_confirmation_one_time_final.json) (SHA-256 `80e996fb…`). It was independently recomputed byte-identical from the raw trial artifacts on a second machine. Raw artifact digests are recorded in the evidence manifest.
+
+| Hypothesis | V18 better | V18 worse | Ties | Mean diff | raw p | Holm p | Decision |
+|---|---|---|---|---|---|---|---|
+| H1 V18 > SMAC3 2.4.1 | 5 | 4 | 11 | +0.05 | 0.50 | 1.0 | NOT SUPPORTED |
+| H2 V18 > Optuna TPE | 5 | 7 | 8 | −0.10 | 0.81 | 1.0 | NOT SUPPORTED |
+
+Descriptive only (not cost-matched; process and optimizer overhead differ):
+
+| Scenario | Policy | Rejections / nominations | Discovery wall (s) | Child CPU (s) | Harness CPU (s) |
+|---|---|---|---|---|---|
+| sort_ascending | V18 | 40 / 40 | 14.3 | 12.0 | 0.07 |
+| sort_ascending | SMAC3 | 40 / 40 | 62.2 | 13.8 | 46.5 |
+| sort_ascending | Optuna TPE | 39 / 40 | 17.1 | 13.6 | 0.84 |
+| topk_uniform | V18 | 33 / 40 | 17.0 | 14.8 | 0.41 |
+| topk_uniform | SMAC3 | 32 / 37 | 71.6 | 17.0 | 53.3 |
+| topk_uniform | Optuna TPE | 36 / 40 | 20.3 | 17.0 | 0.92 |
+
+Per the frozen decision rule: **no advantage over either competitor is established, and external competitiveness on this endpoint remains unproven.** On these two workloads all three policies nominate fresh-seed-reproducible contrasts at similar rates. The endpoint saturates on `sort_ascending`, where all policies reach 39–40 of 40 nominations, which limits its power to separate them.
+
+### Frozen protocol (as executed)
 
 [`benchmarks/v3/external_confirmation.json`](../../benchmarks/v3/external_confirmation.json) fixes the following before any cohort observation:
 
@@ -64,14 +92,14 @@ These states come from `IMPLEMENTATION_LEDGER.md`. Milestones marked *ledger* we
 | V3-07 taxonomy | PARTIAL (*ledger*) | Descriptive only |
 | V3-08 campaign statistics | PARTIAL (*ledger*) | Fixed-family Holm holdout implemented; population FWER interval not established |
 | V3-09 witness and fault containment | Engineering scope **implemented and CI-verified** | Limits: no cgroups, no genuine ENOSPC, v1/v2 store not hardened, no OOM cell |
-| V3-10 external comparison | Development executed; confirmation **FROZEN, NOT OPENED** | See above |
-| V3-11 claim audit | This document, **PROVISIONAL** | Final after confirmation and owner review |
+| V3-10 external comparison | **EXECUTED, negative result** | Aligned genuine SMAC3 and Optuna TPE comparison run once on a fresh cohort; no advantage. ruptures parity is detector-only |
+| V3-11 claim audit | This document, **FINAL evidence verdict** | Merge readiness below |
 
 ## Release and merge readiness
 
-Not ready to merge. Open items:
+The engineering gates are met at exact SHAs, and the scientific verdict is final and negative for external superiority. The open items are:
 
-1. Execute the frozen external confirmation once, and record its audited scorecard here and in the evidence archive.
-2. Re-run all CI lanes on the final release SHA, together with `scripts/acceptance_smoke.sh`.
-3. Owner review and explicit merge approval. Nothing is merged or released without it.
-4. The residual risks above remain disclosed, not resolved.
+1. Re-run all CI lanes on the final release SHA, together with `scripts/acceptance_smoke.sh`. CI already passed at `4525c50`; any later commit needs its own green run.
+2. Owner review and explicit merge approval. Nothing is merged or released without it.
+3. Retain the raw confirmation artifacts durably before their CI expiry on 2027-02-21, if the result is to be cited.
+4. The residual risks above remain disclosed, not resolved. A future external claim needs a new, separately frozen protocol on a new cohort, for example with more discriminating, less saturated workloads. This cohort must never be reused.

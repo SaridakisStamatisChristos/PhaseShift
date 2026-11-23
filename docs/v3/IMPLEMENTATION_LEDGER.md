@@ -450,3 +450,25 @@ Cohort freshness is checked mechanically in derived-seed space. The obvious next
 **V3-11:** `docs/v3/V3_CLAIM_AUDIT.md` gives a provisional per-claim verdict: engineering verified at exact SHAs, internal superiority not established, external competitiveness unproven pending confirmation, no SOTA. The README "Project status" was corrected (v2 merged as `279a8c6`; v3 is draft PR #6).
 
 **State:** V3-10 confirmation FROZEN, NOT OPENED. Opening is a one-time, irreversible owner decision. V3-11 is provisional.
+
+
+## V3-10 one-time external confirmation executed: negative result (23 November 2026)
+
+Run 45211496039, `workflow_dispatch` on harness commit `4525c50`, opened with the owner's explicit go-ahead after all seven CI lanes were green at that commit (123/123 under GCC, Clang, ASan/UBSan and coverage; 95.62%). The guard found no earlier opening.
+
+- **Completeness:** all 40 cohort trials (51001–51020 × 2 scenarios × 3 policies) completed, with no failed trials.
+- **Binary identity:** the native binary was built from `848e2b7`. Its SHA-256 `a60e1adc…` is byte-identical to the development SMAC study's binary.
+- **Audit:** independent re-audit of every native run, then status `COMPLETE`. The scorecard (`80e996fb…`) was recomputed byte-identical from the raw artifacts on a second machine.
+
+| Hypothesis | V18 better / worse / tied clusters | Mean diff | raw p | Holm p | Decision |
+|---|---|---|---|---|---|
+| H1 V18 > SMAC3 2.4.1 | 5 / 4 / 11 | +0.05 | 0.50 | 1.0 | **NOT SUPPORTED** |
+| H2 V18 > Optuna 4.6.0 TPE | 5 / 7 / 8 | −0.10 | 0.81 | 1.0 | **NOT SUPPORTED** |
+
+The development SMAC signal (+0.4, exploratory [0.1, 0.7]) did not replicate. The endpoint nearly saturates on `sort_ascending` (39–40 of 40 nominations rejected for every policy), which limits its discriminating power; this is disclosed, not a post-hoc excuse.
+
+Descriptive costs are not matched. On discovery wall time V18 is the fastest (about 14–17 s vs SMAC about 62–72 s, mostly Python harness overhead, and TPE about 17–20 s).
+
+The archive is `docs/v3/external_evidence/external_confirmation_one_time_final.json` plus the raw artifact digests in the manifest. The frozen manifest is intentionally left unchanged as the pre-registration record, and the cohort must never be reused.
+
+`V3_CLAIM_AUDIT.md` is final: external advantage not supported, external competitiveness unproven, no SOTA. README updated. V3-10 is EXECUTED with a negative result. V3-11 is final for evidence; release-SHA CI and owner merge approval remain.
