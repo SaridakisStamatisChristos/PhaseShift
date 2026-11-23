@@ -38,6 +38,12 @@ def run(binary,*args,expect=(0,),fsize=None,timeout=180):
     env=dict(os.environ)
     for key in ("PHASESHIFT_V3_FAILPOINT","PHASESHIFT_WORKER_FAULT","PHASESHIFT_WORKER_FAULT_PIDFILE"):
         env.pop(key,None)
+    if fsize is not None and "LLVM_PROFILE_FILE" in env:
+        # The injected file-size limit would also truncate the coverage
+        # runtime's own .profraw (corrupt header) and break the merge. Device
+        # writes are exempt from RLIMIT_FSIZE; only these fault-injection
+        # processes forgo coverage profiles.
+        env["LLVM_PROFILE_FILE"]="/dev/null"
     with tempfile.TemporaryFile("w+") as out,tempfile.TemporaryFile("w+") as err:
         p=subprocess.run([str(binary),*map(str,args)],stdout=out,stderr=err,timeout=timeout,env=env,
                          preexec_fn=limit if fsize is not None else None)

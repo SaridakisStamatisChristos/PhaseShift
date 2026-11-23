@@ -396,3 +396,5 @@ v3 has no derived cache; policy state is rebuilt from the authoritative SQLite o
 - The v1/v2 store gets neither the integrity check nor the digest replay (legacy behaviour preserved). An OOM cell is not added.
 
 **State:** V3-09 PARTIAL. Exact-head CI pending.
+
+**Coverage-lane repair (same day).** On `f078626`, six CI lanes passed but production-line-coverage failed: all 122 tests passed, then `llvm-profdata merge` rejected truncated `.profraw` files ("file header is corrupt"). The S1/S2 `RLIMIT_FSIZE` limit also truncated the coverage runtime's own profile writes. The storage test now points `LLVM_PROFILE_FILE` at `/dev/null` for the file-size-limited processes only, because device writes are exempt from the limit. Only those fault-injection processes forgo profiles. The coverage merge and gate are unchanged. A local `scripts/coverage.sh` run gives 122/122 tests and production coverage 7386/7724 = 95.62%, PASS.
