@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "protocol": "phaseshift.v3-external-smac24-real-algorithm-development.1",
+  "protocol": "phaseshift.v3-external-smac24-real-algorithm-development.2",
   "suite": "development",
   "eligible_for_sota": false,
   "source_manifest": "benchmarks/v3/real_external_development.json",
@@ -59,8 +59,9 @@
     }
   ],
   "objective": "minimize 1/(1+abs(matched log speed ratio change)) on adjacent feasible structural edges; censored reward has unit cost",
-  "comparison": "same PhaseShift C++ workers and correctness oracle; SMAC ask/tell per native CLI pair; 12 queries per policy; startup/optimizer overhead not equivalent",
+  "comparison": "same PhaseShift C++ workers and correctness oracle; SMAC ask/tell per native CLI pair; 12 queries per policy; startup/optimizer overhead not equivalent;SMAC one-dimensional continuous proposals floor-binned to legal edges, with repeat observations under a fixed 12-query budget",
   "truth_status": "real algorithm boundary location not independently ground-truth labeled",
   "evaluation_reused": false,
-  "sota_claim": false
+  "sota_claim": false,
+  "smac_coordinate_encoding": "continuous_0_to_edge_count_floor_clamped;one_real_query_per_smac_ask;rounding_is_published_and_replayed"
 }
