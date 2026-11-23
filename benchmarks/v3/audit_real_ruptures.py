@@ -52,7 +52,7 @@ def audit(dataset, report):
       result["dataset_sha256"]==digest(d/"datasets.csv") and
       result["sota_claim"] is False and
       result["search_policy_comparison"] is False and
-      result["library_version"]=="1.1.10",
+      result["library_version"] in ("1.1.10","v1.1.10"),
       "not actual pinned ruptures or changed dataset")
  rows={}
  summary={str(s):{"trials":0,"ruptures_nonempty":0,"ruptures_near_planted":0,
@@ -106,7 +106,7 @@ def audit(dataset, report):
          "source_dataset_sha256":digest(d/"datasets.csv"),
          "source_cpp_observations_sha256":digest(d/"observations.csv"),
          "external_report_sha256":digest(report),
-         "ruptures_version":"1.1.10",
+         "ruptures_version":result["library_version"],
          "scenarios":summary,
          "total_series":100,"length_per_series":48,
          "matched_feasible_rows":sum(s["matched_K_feasible"] for s in summary.values()),
