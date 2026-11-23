@@ -2,6 +2,7 @@
 // Separate CLI, v10 run.sqlite schema, and worker-backed observations.
 // No v1/v2 configuration, generator, CLI or Store migrations are modified.
 #include "phaseshift/experiment.hpp"
+#include "phaseshift/algorithms.hpp"
 #include "phaseshift/v3/replicate_planner.hpp"
 #include "phaseshift/v3/adaptive_pair.hpp"
 #include "phaseshift/v3/conditional_pair.hpp"
@@ -73,8 +74,23 @@ struct Sqlite {
  explicit Sqlite(const fs::path& path,bool readonly=false){
   const auto result=sqlite3_open_v2(path.string().c_str(),&db,readonly?SQLITE_OPEN_READONLY:SQLITE_OPEN_READWRITE|SQLITE_OPEN_CREATE,nullptr);
   if(result!=SQLITE_OK){const auto error=db?sqlite3_errmsg(db):"open failed";if(db)sqlite3_close(db);db=nullptr;throw Error("v3 SQLite: "+std::string(error));}
-  if(readonly)exec("PRAGMA query_only=ON; PRAGMA busy_timeout=5000;");
-  else exec("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;");
+  try{
+   if(readonly)exec("PRAGMA query_only=ON; PRAGMA busy_timeout=5000;");
+   else exec("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;");
+   // V3-09: fail closed on structurally damaged evidence (pages, indexes,
+   // freelist) before any replay or write. Table rows can read back intact
+   // while a corrupt freelist would let a writer allocate over committed rows.
+   std::vector<std::string> verdict;
+   char* error=nullptr;
+   const auto code=sqlite3_exec(db,"PRAGMA integrity_check",[](void* out,int n,char** values,char**)->int{
+     static_cast<std::vector<std::string>*>(out)->emplace_back(n>0&&values[0]?values[0]:"NULL");return 0;},
+    &verdict,&error);
+   const std::string why=error?error:"";
+   sqlite3_free(error);
+   if(code!=SQLITE_OK)throw Error("v3 SQLite integrity check failed: "+why);
+   if(verdict.size()!=1||verdict[0]!="ok")
+    throw Error("v3 SQLite integrity check failed: "+(verdict.empty()?std::string("no verdict"):verdict[0]));
+  }catch(...){sqlite3_close(db);db=nullptr;throw;}
  }
  ~Sqlite(){if(db)sqlite3_close(db);}
  Sqlite(const Sqlite&)=delete;Sqlite& operator=(const Sqlite&)=delete;
@@ -580,6 +596,17 @@ Case materialize_selected(const Plan& plan,const ScheduledV3& selected,
 }
 std::optional<double> per_side_metric(const std::vector<Observation>& rows,
  const std::string& main,const std::string& competitor);
+// V3-09 replay-side output check. An `ok` sample asserts the worker output
+// equalled the independent oracle, so its stored output digest must equal
+// the oracle output digest of the regenerated case; every sample must carry
+// the frozen measurement protocol. `expected` caches the digest per case.
+void verify_sample_output_v3(const Plan& plan,const Case& c,const std::string& status,
+ const std::string& digest,const std::string& protocol,std::optional<std::string>& expected){
+ require(protocol==plan.config.measurement_protocol_version,"sample measurement protocol mismatch");
+ if(status!="ok")return;
+ if(!expected)expected=sha256(encode_values(oracle(c).values));
+ require(digest==*expected,"ok sample output digest disagrees with independent oracle");
+}
 std::size_t replay(Sqlite& db,const Plan& plan,ReplicatePlanner& planner,
                    AdaptivePairPolicy* adaptive,ConditionalPairPortfolio* conditional,
                    std::vector<MatchedBoundaryObservationV3>* taxonomy=nullptr){
@@ -635,7 +662,8 @@ std::size_t replay(Sqlite& db,const Plan& plan,ReplicatePlanner& planner,
   }
   std::vector<std::vector<Observation>> persisted(2);
   for(int side=0;side<2;++side){
-   Statement sample(db,"SELECT status,ns,case_id,batch,algorithm,ordinal,cpu_ns FROM v3_samples WHERE pair_number=? AND side=? ORDER BY ordinal");
+   Statement sample(db,"SELECT status,ns,case_id,batch,algorithm,ordinal,cpu_ns,output_digest,protocol FROM v3_samples WHERE pair_number=? AND side=? ORDER BY ordinal");
+   std::optional<std::string> oracle_digest;
    sample.bind(1,static_cast<std::int64_t>(completed));
    sample.bind(2,static_cast<std::int64_t>(side));
    const auto expected=static_cast<std::size_t>(plan.config.blocks)*(plan.config.b.empty()?1U:4U);
@@ -644,6 +672,7 @@ std::size_t replay(Sqlite& db,const Plan& plan,ReplicatePlanner& planner,
     require(sample.str(2)==(side==0?a.id:b.id),"sample linked to wrong seed/structure");
     require(sample.number(5)==static_cast<std::int64_t>(seen),"v3 raw observation ordinal gap");
     const auto valid=sample.str(0)=="ok";
+    verify_sample_output_v3(plan,side==0?a:b,sample.str(0),sample.str(7),sample.str(8),oracle_digest);
     require(valid==(sqlite3_column_type(sample.stmt,1)!=SQLITE_NULL),
       "failed sample promoted to a time metric");
     require(valid==(sqlite3_column_type(sample.stmt,3)!=SQLITE_NULL),
@@ -1153,7 +1182,8 @@ std::size_t replay_family_sidecar(Sqlite& db,const Plan& plan,const FamilySpecV3
     sqlite3_column_bytes(source.stmt,4)==static_cast<int>(c.bytes.size())&&
     (c.bytes.empty()||std::memcmp(sqlite3_column_blob(source.stmt,4),c.bytes.data(),c.bytes.size())==0),
     "holdout raw case provenance mismatch");
-   Statement sample(db,"SELECT ordinal,case_id,algorithm,status,ns,batch,cpu_ns FROM v3_samples WHERE pair_number=? AND side=? ORDER BY ordinal");
+   Statement sample(db,"SELECT ordinal,case_id,algorithm,status,ns,batch,cpu_ns,output_digest,protocol FROM v3_samples WHERE pair_number=? AND side=? ORDER BY ordinal");
+   std::optional<std::string> oracle_digest;
    sample.bind(1,static_cast<std::int64_t>(index));sample.bind(2,static_cast<std::int64_t>(side));
    std::map<std::string,std::size_t> counts;
    while(sample.row()){
@@ -1163,6 +1193,7 @@ std::size_t replay_family_sidecar(Sqlite& db,const Plan& plan,const FamilySpecV3
     require(obs.algorithm==plan.config.a||(!plan.config.b.empty()&&obs.algorithm==plan.config.b),"holdout algorithm mismatch");
     ++counts[obs.algorithm];
     const bool ok=obs.status=="ok";
+    verify_sample_output_v3(plan,c,obs.status,sample.str(7),sample.str(8),oracle_digest);
     require(ok==(sqlite3_column_type(sample.stmt,4)!=SQLITE_NULL)&&
             ok==(sqlite3_column_type(sample.stmt,5)!=SQLITE_NULL),"holdout failed timing/batch promotion");
     obs.ns=ok?sample.number(4):0;obs.batch=ok?sample.number(5):0;

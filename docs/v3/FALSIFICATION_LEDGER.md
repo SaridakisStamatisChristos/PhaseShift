@@ -179,3 +179,28 @@ Required outcomes:
 - every worker descendant is dead after the measurement, through the subreaper in the v3 app and the process-group kill in the legacy CLI.
 
 Falsified with real processes. Each containment mechanism is removed in its own mutant, and each mutant fails its own cell. Harness lesson: never capture a child's output through pipes when testing descendant containment, because an orphan holding the pipe makes the harness wait and hides the leak. Residual: no cgroup containment when the parent dies; namespace and ptrace escapes are not contained.
+
+
+## F-031 — Storage faults and silent acceptance of corrupted evidence
+
+Attacks:
+
+- file-size limit sweeps during discovery and holdout writes;
+- a non-cooperating SQLite write lock;
+- byte flips and truncation of authoritative DBs;
+- well-formed rewrites of sample output digests and protocol labels.
+
+Required outcomes:
+
+- no signal death and no partial pair;
+- a consistent attempt journal, with recovery that discloses interruptions;
+- bounded busy failures with unchanged evidence;
+- success only on logically identical, structurally sound bytes;
+- explicit rejection of digest and protocol edits.
+
+Two real defects were found on unchanged code and fixed in V3-09f:
+
+- a structurally corrupt file was accepted;
+- an `ok` output digest was never checked against the oracle.
+
+The test failed on both before the fixes. Residual: no genuine `ENOSPC` injection, and the v1/v2 store is not hardened.

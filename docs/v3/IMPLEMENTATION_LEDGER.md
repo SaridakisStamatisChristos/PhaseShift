@@ -360,3 +360,39 @@ Two harness defects were found and fixed while building this. Pipes inherited by
 - Accounting stays `ACCOUNTING_INCOMPLETE`. Disk-full, busy/corrupt DB, corrupt IPC and OOM cells, and derived-cache poisoning, remain OPEN.
 
 **State:** V3-09 PARTIAL. Exact-head CI pending.
+
+
+## V3-09f storage fault matrix and replay integrity hardening (23 November 2026)
+
+Predecessor `cbaf0e7`: all seven exact-head CI workflows succeeded. Results there: 121/121 tests under GCC, Clang, ASan/UBSan and coverage; production line coverage 7362/7700 = 95.61%.
+
+**Already covered, not redone:**
+
+- v2 derived model-cache poisoning: `tests/model_cache_v2.cpp` and the `tests/verify_v2_model_cache.py` CLI test check deleted-row rebuild on resume, rejection of tampered or extra checkpoints, config mismatch, foreign tables, a future version, a symlink, and an unchanged authoritative DB.
+- Malformed IPC: `tests/ipc_negative.cpp`.
+
+v3 has no derived cache; policy state is rebuilt from the authoritative SQLite on every replay.
+
+**New real-process matrix:** `tests/v3/storage_fault_matrix_cli.py`, CTest `v3_storage_fault_matrix`.
+
+| Cell | Fault | Observed / required |
+|---|---|---|
+| S1 | `RLIMIT_FSIZE` sweep (2 KiB to 2 MiB, `SIGXFSZ` ignored) on fresh accounted runs | Observed outcomes: no plan, failed after 0, 1, 2 or 3 pairs, and complete. Required: never a signal death; exit 2 with a structured error; no partial pair or orphan case; at most one trailing STARTED attempt; exit status consistent with committed pairs; read-only audits write nothing; unrestricted resume completes and discloses every interrupted reservation as ABANDONED. |
+| S2 | Same sweep on the journaled holdout | Fails after 0 to 9 pairs. The journal stays consistent, recovery completes, and interruptions are disclosed. |
+| S3 | External `BEGIN IMMEDIATE` on `run.sqlite` and `family.sqlite` | Bounded (about 5 s) "database is locked" failure with unchanged logical evidence. A long concurrent WAL reader does not block commits. Recovery succeeds. |
+| S4 | 16-byte flips at the header and mid-page, plus truncation, of both DBs | `verify`, `accounting` and `family-report` may succeed only on a copy that is logically identical (independent `iterdump`) **and** passes independent `integrity_check`; read-only commands leave the file bytes unchanged. |
+| S5 | Well-formed edits to `output_digest` and `protocol` | Rejected for the asserted reason in both DBs. |
+
+**Defects found on unchanged code, then fixed:**
+
+1. **Structural corruption accepted.** A header flip (page count and freelist fields) left table rows readable, and `verify` succeeded although SQLite `integrity_check` failed. A writer could then allocate pages through a corrupt freelist over committed rows. Fix: every v3 open (`Sqlite`), read-only or writer, runs `PRAGMA integrity_check` (pages, indexes, freelist) and fails closed before any replay or write.
+2. **Unverified correctness evidence.** `v3_samples.output_digest` and `protocol` were never checked on replay. A mid-page flip in a sidecar digest was accepted with changed content. Fix: discovery and holdout replay now require every sample's protocol to equal the frozen measurement protocol. Every `ok` sample's digest must equal `sha256(encode_values(oracle(case)))` for the regenerated case, which re-proves the oracle agreement behind each valid timing.
+
+**Limits:**
+
+- `RLIMIT_FSIZE` yields `EFBIG` (SQLite I/O error), not a genuine `ENOSPC` / `SQLITE_FULL`; no privileged tmpfs is used. A run whose plan never committed stays unusable (fail closed); a new run is required.
+- `integrity_check` adds a linear read on every open.
+- Unverifiable raw metadata (`detail`, `peak_rss_bytes`, pilot fields, `order_seed`, `work`) is still not re-derivable.
+- The v1/v2 store gets neither the integrity check nor the digest replay (legacy behaviour preserved). An OOM cell is not added.
+
+**State:** V3-09 PARTIAL. Exact-head CI pending.
