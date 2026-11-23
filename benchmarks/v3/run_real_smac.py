@@ -32,7 +32,8 @@ def manifest():
     p=read(PLAN)
     old,by=optuna_manifest()
     require(p["schema"]==1 and
-            p["protocol"]=="phaseshift.v3-external-smac24-real-algorithm-development.1" and
+            p["protocol"]=="phaseshift.v3-external-smac24-real-algorithm-development.2" and
+            p["smac_coordinate_encoding"]=="continuous_0_to_edge_count_floor_clamped;one_real_query_per_smac_ask;rounding_is_published_and_replayed" and
             p["suite"]=="development" and p["eligible_for_sota"] is False and
             p["evaluation_reused"] is False and p["sota_claim"] is False and
             p["source_manifest"]=="benchmarks/v3/real_external_development.json" and
@@ -55,6 +56,20 @@ def manifest():
             set(p["seeds"]).isdisjoint(range(7101,7121)),
             "opened synthetic holdout or prior Optuna seed reused")
     return p,by
+
+
+def map_edge_coordinate(position,edge_count):
+    """Floor-bin one continuous SMAC proposal to a real legal adjacent edge.
+
+    Continuous proposals permit repeated observations when legal finite edges
+    are fewer than the fixed 12-query budget. Persist and replay the source
+    coordinate to prevent post-hoc edge remapping.
+    """
+    require(edge_count>0,"empty legal structural edge domain")
+    value=float(position)
+    require(math.isfinite(value) and 0.0<=value<=float(edge_count),
+            "SMAC coordinate outside legal structural edge domain")
+    return min(edge_count-1,int(value))
 
 
 def smac_loss(effect):
@@ -97,14 +112,18 @@ def execute(binary,root,scenario,seed):
             observations=execute_run(binary,home/"discovery",cfg,policy,p["pair_budget"])
         else:
             edges=allowed_edges(source)
-            cs=ConfigurationSpace({"edge_index":(0,len(edges)-1)})
+            # The finite integer domain exhausted before the twelve mandated
+            # ask/tell queries. A 1D continuous coordinate permits repeated
+            # queries while mapping deterministically to exactly legal edges.
+            cs=ConfigurationSpace({"edge_coordinate":(0.0,float(len(edges)))})
             scenario_object=Scenario(cs,deterministic=False,
                  n_trials=p["pair_budget"],seed=seed,
                  output_directory=home/"smac_state")
             optimizer=HPOFacade(scenario_object,None,overwrite=True)
             for n in range(p["pair_budget"]):
                 info=optimizer.ask()
-                idx=int(info.config["edge_index"])
+                coordinate=float(info.config["edge_coordinate"])
+                idx=map_edge_coordinate(coordinate,len(edges))
                 require(0<=idx<len(edges),"SMAC3 proposed illegal structural edge")
                 left,right=edges[idx]
                 cfg=config(sc,source,seed+100_000+1000*n,False)
@@ -114,7 +133,8 @@ def execute(binary,root,scenario,seed):
                 observations.append(observed)
                 loss=smac_loss(observed["effect"])
                 optimizer.tell(info,TrialValue(cost=loss))
-                proposals.append({"pair_number":n,"edge_index":idx,"left":left,
+                proposals.append({"pair_number":n,"edge_coordinate":coordinate,
+                                  "edge_index":idx,"left":left,
                                   "right":right,"reported_loss":loss,
                                   "smac_trial_seed":info.seed})
             del optimizer
@@ -171,6 +191,7 @@ def verify(root):
             edges=allowed_edges(source)
             for n,log in enumerate(frozen["proposals"]):
                 require(log["pair_number"]==n and
+                        map_edge_coordinate(log["edge_coordinate"],len(edges))==log["edge_index"] and
                         0<=log["edge_index"]<len(edges) and
                         (log["left"],log["right"])==edges[log["edge_index"]] and
                         (log["left"],log["right"])==
