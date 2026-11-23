@@ -742,6 +742,11 @@ add_test(NAME v3_storage_fault_matrix
  --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_storage_faults)
 set_tests_properties(v3_storage_fault_matrix PROPERTIES TIMEOUT 900 RUN_SERIAL TRUE)
 
+# V3-10 frozen one-time external confirmation: protocol, cohort freshness and decision statistics.
+add_test(NAME v3_external_confirmation_frozen_contract
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/external_confirmation_contract.py)
+set_tests_properties(v3_external_confirmation_frozen_contract PROPERTIES TIMEOUT 120)
+
 # V3-01b analytical synthetic worker shapes; strictly additive opt-in workloads.
 add_executable(phaseshift_v3_shapes_tests tests/v3/synthetic_shapes.cpp)
 target_link_libraries(phaseshift_v3_shapes_tests PRIVATE phaseshift_core)

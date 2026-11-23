@@ -1,0 +1,195 @@
+name: v3-external-confirmation
+# V3-10 one-time frozen confirmation: V18 vs genuine SMAC3 2.4.1 and Optuna 4.6.0 TPE.
+# Push runs ONLY the frozen-protocol checks and a diagnostic smoke outside the
+# cohort. The fresh cohort 51001-51020 is opened only by workflow_dispatch with
+# the exact token, at most once ever; it is never rerun or extended.
+on:
+  push:
+    branches: ['feature/phaseshift-v3-sota-research']
+    paths:
+      - '.github/workflows/v3-external-confirmation.yml'
+      - 'benchmarks/v3/external_confirmation.json'
+      - 'benchmarks/v3/run_external_confirmation.py'
+      - 'benchmarks/v3/aggregate_external_confirmation.py'
+      - 'tests/v3/external_confirmation_contract.py'
+  workflow_dispatch:
+    inputs:
+      open_cohort:
+        description: 'Irreversible one-time opening of cohort 51001-51020. Type OPEN-51001-51020 to execute.'
+        required: true
+        default: 'no'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: v3-external-confirmation
+  cancel-in-progress: false
+env:
+  PINNED: 848e2b7df770a50c5070c0a80caf920a5d939765
+jobs:
+  protocol:
+    name: Frozen confirmation protocol (no cohort observation)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate frozen manifest, cohort freshness and pinned native source
+        run: |
+          set -euo pipefail
+          python3 tests/v3/external_confirmation_contract.py
+          python3 benchmarks/v3/run_external_confirmation.py --validate-only
+          for f in include/phaseshift/v3/conditional_pair.hpp include/phaseshift/v3/acquisition.hpp apps/phaseshift_v3_pairs.cpp; do
+            echo "$f $(git rev-parse "$PINNED:$f")"
+          done
+  smoke:
+    name: Pinned-binary diagnostic smoke (seed 50500, outside cohort)
+    needs: protocol
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build pinned development V18 binary and pinned optimizers
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libsqlite3-dev libjson-c-dev libssl-dev pkg-config python3-venv
+          git worktree add build/pinned "$PINNED"
+          cmake -S build/pinned -B build/pinned/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/pinned/build --target phaseshift_v3_pairs phaseshift_worker -j2
+          python3 -m venv build/env
+          build/env/bin/pip install --disable-pip-version-check 'smac==2.4.1' 'optuna==4.6.0'
+          build/env/bin/pip check
+      - name: Three policies on both scenarios, independent audit and replay
+        run: |
+          set -euo pipefail
+          cd benchmarks/v3
+          for sc in sort_ascending topk_uniform; do
+            ../../build/env/bin/python run_external_confirmation.py --diagnostic --seed 50500 --scenario "$sc" \
+              --binary ../../build/pinned/build/phaseshift_v3_pairs --native-source ../../build/pinned \
+              --out "../../build/smoke/$sc"
+          done
+          ../../build/env/bin/python aggregate_external_confirmation.py --diagnostic --artifacts ../../build/smoke --out ../../build/smoke_scorecard.json
+          ../../build/env/bin/python aggregate_external_confirmation.py --diagnostic --artifacts ../../build/smoke --out ../../build/smoke_scorecard.json --verify-only
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v3-external-confirmation-diagnostic-smoke
+          path: |
+            build/smoke/
+            build/smoke_scorecard.json
+          retention-days: 14
+          if-no-files-found: warn
+  guard:
+    name: Require explicit token; refuse any previous opening
+    if: github.event_name == 'workflow_dispatch'
+    needs: smoke
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check token and full history of this workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TOKEN: ${{ inputs.open_cohort }}
+        run: |
+          set -euo pipefail
+          test "$TOKEN" = "OPEN-51001-51020" || { echo "::error::cohort not opened: token mismatch"; exit 1; }
+          python3 - <<'EOF'
+          import json,os,subprocess
+          repo=os.environ["GITHUB_REPOSITORY"];me=os.environ["GITHUB_RUN_ID"]
+          ids=subprocess.check_output(["gh","api","--paginate",
+              f"repos/{repo}/actions/workflows/v3-external-confirmation.yml/runs?event=workflow_dispatch&per_page=100",
+              "--jq",".workflow_runs[].id"],text=True).split()
+          for run in ids:
+              if run==me:
+                  continue
+              jobs=json.loads(subprocess.check_output(["gh","api",f"repos/{repo}/actions/runs/{run}/jobs?per_page=100"],text=True))["jobs"]
+              opened=[j["name"] for j in jobs if j["name"].startswith("Open cohort") and j["conclusion"]!="skipped"]
+              if opened:
+                  raise SystemExit(f"cohort already opened by run {run}: {opened}; the one-time confirmation is never rerun")
+          print("no previous opening; proceeding once")
+          EOF
+  full:
+    name: Open cohort - ${{ matrix.scenario }} (20 seeds x 3 policies)
+    if: github.event_name == 'workflow_dispatch'
+    needs: guard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        scenario: [sort_ascending, topk_uniform]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build pinned development V18 binary and pinned optimizers
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libsqlite3-dev libjson-c-dev libssl-dev pkg-config python3-venv
+          git worktree add build/pinned "$PINNED"
+          cmake -S build/pinned -B build/pinned/build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/pinned/build --target phaseshift_v3_pairs phaseshift_worker -j2
+          python3 -m venv build/env
+          build/env/bin/pip install --disable-pip-version-check 'smac==2.4.1' 'optuna==4.6.0'
+          build/env/bin/pip check
+      - name: Execute all twenty predeclared seeds once; failures are retained, never retried
+        env:
+          SCENARIO: ${{ matrix.scenario }}
+        run: |
+          set -uo pipefail
+          cd benchmarks/v3
+          mkdir -p ../../build/confirmation
+          for seed in $(seq 51001 51020); do
+            if ! ../../build/env/bin/python run_external_confirmation.py --seed "$seed" --scenario "$SCENARIO" \
+                 --binary ../../build/pinned/build/phaseshift_v3_pairs --native-source ../../build/pinned \
+                 --out "../../build/confirmation/$SCENARIO/$seed"; then
+              echo "$SCENARIO/$seed" >> ../../build/confirmation/FAILED_TRIALS.txt
+            fi
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v3-external-confirmation-${{ matrix.scenario }}
+          path: build/confirmation/
+          retention-days: 90
+          if-no-files-found: warn
+  aggregate:
+    name: Independent audit and frozen H1/H2 decision
+    if: always() && github.event_name == 'workflow_dispatch' && needs.full.result != 'skipped'
+    needs: full
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: v3-external-confirmation-*_*
+          path: build/downloads
+      - name: Recompute every native effect, nomination, sign test and decision
+        run: |
+          set -euo pipefail
+          cd benchmarks/v3
+          python3 aggregate_external_confirmation.py --artifacts ../../build/downloads --out ../../build/external_confirmation_final.json
+          python3 aggregate_external_confirmation.py --artifacts ../../build/downloads --out ../../build/external_confirmation_final.json --verify-only
+          python3 - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          d=json.load(open("../../build/external_confirmation_final.json"))
+          print("## V3-10 one-time external confirmation\n")
+          print(f"Status: **{d['status']}**, trials {d['observed_trials']}/{d['expected_trials']}\n")
+          for h in d.get("hypotheses",[]):
+              print(f"- {h['id']} vs {h['comparator']}: +{h['positive_clusters']} / -{h['negative_clusters']} / ties {h['ties']}, raw p {h['raw_p']:.3g}, Holm p {h['holm_p']:.3g}: **{h['decision']}**")
+          print("\nNo SOTA claim; sign independence not certified; real boundaries unlabelled.")
+          EOF
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v3-external-confirmation-final-scorecard
+          path: build/external_confirmation_final.json
+          retention-days: 90
+          if-no-files-found: error

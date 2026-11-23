@@ -398,3 +398,55 @@ v3 has no derived cache; policy state is rebuilt from the authoritative SQLite o
 **State:** V3-09 PARTIAL. Exact-head CI pending.
 
 **Coverage-lane repair (same day).** On `f078626`, six CI lanes passed but production-line-coverage failed: all 122 tests passed, then `llvm-profdata merge` rejected truncated `.profraw` files ("file header is corrupt"). The S1/S2 `RLIMIT_FSIZE` limit also truncated the coverage runtime's own profile writes. The storage test now points `LLVM_PROFILE_FILE` at `/dev/null` for the file-size-limited processes only, because device writes are exempt from the limit. Only those fault-injection processes forgo profiles. The coverage merge and gate are unchanged. A local `scripts/coverage.sh` run gives 122/122 tests and production coverage 7386/7724 = 95.62%, PASS.
+
+
+## V3-10 external evidence archive and frozen one-time confirmation; V3-11 provisional audit (23 November 2026)
+
+**Executed external evidence, audited from CI artifacts and archived verbatim** (`docs/v3/external_evidence/`, SHA-256 manifest, `-text`). All of it is development or exploratory:
+
+| Comparison | Run | Result |
+|---|---|---|
+| Optuna 4.6.0 TPE and random vs V18, 120 campaigns | 45142307852 | No difference (V18 − TPE 0.0 [−0.45, 0.45]) |
+| SMAC3 2.4.1 vs V18, 80 campaigns | 45143027905 | V18 − SMAC +0.4 [0.1, 0.7]; costs not matched |
+| ruptures 1.1.10 PELT vs C++ exact DP, 100 series | 45117904998 | Objective-identical |
+| Opened V18 sealed internal evaluation | 45071082096 | No superiority |
+
+**Finding:** the development runners enforce the pre-holdout V18 source blobs against the working tree. Since `apps/phaseshift_v3_pairs.cpp` changed in V3-09, they now correctly refuse to run at HEAD. They are deliberately left unmodified; editing them would re-trigger their workflows against the pin.
+
+**Frozen confirmation** (`benchmarks/v3/external_confirmation.json`, protocol `phaseshift.v3-external-confirmation.1`, `FROZEN_NOT_OPENED`):
+
+- the native binary is built from development commit `848e2b7` in a git worktree, with the pinned blobs and `rev-parse` verified at run time;
+- the SMAC3 2.4.1 and Optuna 4.6.0 TPE adapters are imported unchanged, and one shared V18 run per seed feeds both comparisons;
+- the cohort is 51001–51020, with diagnostic seed 50500 kept outside it;
+- endpoint: fresh-seed nominal rejections per seed cluster;
+- H1 V18 > SMAC and H2 V18 > TPE, one-sided exact sign tests with Holm at 0.05;
+- `INCOMPLETE_NO_CLAIM` on any missing or failed trial, and no rerun.
+
+Cohort freshness is checked mechanically in derived-seed space. The obvious next range would have collided: SMAC development seed 33001's query n=3 equals seed 36001's query 0.
+
+`run_external_confirmation.py` runs one trial per (scenario, seed). `aggregate_external_confirmation.py` independently does the following:
+
+- re-audits every native SQLite run through the development auditor;
+- re-derives nominations, exact sign tails, within-campaign Holm and the H1/H2 decisions;
+- treats missing trials as `INCOMPLETE_NO_CLAIM` and any inconsistency as a hard failure;
+- reproduces its scorecard byte for byte with `--verify-only`.
+
+`v3-external-confirmation.yml`:
+
+- **push:** contract tests, manifest validation and a pinned-binary diagnostic smoke;
+- **`workflow_dispatch`:** requires the exact token `OPEN-51001-51020`, and a guard refuses if any earlier dispatch ever started an "Open cohort" job.
+
+**Tests:**
+
+- `tests/v3/external_confirmation_contract.py` (CTest `v3_external_confirmation_frozen_contract`):
+  - 18 protocol and cohort edits are rejected, including derived-seed collisions and changed archived evidence;
+  - the exact sign tail, Holm, the nomination rule and the decisions are checked;
+  - no trials yields `INCOMPLETE_NO_CLAIM`, and an undeclared trial fails closed.
+- Local end-to-end container smoke (seed 50500, pinned binary, SMAC and Optuna in one venv, `pip check` clean):
+  - all three policies run on both scenarios, and the audit plus `--verify-only` pass;
+  - a cohort seed is refused in diagnostic mode, and a HEAD source tree is refused;
+  - a forged summary count and a forged discovery effect are rejected.
+
+**V3-11:** `docs/v3/V3_CLAIM_AUDIT.md` gives a provisional per-claim verdict: engineering verified at exact SHAs, internal superiority not established, external competitiveness unproven pending confirmation, no SOTA. The README "Project status" was corrected (v2 merged as `279a8c6`; v3 is draft PR #6).
+
+**State:** V3-10 confirmation FROZEN, NOT OPENED. Opening is a one-time, irreversible owner decision. V3-11 is provisional.

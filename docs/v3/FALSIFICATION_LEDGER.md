@@ -204,3 +204,19 @@ Two real defects were found on unchanged code and fixed in V3-09f:
 - an `ok` output digest was never checked against the oracle.
 
 The test failed on both before the fixes. Residual: no genuine `ENOSPC` injection, and the v1/v2 store is not hardened.
+
+
+## F-032 — Confirmation cohort leakage and repeated opening
+
+Attacks:
+
+- reuse a prior seed;
+- choose a cohort whose derived query seeds regenerate development inputs (36001 vs 33001+3000);
+- a diagnostic seed colliding with cohort-derived seeds;
+- edit the frozen hypotheses, alpha, multiplicity, policies, budget, pins or archived development evidence after freezing;
+- run the confirmation from a HEAD source tree instead of the pinned commit;
+- forge trial summaries or discovery effects;
+- report a verdict on an incomplete cohort;
+- open the cohort twice.
+
+Required outcomes: each is rejected by the validator, runner, independent aggregator or workflow guard. Residual: the guard trusts GitHub run history, and the token is not a cryptographic commitment.
