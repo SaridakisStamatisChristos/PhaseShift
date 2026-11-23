@@ -144,3 +144,19 @@ The attacks are listed in the V3-09c entry of the implementation ledger, and eac
 - a witness checked against a different run.
 
 The signature is independently checked with the `openssl` CLI and both digests are independently recomputed. Residual: evidence rewritten *before* export is signed as-is; the signature attests to replay-consistency at export time, not to the history before it.
+
+
+## F-029 — Fabricated or cherry-picked witness minimization
+
+The attacks are listed in the V3-09d entry, and each must be rejected for its asserted reason:
+
+- an unsigned edit;
+- re-signing with the genuine key after flipping a decision, hiding a failed shrink attempt and renumbering blocks, editing one raw `ns`, changing a seed, lowering the budget, promoting the claim, or dropping a pair;
+- the wrong trusted key, an interrupted record, or verifying against a different run;
+- a holdout raw-CPU edit after signing.
+
+A shrink that destroys the boundary must be retained as a failed attempt, and the original witness preserved. Minimization must refuse a non-rejected member, so a boundary that failed its holdout cannot be "minimized" into apparent support. Residual risks:
+
+- Acceptance tests are adaptive and uncorrected.
+- The minimizer and the verifier reproduction run on the same host.
+- A rerun to a new output directory is not linked to an abandoned one.

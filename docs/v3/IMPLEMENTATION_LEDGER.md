@@ -249,3 +249,61 @@ Predecessor `158011e`: all seven exact-head CI workflows succeeded (GCC/Clang bu
 - legacy v16 disclosure, and a cross-run witness rejected.
 
 **State:** V3-09 PARTIAL. Exact-head CI pending. Still open: type-preserving witness minimization on fresh seeds, the full crash and descendant-accounting matrix, and derived-cache poisoning.
+
+
+## V3-09d scope-preserving boundary witness minimization on fresh seeds (23 November 2026)
+
+Predecessor `024ffc6`: all seven exact-head CI workflows succeeded, including 119/119 tests under GCC, Clang, ASan/UBSan and coverage.
+
+**`witness-minimize --run R --member I --key ED25519_PEM --out DIR [--budget 0..32, default 8]`.** It requires the following before reserving any output:
+
+- a complete, fully replayed frozen family;
+- a member in state `REJECTED_UNDER_DECLARED_MODEL`, so an unsupported boundary is never minimized;
+- the frozen source revision.
+
+The *scope*, meaning every declared axis (the primary edge labels and the context), is immutable. Only non-scope structural fields of the shared base case may shrink, through deterministic, family-aware proposals. These cover threshold for calibration; length, value range, run length, unique values and top-k output for arrays; and vertices, edges, weight range and communities for graphs. A proposal that would change any scope field, directly or through a coupled field, is dropped.
+
+Each candidate is measured on its own fresh seed block with the real worker. Seeds lie in `[2^60, 2^61)`, derived from a sha256-keyed SplitMix64 stream over the family digest, member and block. That range is disjoint by construction from discovery (below 2^31) and holdout (`[2^62, 2^63)`), and seeds are unique across blocks. The predicate is the frozen family's own test:
+
+- all `seed_pairs` endpoint measurements oracle-correct;
+- exact one-sided sign tail of `direction * contrast > log(min_ratio)` at most the frozen alpha.
+
+Greedy acceptance keeps the first passing smaller candidate until the budget is spent. Every attempted shrink, including failures, is recorded with its full raw observations. The final witness is then reproduced on a separate fresh block. If a reduced witness fails, the original is reproduced next. The outcome is `REDUCED_REPRODUCED`, `ORIGINAL_REPRODUCED` or `NOT_REPRODUCED`.
+
+The signed Ed25519 record links:
+
+- the parent witness evidence by sha256;
+- the member descriptor, predicate, budget and scope;
+- every evaluation and the outcome;
+- explicit selection limits: shrink acceptance is adaptive and uncorrected.
+
+A `STARTED` marker reserves the output directory until completion, so an interrupted run leaves a visible, unverifiable directory.
+
+**`witness-verify-minimized --run R --witness DIR --public-key TRUSTED [--reproduce true]`:**
+
+- checks the signature with the separately trusted key and rejects an interrupted record;
+- replays the parent evidence from raw data;
+- re-runs the *same deterministic driver*, feeding it the signed raw observations; every regenerated seed and case identity must match;
+- requires deep equality of the rebuilt evidence, so hidden, reordered, skipped or altered attempts, decisions, raw timings and budgets all fail;
+- with `--reproduce true`, independently re-measures the final witness with the real worker on a verifier-only fresh block (8192) and reports the result.
+
+**Test:** `tests/v3/witness_minimization_cli.py` (CTest `v3_witness_minimization_fresh_seed_reproduction_and_forgery`) uses two real-worker fixtures:
+
+- **Calibration cliff.** Its only legal shrink, threshold 2→1, destroys the boundary; it must be recorded as a failed attempt and the original reproduced.
+- **`std_sort` n-axis boundary.** Value-range shrinks are accepted and the reduced witness must reproduce.
+
+Engine-independent checks:
+
+- openssl verification, and byte-level linkage to the parent signed witness;
+- SplitMix64 re-derivation of every seed and disjointness from the discovery and holdout seeds;
+- side metric, contrast, sign tail and decision recomputed from the raw observations;
+- the presentation order rule and scope or context preservation;
+- legal monotone shrink steps from the frozen original endpoint, and outcome consistency;
+- verifier reproduction holding for both fixtures, and unchanged source evidence;
+- a deterministic re-run with identical seeds, identities and outcome.
+
+The test also covers the refusal gates (incomplete family, non-rejected member, bad member or budget, existing output) and eleven forgeries, each rejected for its asserted reason.
+
+**Limits:** greedy, budgeted local minimization, so the result is not a global minimum. Value-range reduction leaves byte size unchanged, so "smaller" means the declared field-sum ordering. The final reproduction shares the host and session with the search; it is not an independent multi-host replication. Fresh-seed reproduction is not holdout confirmation. Literal byte-level ddmin of boundary pairs is not implemented, because v3 legal-space endpoints are generator-parameterised. Interrupted minimizations are visible but not journaled for retry.
+
+**State:** V3-09 PARTIAL. Exact-head CI pending. The crash and descendant-accounting matrix and derived-cache poisoning remain OPEN.

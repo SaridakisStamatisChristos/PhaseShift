@@ -13,6 +13,7 @@
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include <openssl/x509.h>
+#include <functional>
 #include <memory>
 #include <algorithm>
 #include <chrono>
@@ -1637,6 +1638,404 @@ void witness_command_v3(const std::string& command,const fs::path& run,int argc,
  std::cout<<result.str()<<"\n";
 }
 
+// ---------------------------------------------------------------------------
+// V3-09 scope-preserving boundary witness minimization on fresh seeds.
+// The scope (every declared axis: primary edge labels and context) is frozen;
+// only non-scope structural parameters of the shared base case may shrink.
+// Every candidate is tested on its own fresh, disjoint seed block with the
+// frozen family's exact sign-tail predicate, and requires oracle-correct
+// output on both endpoints. Candidate acceptance is adaptive and uncorrected;
+// the final witness gets a separate fresh-block reproduction. The driver is a
+// pure function of a measurement callback, so verification replays it over the
+// signed raw observations and demands identical evidence.
+constexpr std::uint64_t kMinimizeSeedBaseV3=1ULL<<60; // [2^60,2^61): disjoint from discovery (<2^31) and holdout ([2^62,2^63))
+constexpr std::size_t kVerifierReproduceBlockV3=8192;
+constexpr std::size_t kMinimizeBudgetCapV3=32;
+struct MinPairV3 {
+ std::uint64_t seed=0;
+ bool left_first=false;
+ std::string left_id,right_id;
+ std::vector<Observation> l,r;
+ std::optional<double> contrast;
+};
+struct MinEvalV3 {
+ std::string role,action;
+ std::size_t block=0;
+ Case base;
+ std::string left_params,right_params;
+ std::vector<MinPairV3> pairs;
+ std::size_t valid=0,positive=0;
+ double p=1.;
+ bool holds=false;
+};
+struct MinContextV3 {
+ const Plan& plan;
+ const FamilySpecV3& f;
+ const MatchedBoundaryObservationV3& edge;
+ std::size_t member=0;
+ int direction=0;
+ std::set<std::string> scope;
+};
+using MinMeasureV3=std::function<HoldoutMeasuredV3(std::size_t block,std::size_t pair,const HoldoutProposalV3&)>;
+std::vector<std::uint64_t> minimization_seeds_v3(const FamilySpecV3& f,std::size_t member,std::size_t block,std::size_t count){
+ const auto h=sha256(f.digest+"/phaseshift.v3.boundary_minimization.1/"+std::to_string(member)+"/"+std::to_string(block));
+ std::uint64_t state=std::stoull(h.substr(0,16),nullptr,16);
+ std::set<std::uint64_t> seen;std::vector<std::uint64_t> out;
+ while(out.size()<count){
+  const auto seed=kMinimizeSeedBaseV3|(splitmix64(state)&(kMinimizeSeedBaseV3-1));
+  if(seen.insert(seed).second)out.push_back(seed);
+ }
+ return out;
+}
+Case witness_endpoint_v3(const MinContextV3& ctx,const Case& base,bool right,std::uint64_t seed){
+ auto c=base;c.seed=seed;
+ for(const auto& [axis,label]:ctx.edge.context)apply_axis(c,axis,label);
+ apply_axis(c,ctx.plan.axis,ctx.plan.config.axes.at(ctx.plan.axis).at(right?ctx.edge.right:ctx.edge.left));
+ return make_case(c,ctx.plan.config.max_bytes);
+}
+std::string scope_field_v3(const Case& c,const std::string& name){
+ if(name=="x")return std::to_string(c.x);
+ if(name=="n")return std::to_string(c.n);
+ if(name=="k")return std::to_string(c.k);
+ if(name=="vertices")return std::to_string(c.vertices);
+ if(name=="edges")return std::to_string(c.edges);
+ if(name=="threshold")return std::to_string(c.threshold);
+ if(name=="value_range")return std::to_string(c.value_range);
+ if(name=="unique_count")return std::to_string(c.unique_count);
+ if(name=="distribution")return c.distribution;
+ if(name=="weight_class")return c.weight_class;
+ if(name=="negative")return c.negative?"true":"false";
+ if(name=="directed")return c.directed?"true":"false";
+ throw Error("v3 pairs: unsupported scope axis for minimization: "+name);
+}
+// Deterministic, ordered non-scope shrink proposals. Any proposal that would
+// change a scope field (directly or through a coupled field) is dropped.
+std::vector<std::pair<Case,std::string>> boundary_shrinks_v3(const Case& b,const std::set<std::string>& scope){
+ std::vector<std::pair<Case,std::string>> out;
+ auto edit=[&](const char* why,auto fn){
+  auto c=b;fn(c);
+  for(const auto& name:scope)if(scope_field_v3(c,name)!=scope_field_v3(b,name))return;
+  out.emplace_back(std::move(c),why);
+ };
+ if(b.family=="calibration"){
+  for(const auto t:{b.threshold/2,b.threshold-1})if(t>=1&&t<b.threshold)
+   edit("shrink_threshold",[t](Case& c){c.threshold=t;});
+ }else if(b.family=="integer_array"||b.family=="topk"){
+  for(const auto n:{b.n/2,b.n-1})if(n>=1&&n<b.n)
+   edit("shrink_length",[n](Case& c){c.n=n;c.k=std::min(c.k,n);c.unique_count=std::min(c.unique_count,n);});
+  for(const auto v:{b.value_range/2,b.value_range-1})if(v>=1&&v<b.value_range)
+   edit("shrink_value_range",[v](Case& c){c.value_range=v;c.unique_count=std::min(c.unique_count,2*v+1);});
+  if(b.run_length>1)edit("shrink_run_length",[](Case& c){c.run_length=1;});
+  if(b.unique_count>1)edit("shrink_unique_values",[](Case& c){c.unique_count=1;});
+  if(b.family=="topk")for(const auto k:{b.k/2,b.k-1})if(k>=1&&k<b.k)
+   edit("shrink_topk_output",[k](Case& c){c.k=k;});
+ }else if(b.family=="graph"){
+  for(const auto v:{b.vertices/2,b.vertices-1})if(v>=1&&v<b.vertices&&b.source<v)
+   edit("shrink_vertices",[v](Case& c){
+    c.vertices=v;c.community_count=std::min(c.community_count,v);
+    const auto cap=c.directed?v*(v-1):v*(v-1)/2;
+    c.edges=std::min(c.edges,cap);
+    if(c.connectivity=="strong")c.edges=std::max(c.edges,v);
+    if(c.connectivity=="weak")c.edges=std::max(c.edges,v-1);
+    c.density_ppm=-1;
+   });
+  for(const auto e:{b.edges/2,b.edges-1})if(e>=0&&e<b.edges)
+   edit("shrink_edges",[e](Case& c){c.edges=e;c.density_ppm=-1;});
+  for(const auto w:{b.max_weight/2,b.max_weight-1})if(w>=0&&w<b.max_weight)
+   edit("shrink_weight_range",[w](Case& c){c.max_weight=w;});
+  if(b.community_count>1)edit("shrink_communities",[](Case& c){c.community_count=1;});
+ }
+ return out;
+}
+std::uint64_t witness_complexity_v3(const Case& c){
+ std::uint64_t total=0;
+ for(const auto v:{c.n,c.k,c.value_range,c.run_length,c.unique_count,c.vertices,c.edges,
+                   c.max_weight,c.community_count,c.threshold})
+  if(v>0)total+=static_cast<std::uint64_t>(v);
+ return total;
+}
+std::optional<std::pair<std::size_t,std::uint64_t>> witness_size_v3(const MinContextV3& ctx,const Case& base){
+ try{
+  return std::pair{witness_endpoint_v3(ctx,base,false,1).bytes.size()+witness_endpoint_v3(ctx,base,true,1).bytes.size(),
+                   witness_complexity_v3(base)};
+ }catch(const Error&){return std::nullopt;} // generator-invalid proposal: deterministically skipped
+}
+MinEvalV3 evaluate_boundary_v3(const MinContextV3& ctx,const Case& base,const std::string& role,
+ const std::string& action,std::size_t block,const MinMeasureV3& measure,std::set<std::uint64_t>& used){
+ MinEvalV3 e;e.role=role;e.action=action;e.block=block;e.base=base;
+ e.left_params=case_params(witness_endpoint_v3(ctx,base,false,1));
+ e.right_params=case_params(witness_endpoint_v3(ctx,base,true,1));
+ const auto minimum=std::log(ctx.plan.config.min_ratio);
+ const auto seeds=minimization_seeds_v3(ctx.f,ctx.member,block,ctx.f.n);
+ for(std::size_t j=0;j<seeds.size();++j){
+  require(used.insert(seeds[j]).second,"minimization seed reused across blocks");
+  HoldoutProposalV3 p{seeds[j],((seeds[j]^j)&1ULL)==0,witness_endpoint_v3(ctx,base,false,seeds[j]),
+                      witness_endpoint_v3(ctx,base,true,seeds[j])};
+  const auto m=measure(block,j,p);
+  MinPairV3 pair;pair.seed=p.seed;pair.left_first=p.left_first;pair.left_id=p.a.id;pair.right_id=p.b.id;
+  pair.l=m.l;pair.r=m.r;
+  const auto lm=per_side_metric(pair.l,ctx.plan.config.a,ctx.plan.config.b);
+  const auto rm=per_side_metric(pair.r,ctx.plan.config.a,ctx.plan.config.b);
+  if(lm&&rm){
+   pair.contrast=*rm-*lm;
+   require(std::isfinite(*pair.contrast),"nonfinite minimization contrast");
+   ++e.valid;
+   if(static_cast<double>(ctx.direction)*(*pair.contrast)>minimum)++e.positive;
+  }
+  e.pairs.push_back(std::move(pair));
+ }
+ if(e.valid==seeds.size())e.p=exact_upper_sign_tail_v3(seeds.size(),e.positive);
+ e.holds=e.valid==seeds.size()&&e.p<=ctx.f.alpha;
+ return e;
+}
+struct MinOutcomeV3 {
+ std::vector<MinEvalV3> evals;
+ std::optional<std::size_t> final_eval;
+ bool reduced=false,reduced_failed_reproduction=false;
+ std::string state;
+};
+MinOutcomeV3 minimize_boundary_v3(const MinContextV3& ctx,std::size_t budget,const MinMeasureV3& measure){
+ require(budget<=kMinimizeBudgetCapV3,"minimization budget above cap");
+ MinOutcomeV3 out;
+ std::set<std::uint64_t> used;
+ const auto original=ctx.plan.config.base;
+ auto current=original;
+ auto current_size=witness_size_v3(ctx,current);
+ require(current_size.has_value(),"original witness endpoints do not regenerate");
+ std::set<std::string> visited{case_params(current)};
+ std::size_t shrinks=0;
+ bool improved=true;
+ while(improved&&shrinks<budget){
+  improved=false;
+  for(const auto& [candidate,action]:boundary_shrinks_v3(current,ctx.scope)){
+   if(!visited.insert(case_params(candidate)).second)continue;
+   const auto size=witness_size_v3(ctx,candidate);
+   if(!size||*size>=*current_size)continue;
+   if(shrinks>=budget)break;
+   out.evals.push_back(evaluate_boundary_v3(ctx,candidate,"SHRINK",action,out.evals.size(),measure,used));
+   ++shrinks;
+   if(out.evals.back().holds){current=candidate;current_size=size;out.reduced=true;improved=true;break;}
+  }
+ }
+ std::vector<Case> finals;
+ if(out.reduced)finals.push_back(current);
+ finals.push_back(original);
+ for(std::size_t i=0;i<finals.size();++i){
+  out.evals.push_back(evaluate_boundary_v3(ctx,finals[i],"REPRODUCE",i==0&&out.reduced?"reproduce_reduced":"reproduce_original",
+                                            out.evals.size(),measure,used));
+  if(out.evals.back().holds){out.final_eval=out.evals.size()-1;break;}
+  if(i==0&&out.reduced)out.reduced_failed_reproduction=true;
+ }
+ out.state=!out.final_eval?"NOT_REPRODUCED":
+           (out.reduced&&!out.reduced_failed_reproduction)?"REDUCED_REPRODUCED":"ORIGINAL_REPRODUCED";
+ return out;
+}
+Json observations_json_v3(const std::vector<Observation>& rows){
+ auto out=json_array_v3();
+ for(const auto& r:rows){
+  Json o;o.put("algorithm",r.algorithm);o.put("status",r.status);o.put("ns",r.ns);o.put("batch",r.batch);
+  o.put("work",r.work);o.put("cpu_ns",r.cpu_ns);
+  json_push_v3(out,o);
+ }
+ return out;
+}
+std::vector<Observation> observations_from_json_v3(json_object* array){
+ require(array&&json_object_is_type(array,json_type_array),"signed observations must be an array");
+ std::vector<Observation> rows;
+ for(std::size_t i=0;i<json_object_array_length(array);++i){
+  Json o(json_object_get(json_object_array_get_idx(array,i)));
+  Observation r;r.algorithm=o.s("algorithm");r.status=o.s("status");r.ns=o.i("ns");r.batch=o.i("batch");
+  r.work=o.i("work");r.cpu_ns=o.i("cpu_ns");
+  rows.push_back(std::move(r));
+ }
+ return rows;
+}
+Json minimization_evidence_v3(const MinContextV3& ctx,const Json& parent,std::size_t budget,const MinOutcomeV3& out){
+ Json e;
+ e.put("protocol","phaseshift.v3.boundary_minimization.1");
+ e.put("parent_evidence_sha256",sha256(parent.str()));
+ e.put("member",Json(json_object_get(json_object_array_get_idx(parent.get("members"),ctx.member))));
+ Json predicate;
+ predicate.put("seed_pairs_per_evaluation",static_cast<std::int64_t>(ctx.f.n));
+ predicate.put("alpha",ctx.f.alpha);
+ predicate.put("minimum_log_effect",std::log(ctx.plan.config.min_ratio));
+ predicate.put("test","one_sided_exact_binomial_sign_tail");
+ predicate.put("requires_all_endpoints_oracle_ok",true);
+ predicate.put("seed_domain","[2^60,2^61), sha256(family_sha256/protocol/member/block)-keyed splitmix64");
+ e.put("predicate",std::move(predicate));
+ e.put("shrink_budget",static_cast<std::int64_t>(budget));
+ auto scope=json_array_v3();
+ for(const auto& name:ctx.scope){Json s(json_object_new_string(name.c_str()));json_push_v3(scope,s);}
+ e.put("scope_axes",std::move(scope));
+ auto evals=json_array_v3();
+ for(const auto& ev:out.evals){
+  Json row;
+  row.put("block",static_cast<std::int64_t>(ev.block));row.put("role",ev.role);row.put("action",ev.action);
+  row.put("left_params",ev.left_params);row.put("right_params",ev.right_params);
+  row.put("valid_pairs",static_cast<std::int64_t>(ev.valid));row.put("positive_pairs",static_cast<std::int64_t>(ev.positive));
+  row.put("p",ev.p);row.put("holds",ev.holds);
+  auto pairs=json_array_v3();
+  for(const auto& p:ev.pairs){
+   Json pr;
+   pr.put("seed",static_cast<std::int64_t>(p.seed));pr.put("left_first",p.left_first);
+   pr.put("left_case_id",p.left_id);pr.put("right_case_id",p.right_id);
+   if(p.contrast)pr.put("log_contrast",*p.contrast);else pr.put("log_contrast",Json(nullptr));
+   pr.put("left",observations_json_v3(p.l));pr.put("right",observations_json_v3(p.r));
+   json_push_v3(pairs,pr);
+  }
+  row.put("pairs",std::move(pairs));
+  json_push_v3(evals,row);
+ }
+ e.put("evaluations",std::move(evals));
+ Json outcome;
+ outcome.put("state",out.state);
+ outcome.put("reduced",out.reduced);
+ outcome.put("reduced_candidate_failed_reproduction",out.reduced_failed_reproduction);
+ if(out.final_eval){
+  const auto& fin=out.evals.at(*out.final_eval);
+  outcome.put("final_evaluation",static_cast<std::int64_t>(*out.final_eval));
+  outcome.put("final_left_params",fin.left_params);outcome.put("final_right_params",fin.right_params);
+ }else outcome.put("final_evaluation",Json(nullptr));
+ e.put("outcome",std::move(outcome));
+ Json limits;
+ limits.put("confirmed",false);limits.put("hardware_general",false);
+ limits.put("selection","shrink acceptance tests are adaptive and uncorrected; only the final fresh-block reproduction tests the final witness, and a failed reduced reproduction is followed by an original reproduction");
+ e.put("claim_limits",std::move(limits));
+ return e;
+}
+MinContextV3 minimization_context_v3(const Plan& plan,const FamilySpecV3& f,
+ const std::vector<MatchedBoundaryObservationV3>& discovery,const Json& parent,std::size_t member){
+ require(member<f.members.size(),"minimization member outside frozen family");
+ json_object* rows=json_object_object_get(parent.get("family_report"),"members");
+ require(rows&&member<json_object_array_length(rows),"parent family report lacks member");
+ Json row(json_object_get(json_object_array_get_idx(rows,member)));
+ require(row.s("state")=="REJECTED_UNDER_DECLARED_MODEL","minimization requires a holdout-rejected family member");
+ MinContextV3 ctx{plan,f,discovery.at(f.members[member].discovery_pair),member,f.members[member].direction,{}};
+ for(const auto& [axis,values]:plan.config.axes){(void)values;ctx.scope.insert(axis);}
+ return ctx;
+}
+FamilySpecV3 frozen_family_for_witness_v3(const fs::path& run,const Plan& plan,
+ const std::vector<MatchedBoundaryObservationV3>& discovery,const std::string& fingerprint){
+ Sqlite ledger(run/"confirmation"/"family.sqlite",true);
+ ledger.exec("BEGIN");
+ auto f=read_family_sidecar(ledger,plan,discovery,fingerprint);
+ ledger.exec("COMMIT");
+ return f;
+}
+void minimize_command_v3(const std::string& command,const fs::path& run,int argc,char** argv,
+ const Plan& plan,const std::vector<MatchedBoundaryObservationV3>& discovery,const std::string& fingerprint){
+ const auto parent=witness_evidence_v3(run,plan,discovery,fingerprint); // full replay, complete family
+ const auto f=frozen_family_for_witness_v3(run,plan,discovery,fingerprint);
+ const auto deadline_s=std::chrono::seconds(plan.config.total_wall_s);
+ auto live=[&](std::size_t,std::size_t,const HoldoutProposalV3& p){
+  return measure_holdout_pair_v3(plan,p,std::chrono::steady_clock::now()+deadline_s);
+ };
+ if(command=="witness-minimize"){
+  const auto key_path=option(argc,argv,"--key"),out=option(argc,argv,"--out"),member_text=option(argc,argv,"--member");
+  require(!key_path.empty()&&!out.empty()&&!member_text.empty(),"witness-minimize needs --member, --key and --out");
+  const auto member=integer(member_text);
+  require(member>=0,"invalid --member");
+  const auto budget_text=option(argc,argv,"--budget");
+  const auto budget=budget_text.empty()?std::int64_t{8}:integer(budget_text);
+  require(budget>=0&&budget<=static_cast<std::int64_t>(kMinimizeBudgetCapV3),"--budget expected 0..32");
+  const auto key=read_ed25519_key_v3(key_path,true);
+  const auto revision=Json::parse(environment()).s("source_revision");
+  require(revision==f.revision,"minimizing executable source revision differs from frozen family");
+  const auto ctx=minimization_context_v3(plan,f,discovery,parent,static_cast<std::size_t>(member));
+  // Reserve the output first: an interrupted run leaves a visible, unusable
+  // directory rather than silently permitting a re-rolled minimization.
+  require(!fs::exists(out)&&fs::create_directories(out),"minimization directory exists; immutable export");
+  write_file((fs::path(out)/"STARTED").string(),"phaseshift.v3.boundary_minimization.1\n");
+  const auto outcome=minimize_boundary_v3(ctx,static_cast<std::size_t>(budget),live);
+  Json exporter;
+  exporter.put("source_revision",revision);
+  exporter.put("executable_sha256",executable_digest_v3(false));
+  exporter.put("worker_sha256",executable_digest_v3(true));
+  Json doc;
+  doc.put("schema","phaseshift.v3.minimized_boundary_witness.1");
+  doc.put("signature_algorithm","ed25519");
+  doc.put("public_key_sha256",sha256(public_key_der_v3(key.get())));
+  doc.put("exporter",std::move(exporter));
+  doc.put("evidence",minimization_evidence_v3(ctx,parent,static_cast<std::size_t>(budget),outcome));
+  const auto bytes=doc.str()+"\n";
+  const auto signature=ed25519_sign_v3(key.get(),bytes);
+  write_file((fs::path(out)/"minimized_witness.json").string(),bytes);
+  write_file((fs::path(out)/"minimized_witness.sig").string(),signature);
+  write_file((fs::path(out)/"public_key.pem").string(),public_key_pem_v3(key.get()));
+  fs::remove(fs::path(out)/"STARTED");
+  Json summary;
+  summary.put("schema","phaseshift.v3.minimized_boundary_witness.1");
+  summary.put("state",outcome.state);summary.put("reduced",outcome.reduced);
+  summary.put("evaluations",static_cast<std::int64_t>(outcome.evals.size()));
+  summary.put("witness_sha256",sha256(bytes));
+  std::cout<<summary.str()<<"\n";
+  return;
+ }
+ // witness-verify-minimized
+ const auto dir=option(argc,argv,"--witness"),trusted_path=option(argc,argv,"--public-key");
+ require(!dir.empty()&&!trusted_path.empty(),"witness-verify-minimized needs --witness and a separately trusted --public-key");
+ const auto reproduce_text=option(argc,argv,"--reproduce");
+ require(reproduce_text.empty()||reproduce_text=="true"||reproduce_text=="false","--reproduce expects true or false");
+ require(!fs::exists(fs::path(dir)/"STARTED"),"minimization was interrupted; record is incomplete");
+ const auto trusted=read_ed25519_key_v3(trusted_path,false);
+ const auto trusted_der=public_key_der_v3(trusted.get());
+ const auto bytes=read_file((fs::path(dir)/"minimized_witness.json").string());
+ const auto signature=read_file((fs::path(dir)/"minimized_witness.sig").string());
+ require(ed25519_verify_v3(trusted.get(),bytes,signature),"minimized witness signature invalid for trusted key");
+ const auto bundled=read_ed25519_key_v3((fs::path(dir)/"public_key.pem").string(),false);
+ require(public_key_der_v3(bundled.get())==trusted_der,"bundled public key differs from trusted key");
+ const auto doc=Json::parse(bytes);
+ require(doc.s("schema")=="phaseshift.v3.minimized_boundary_witness.1"&&doc.s("signature_algorithm")=="ed25519"&&
+         doc.s("public_key_sha256")==sha256(trusted_der),"unsupported or mismatched minimized witness header");
+ json_object* signed_evidence=doc.get("evidence");
+ require(signed_evidence!=nullptr,"minimized witness lacks evidence");
+ Json evidence(json_object_get(signed_evidence));
+ json_object* member_row=evidence.get("member");
+ require(member_row!=nullptr,"minimized witness lacks member");
+ const auto member=Json(json_object_get(member_row)).i("member_index",-1);
+ const auto budget=evidence.i("shrink_budget",-1);
+ require(member>=0&&budget>=0&&budget<=static_cast<std::int64_t>(kMinimizeBudgetCapV3),"invalid signed member/budget");
+ json_object* evals=evidence.get("evaluations");
+ require(evals&&json_object_is_type(evals,json_type_array),"signed evaluations missing");
+ // Replay the deterministic driver over the signed raw observations; every
+ // regenerated seed and case identity must match what was signed.
+ auto recorded=[&](std::size_t block,std::size_t pair,const HoldoutProposalV3& p){
+  require(block<json_object_array_length(evals),"driver requested an unsigned evaluation");
+  json_object* pairs=json_object_object_get(json_object_array_get_idx(evals,block),"pairs");
+  require(pairs&&json_object_is_type(pairs,json_type_array)&&pair<json_object_array_length(pairs),"signed evaluation lacks pair");
+  Json row(json_object_get(json_object_array_get_idx(pairs,pair)));
+  require(row.i("seed")==static_cast<std::int64_t>(p.seed)&&row.b("left_first")==p.left_first&&
+          row.s("left_case_id")==p.a.id&&row.s("right_case_id")==p.b.id,"signed pair identity differs from deterministic replay");
+  HoldoutMeasuredV3 m;
+  m.l=observations_from_json_v3(json_object_object_get(row.p,"left"));
+  m.r=observations_from_json_v3(json_object_object_get(row.p,"right"));
+  return m;
+ };
+ const auto ctx=minimization_context_v3(plan,f,discovery,parent,static_cast<std::size_t>(member));
+ const auto outcome=minimize_boundary_v3(ctx,static_cast<std::size_t>(budget),recorded);
+ const auto rebuilt=Json::parse(minimization_evidence_v3(ctx,parent,static_cast<std::size_t>(budget),outcome).str());
+ require(json_object_equal(signed_evidence,rebuilt.p)==1,"replayed minimization differs from signed witness");
+ Json result;
+ result.put("schema","phaseshift.v3.minimized_boundary_witness_verification.1");
+ result.put("verified",true);result.put("state",outcome.state);
+ result.put("witness_sha256",sha256(bytes));
+ if(reproduce_text=="true"){
+  // Independent re-measurement of the final witness on a verifier-only block.
+  require(outcome.final_eval.has_value(),"no reproduced witness to re-measure");
+  std::set<std::uint64_t> used;
+  for(const auto& ev:outcome.evals)for(const auto& p:ev.pairs)used.insert(p.seed);
+  const auto again=evaluate_boundary_v3(ctx,outcome.evals.at(*outcome.final_eval).base,"VERIFY_REPRODUCE",
+                                        "verifier_reproduce",kVerifierReproduceBlockV3,live,used);
+  Json rep;
+  rep.put("block",static_cast<std::int64_t>(kVerifierReproduceBlockV3));
+  rep.put("valid_pairs",static_cast<std::int64_t>(again.valid));
+  rep.put("positive_pairs",static_cast<std::int64_t>(again.positive));
+  rep.put("p",again.p);rep.put("holds",again.holds);
+  result.put("independent_reproduction",std::move(rep));
+ }
+ std::cout<<result.str()<<"\n";
+}
+
 std::string option(int argc,char** argv,const std::string& name){
  for(int i=2;i+1<argc;i+=2)if(argv[i]==name)return argv[i+1];
  return {};
@@ -1656,6 +2055,8 @@ void syntax(int argc,char** argv,const std::string& command){
   (command=="family-freeze"||command=="family-freeze-journaled")?std::set<std::string>{"--run","--manifest"}:
   command=="witness-export"?std::set<std::string>{"--run","--key","--out"}:
   command=="witness-verify"?std::set<std::string>{"--run","--witness","--public-key"}:
+  command=="witness-minimize"?std::set<std::string>{"--run","--member","--key","--out","--budget"}:
+  command=="witness-verify-minimized"?std::set<std::string>{"--run","--witness","--public-key","--reproduce"}:
   (command=="verify"||command=="taxonomy"||command=="family-report"||command=="accounting")?std::set<std::string>{"--run"}:
   std::set<std::string>{"--run","--pause-after"};
  require((argc-2)%2==0,"options require key/value pairs");
@@ -1671,7 +2072,7 @@ int main(int argc,char** argv){
  try{
   require(argc>=2,"expected run, resume or verify");
   const std::string command=argv[1];
-  require(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||(command=="acquisition-v3"||command=="acquisition-v3-coverage")||command=="accounted-v3")||command=="resume"||command=="verify"||command=="taxonomy"||command=="family-freeze"||command=="family-freeze-journaled"||command=="family-confirm"||command=="family-report"||command=="accounting"||command=="witness-export"||command=="witness-verify","unknown pilot command");
+  require(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||(command=="acquisition-v3"||command=="acquisition-v3-coverage")||command=="accounted-v3")||command=="resume"||command=="verify"||command=="taxonomy"||command=="family-freeze"||command=="family-freeze-journaled"||command=="family-confirm"||command=="family-report"||command=="accounting"||command=="witness-export"||command=="witness-verify"||command=="witness-minimize"||command=="witness-verify-minimized","unknown pilot command");
   syntax(argc,argv,command);
   const auto pause=numeric_option(argc,argv,"--pause-after",0);
   if(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||(command=="acquisition-v3"||command=="acquisition-v3-coverage")||command=="accounted-v3")){
@@ -1722,7 +2123,8 @@ int main(int argc,char** argv){
   require(!run.empty(),"resume/verify need --run");
   require(fs::is_regular_file(fs::path(run)/"run.sqlite"),"missing authoritative run.sqlite");
   const bool family=command=="family-freeze"||command=="family-freeze-journaled"||command=="family-confirm"||command=="family-report";
-  const bool witness=command=="witness-export"||command=="witness-verify";
+  const bool minimizing=command=="witness-minimize"||command=="witness-verify-minimized";
+  const bool witness=command=="witness-export"||command=="witness-verify"||minimizing;
   const bool needs_taxonomy=command=="taxonomy"||family||witness;
   const bool readonly=needs_taxonomy||command=="accounting"||command=="verify";
   Sqlite db(fs::path(run)/"run.sqlite",readonly);
@@ -1764,7 +2166,8 @@ int main(int argc,char** argv){
    db.exec("COMMIT");return 0;
   }
   if(witness){
-   witness_command_v3(command,fs::path(run),argc,argv,plan,taxonomy,source_digest_v3(db,plan));
+   if(minimizing)minimize_command_v3(command,fs::path(run),argc,argv,plan,taxonomy,source_digest_v3(db,plan));
+   else witness_command_v3(command,fs::path(run),argc,argv,plan,taxonomy,source_digest_v3(db,plan));
    db.exec("COMMIT");return 0;
   }
   if(command=="taxonomy"){
