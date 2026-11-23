@@ -8,6 +8,7 @@ or that unequal Python/worker process startup costs have been normalized.
 from __future__ import annotations
 import argparse
 import hashlib
+from importlib.metadata import version as dist_version
 import json
 import math
 from pathlib import Path
@@ -77,14 +78,14 @@ def execute(binary,root,scenario,seed):
     from ConfigSpace import ConfigurationSpace
     from smac import HyperparameterOptimizationFacade as HPOFacade,Scenario
     from smac.runhistory.dataclasses import TrialValue
-    require(smac.__version__==p["smac_version"],"SMAC3 version not pinned")
+    require(dist_version("smac")==p["smac_version"],"SMAC3 version not pinned")
     sc=scenario;source=by[sc["source"]]
     root.mkdir(parents=True)
     trace={
        "schema":1,"suite":"development","scenario":sc["id"],"seed":seed,
        "source_commit":subprocess.check_output(["git","rev-parse","HEAD"],cwd=ROOT,text=True).strip(),
        "binary_sha256":sha256_file(binary),"protocol_sha256":sha256_file(PLAN),
-       "smac_version":smac.__version__,"worker":"genuine_PhaseShift_C++",
+       "smac_version":dist_version("smac"),"worker":"genuine_PhaseShift_C++",
        "policies":{},"sealed_evaluation_reused":False
     }
     for policy in POLICIES:
