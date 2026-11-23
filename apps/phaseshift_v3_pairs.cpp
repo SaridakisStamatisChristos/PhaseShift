@@ -34,6 +34,12 @@
 #include <sys/file.h>
 #include <sys/resource.h>
 #include <unistd.h>
+#include <cctype>
+#include <cerrno>
+#include <fstream>
+#include <sstream>
+#include <sys/prctl.h>
+#include <sys/wait.h>
 
 namespace {
 using namespace ps;
@@ -123,6 +129,36 @@ struct AccountedRunLock {
  AccountedRunLock(const AccountedRunLock&)=delete;
  AccountedRunLock& operator=(const AccountedRunLock&)=delete;
 };
+// V3-09 descendant containment. main() makes this process a child subreaper,
+// so a descendant that escaped a worker's process group (setsid + double
+// fork) is reparented here once its parent exits. After every measurement,
+// kill and reap every such stray so it cannot keep running unaccounted; its
+// CPU then lands in waited-child rusage, never in any timed sample. Escapes
+// while this process is itself killed, or via other namespaces, are not
+// contained (no cgroups); accounting stays ACCOUNTING_INCOMPLETE.
+std::size_t contain_descendants_v3(){
+ std::size_t contained=0;
+ const auto self=static_cast<long>(::getpid());
+ for(int round=0;round<64;++round){
+  std::vector<pid_t> strays;
+  std::error_code ec;
+  for(fs::directory_iterator it("/proc",ec),end;!ec&&it!=end;it.increment(ec)){
+   const auto name=it->path().filename().string();
+   if(name.empty()||!std::all_of(name.begin(),name.end(),[](unsigned char ch){return std::isdigit(ch)!=0;}))continue;
+   std::ifstream stat(it->path()/"stat");std::string text;std::getline(stat,text);
+   const auto close=text.rfind(')');
+   if(close==std::string::npos)continue;
+   std::istringstream fields(text.substr(close+1));char state=0;long ppid=0;
+   if(fields>>state>>ppid&&ppid==self)strays.push_back(static_cast<pid_t>(std::stol(name)));
+  }
+  if(strays.empty())break;
+  for(const auto p:strays)::kill(p,SIGKILL);
+  for(const auto p:strays){int st=0;while(::waitpid(p,&st,0)<0&&errno==EINTR){}++contained;}
+ }
+ if(contained)std::cerr<<"PHASESHIFT v3 warning: contained "<<contained
+  <<" reparented worker descendant(s); their CPU is in waited-child rusage, not in any sample\n";
+ return contained;
+}
 std::string executable_digest_v3(bool worker){
  const auto executable=fs::read_symlink("/proc/self/exe");
  return sha256_file((worker?executable.parent_path()/"phaseshift_worker":executable).string());
@@ -753,9 +789,11 @@ void execute_pairs(Sqlite& db,const Plan& plan,ReplicatePlanner& planner,
   }
   const auto started=std::chrono::steady_clock::now();
   auto measure_one=[&](const Case& c){
-   return measure(c,algorithms,plan.config.blocks,plan.config.warmup,
+   auto rows=measure(c,algorithms,plan.config.blocks,plan.config.warmup,
     plan.config.sample_ms,plan.config.rss_mb,plan.config.minimum_batch_ms,
     plan.config.isolation_mode=="per_sample",deadline,plan.config.measurement_protocol_version);
+   (void)contain_descendants_v3();
+   return rows;
   };
   std::vector<Observation> left,right;
   if(proposal.first_runs_first){left=measure_one(a);right=measure_one(b);}
@@ -1181,9 +1219,11 @@ HoldoutMeasuredV3 measure_holdout_pair_v3(const Plan& plan,const HoldoutProposal
    std::vector<std::string>{plan.config.a,plan.config.b};
  const auto start=std::chrono::steady_clock::now();
  auto collect=[&](const Case& c){
-  return measure(c,algorithms,plan.config.blocks,plan.config.warmup,
+  auto rows=measure(c,algorithms,plan.config.blocks,plan.config.warmup,
      plan.config.sample_ms,plan.config.rss_mb,plan.config.minimum_batch_ms,
      plan.config.isolation_mode=="per_sample",deadline,plan.config.measurement_protocol_version);
+  (void)contain_descendants_v3();
+  return rows;
  };
  HoldoutMeasuredV3 m;
  if(p.left_first){m.l=collect(p.a);m.r=collect(p.b);}else{m.r=collect(p.b);m.l=collect(p.a);}
@@ -2070,6 +2110,8 @@ void syntax(int argc,char** argv,const std::string& command){
 
 int main(int argc,char** argv){
  try{
+  // Orphaned worker descendants are reparented here and contained per measurement.
+  require(::prctl(PR_SET_CHILD_SUBREAPER,1,0,0,0)==0,"cannot become child subreaper");
   require(argc>=2,"expected run, resume or verify");
   const std::string command=argv[1];
   require(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||(command=="acquisition-v3"||command=="acquisition-v3-coverage")||command=="accounted-v3")||command=="resume"||command=="verify"||command=="taxonomy"||command=="family-freeze"||command=="family-freeze-journaled"||command=="family-confirm"||command=="family-report"||command=="accounting"||command=="witness-export"||command=="witness-verify"||command=="witness-minimize"||command=="witness-verify-minimized","unknown pilot command");

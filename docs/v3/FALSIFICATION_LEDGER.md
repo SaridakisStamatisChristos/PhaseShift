@@ -160,3 +160,22 @@ A shrink that destroys the boundary must be retained as a failed attempt, and th
 - Acceptance tests are adaptive and uncorrected.
 - The minimizer and the verifier reproduction run on the same host.
 - A rerun to a new output directory is not linked to an abandoned one.
+
+
+## F-030 — Orphaned workers and leaked worker descendants
+
+Attacks:
+
+- kill the parent with SIGKILL or SIGTERM while a worker is live;
+- kill workers externally;
+- stall a worker past its deadline;
+- leave in-group and `setsid`/double-fork grandchildren behind after a normal exit.
+
+Required outcomes:
+
+- no orphaned worker survives its parent;
+- a killed or timed-out worker never yields a timed sample or a finite contrast;
+- durable attempts remain unresolved and are disclosed on recovery;
+- every worker descendant is dead after the measurement, through the subreaper in the v3 app and the process-group kill in the legacy CLI.
+
+Falsified with real processes. Each containment mechanism is removed in its own mutant, and each mutant fails its own cell. Harness lesson: never capture a child's output through pipes when testing descendant containment, because an orphan holding the pipe makes the harness wait and hides the leak. Residual: no cgroup containment when the parent dies; namespace and ptrace escapes are not contained.

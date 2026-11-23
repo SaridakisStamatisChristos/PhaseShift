@@ -726,6 +726,14 @@ add_test(NAME v3_witness_minimization_fresh_seed_reproduction_and_forgery
  --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_witness_minimization)
 set_tests_properties(v3_witness_minimization_fresh_seed_reproduction_and_forgery PROPERTIES TIMEOUT 600 RUN_SERIAL TRUE)
 
+# V3-09 live-worker crash/containment matrix: real signals, stalled, killed and forking workers.
+add_test(NAME v3_live_worker_fault_containment_matrix
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/live_worker_fault_matrix_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/admissible_calibration.json
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_live_worker_faults)
+set_tests_properties(v3_live_worker_fault_containment_matrix PROPERTIES TIMEOUT 600 RUN_SERIAL TRUE)
+
 # V3-01b analytical synthetic worker shapes; strictly additive opt-in workloads.
 add_executable(phaseshift_v3_shapes_tests tests/v3/synthetic_shapes.cpp)
 target_link_libraries(phaseshift_v3_shapes_tests PRIVATE phaseshift_core)

@@ -307,3 +307,56 @@ The test also covers the refusal gates (incomplete family, non-rejected member, 
 **Limits:** greedy, budgeted local minimization, so the result is not a global minimum. Value-range reduction leaves byte size unchanged, so "smaller" means the declared field-sum ordering. The final reproduction shares the host and session with the search; it is not an independent multi-host replication. Fresh-seed reproduction is not holdout confirmation. Literal byte-level ddmin of boundary pairs is not implemented, because v3 legal-space endpoints are generator-parameterised. Interrupted minimizations are visible but not journaled for retry.
 
 **State:** V3-09 PARTIAL. Exact-head CI pending. The crash and descendant-accounting matrix and derived-cache poisoning remain OPEN.
+
+
+## V3-09e live-worker crash and descendant containment matrix (23 November 2026)
+
+Predecessor `8907f19`: all seven exact-head CI workflows succeeded. Results there: 120/120 tests under GCC, Clang, ASan/UBSan and coverage; production line coverage 7280/7645 = 95.23%.
+
+**Gaps found by code inspection of `src/runner.cpp`:**
+
+- The worker ran in its own session (`setsid`) and was killed as a group only on timeout.
+- If the parent was SIGKILLed or SIGTERMed while a worker was live, the worker was orphaned and kept running outside every accounting window.
+- Any process the worker left behind after a *normal* exit survived. In-group processes were never killed; `setsid` plus double-fork escapees were reparented to init with unaccounted CPU.
+
+**Changes:**
+
+1. **Runner (all CLIs).**
+   - The child sets `PR_SET_PDEATHSIG(SIGKILL)` and checks `getppid()` to guard the fork/prctl race.
+   - Worker exit is observed with `waitid(..., WNOWAIT)`, so the unreaped leader keeps its process-group id pinned. The group is then killed after *every* measurement, not only on timeout, and the leader is reaped.
+   - Timeout, crash and signal labelling are unchanged.
+2. **`phaseshift_v3_pairs`.**
+   - The app becomes `PR_SET_CHILD_SUBREAPER` at startup.
+   - After every worker measurement, in discovery (v10–v18), holdout (v16/v19) and minimization, it scans `/proc` for reparented descendants, SIGKILLs and reaps them, and warns on stderr.
+   - Their CPU then lands in waited-child rusage, never in any timed sample.
+3. **`phaseshift_worker`.** A test-only `PHASESHIFT_WORKER_FAULT` hook (`stall_ms=N`, `group_grandchild`, `escaped_grandchild`) with an optional pid file. It is inert unless set, and a leaked grandchild is bounded to 60 s.
+
+**Test:** `tests/v3/live_worker_fault_matrix_cli.py` (CTest `v3_live_worker_fault_containment_matrix`), all with real processes and real signals:
+
+| Cell | Fault | Required outcome |
+|---|---|---|
+| A | parent SIGKILL during a live worker (accounted discovery) | stalled worker dead within 5 s; one STARTED attempt, recovered as ABANDONED then COMMITTED, disclosed by accounting |
+| B | parent SIGTERM during a live holdout worker (journaled family) | `INTERRUPTED_ATTEMPT_PENDING`, recovered |
+| C | external SIGKILL of every live worker | samples `signaled` with no timing; pair censored with NULL contrast and committed exactly once |
+| D | worker stalls past the sample deadline | samples `timeout`, pair censored, worker dead |
+| E | in-group grandchild in the v3 app | contained |
+| F | escaped grandchild in the v3 app | contained and reported; measurements stay `ok` |
+| G | in-group grandchild in the legacy v1/v2 CLI (no subreaper) | contained by the group kill alone |
+
+**Falsification:** three single-mechanism mutants each fail exactly their cell, and the real build passes:
+
+- without `PDEATHSIG`, cell A fails with an orphaned worker;
+- without the group kill, cell G fails with leaked legacy grandchildren;
+- without the subreaper, cell F fails with leaked escaped grandchildren.
+
+Two harness defects were found and fixed while building this. Pipes inherited by orphans made `communicate()` and `capture_output` wait for the orphan, which masked containment failures; output now goes to files or `DEVNULL`.
+
+**Limits:**
+
+- No cgroups. If the v3 parent itself is killed, escaped descendants (as opposed to the worker) reparent to init and survive.
+- A descendant that escapes into another PID namespace, or is re-parented by ptrace, is not contained.
+- The legacy CLI does not contain `setsid` escapees.
+- Descendant CPU is not attributed per sample, and contained-descendant counts are not persisted in SQLite (stderr only).
+- Accounting stays `ACCOUNTING_INCOMPLETE`. Disk-full, busy/corrupt DB, corrupt IPC and OOM cells, and derived-cache poisoning, remain OPEN.
+
+**State:** V3-09 PARTIAL. Exact-head CI pending.
