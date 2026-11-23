@@ -7,7 +7,10 @@ on:
       - 'benchmarks/v3/real_smac_development.json'
       - 'benchmarks/v3/run_real_smac.py'
       - 'benchmarks/v3/aggregate_real_smac.py'
+      - 'benchmarks/v3/run_real_external.py'
+      - 'benchmarks/v3/real_external_development.json'
       - 'tests/v3/real_smac_contract.py'
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
