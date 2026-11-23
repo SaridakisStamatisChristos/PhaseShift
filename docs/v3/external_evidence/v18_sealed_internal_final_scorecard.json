@@ -1,0 +1,907 @@
+{
+  "decision": {
+    "all_scenario_false_nomination_events": {
+      "acquisition-v3": 24,
+      "acquisition-v3-coverage": 24,
+      "conditional-tree": 23
+    },
+    "evaluation_datasets_exposed": true,
+    "external_sota_established": false,
+    "negative_control_false_nomination_events": {
+      "acquisition-v3": 4,
+      "acquisition-v3-coverage": 3,
+      "conditional-tree": 6
+    },
+    "negative_control_false_nomination_no_worse_than_both": true,
+    "point_estimate_only": true,
+    "primary_descriptive_v18_hit_advantage_over_both": true,
+    "primary_endpoint": "at_least_one_correct_timing_nomination_on_four_planted_work_unit_positive_fixtures",
+    "superiority_established": false,
+    "total_positive_hit_trials": {
+      "acquisition-v3": 50,
+      "acquisition-v3-coverage": 53,
+      "conditional-tree": 52
+    }
+  },
+  "eligible_for_claim": false,
+  "evaluation_opened": true,
+  "expected_trials": 360,
+  "limitations": [
+    "Only synthetic work-unit edges are labelled ground truth",
+    "Observed CLI CPU is not exact pure-worker CPU nor a standardized hardware benchmark",
+    "Equal query counts and same CI fixture do not imply exactly equal consumed CPU",
+    "Twenty seed clusters support only exploratory paired bootstrap intervals",
+    "One-time final holdout has been opened; no new tuning on its observations",
+    "No fresh-seed confirmation of these timed nominations",
+    "This held-out comparison tests only the three predeclared internal policies",
+    "No external competitor, fresh-seed confirmation or general SOTA certification"
+  ],
+  "null_fixtures": [
+    "multidim_null",
+    "smooth_no_jump"
+  ],
+  "observed_trials": 360,
+  "positive_fixtures": [
+    "masked_interactions",
+    "multi_context_steps",
+    "rare_hidden_cliff",
+    "sparse_multi_step"
+  ],
+  "protocol": "phaseshift.v18.coverage-cost.3way-one-time-evaluation.1",
+  "raw_cluster_metrics": [
+    {
+      "arms": {
+        "acquisition-v3": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 925288000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 1.0
+        },
+        "acquisition-v3-coverage": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 904721000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 0.0
+        },
+        "conditional-tree": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 909641000,
+          "positive_hit_fraction": 0.5,
+          "replications_per_trial": 0.0
+        }
+      },
+      "seed": 7101
+    },
+    {
+      "arms": {
+        "acquisition-v3": {
+          "null_false_per_trial": 0.5,
+          "observed_total_cpu_ns": 932880000,
+          "positive_hit_fraction": 0.5,
+          "replications_per_trial": 1.0
+        },
+        "acquisition-v3-coverage": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 942721000,
+          "positive_hit_fraction": 0.5,
+          "replications_per_trial": 0.16666666666666666
+        },
+        "conditional-tree": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 927787000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 0.16666666666666666
+        }
+      },
+      "seed": 7102
+    },
+    {
+      "arms": {
+        "acquisition-v3": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 954539000,
+          "positive_hit_fraction": 0.5,
+          "replications_per_trial": 1.0
+        },
+        "acquisition-v3-coverage": {
+          "null_false_per_trial": 0.5,
+          "observed_total_cpu_ns": 936786000,
+          "positive_hit_fraction": 0.5,
+          "replications_per_trial": 0.16666666666666666
+        },
+        "conditional-tree": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 933186000,
+          "positive_hit_fraction": 0.5,
+          "replications_per_trial": 0.16666666666666666
+        }
+      },
+      "seed": 7103
+    },
+    {
+      "arms": {
+        "acquisition-v3": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 910798000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 1.0
+        },
+        "acquisition-v3-coverage": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 941750000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 0.0
+        },
+        "conditional-tree": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 908660000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 0.0
+        }
+      },
+      "seed": 7104
+    },
+    {
+      "arms": {
+        "acquisition-v3": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 944113000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 1.0
+        },
+        "acquisition-v3-coverage": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 935742000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 0.0
+        },
+        "conditional-tree": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 929283000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 0.0
+        }
+      },
+      "seed": 7105
+    },
+    {
+      "arms": {
+        "acquisition-v3": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 899323000,
+          "positive_hit_fraction": 0.5,
+          "replications_per_trial": 1.0
+        },
+        "acquisition-v3-coverage": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 895975000,
+          "positive_hit_fraction": 0.5,
+          "replications_per_trial": 0.0
+        },
+        "conditional-tree": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 922875000,
+          "positive_hit_fraction": 0.5,
+          "replications_per_trial": 0.0
+        }
+      },
+      "seed": 7106
+    },
+    {
+      "arms": {
+        "acquisition-v3": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 993937000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 1.0
+        },
+        "acquisition-v3-coverage": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 955297000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 0.0
+        },
+        "conditional-tree": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 920824000,
+          "positive_hit_fraction": 0.5,
+          "replications_per_trial": 0.0
+        }
+      },
+      "seed": 7107
+    },
+    {
+      "arms": {
+        "acquisition-v3": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 916563000,
+          "positive_hit_fraction": 0.5,
+          "replications_per_trial": 1.0
+        },
+        "acquisition-v3-coverage": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 906682000,
+          "positive_hit_fraction": 0.5,
+          "replications_per_trial": 0.0
+        },
+        "conditional-tree": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 913479000,
+          "positive_hit_fraction": 0.5,
+          "replications_per_trial": 0.0
+        }
+      },
+      "seed": 7108
+    },
+    {
+      "arms": {
+        "acquisition-v3": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 928516000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 1.0
+        },
+        "acquisition-v3-coverage": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 915854000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 0.16666666666666666
+        },
+        "conditional-tree": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 923887000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 0.16666666666666666
+        }
+      },
+      "seed": 7109
+    },
+    {
+      "arms": {
+        "acquisition-v3": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 916211000,
+          "positive_hit_fraction": 0.25,
+          "replications_per_trial": 1.0
+        },
+        "acquisition-v3-coverage": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 905200000,
+          "positive_hit_fraction": 0.5,
+          "replications_per_trial": 0.0
+        },
+        "conditional-tree": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 921476000,
+          "positive_hit_fraction": 0.5,
+          "replications_per_trial": 0.0
+        }
+      },
+      "seed": 7110
+    },
+    {
+      "arms": {
+        "acquisition-v3": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 917358000,
+          "positive_hit_fraction": 1.0,
+          "replications_per_trial": 1.0
+        },
+        "acquisition-v3-coverage": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 903814000,
+          "positive_hit_fraction": 1.0,
+          "replications_per_trial": 0.0
+        },
+        "conditional-tree": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 890949000,
+          "positive_hit_fraction": 1.0,
+          "replications_per_trial": 0.0
+        }
+      },
+      "seed": 7111
+    },
+    {
+      "arms": {
+        "acquisition-v3": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 920740000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 1.0
+        },
+        "acquisition-v3-coverage": {
+          "null_false_per_trial": 0.5,
+          "observed_total_cpu_ns": 918785000,
+          "positive_hit_fraction": 1.0,
+          "replications_per_trial": 0.16666666666666666
+        },
+        "conditional-tree": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 935800000,
+          "positive_hit_fraction": 1.0,
+          "replications_per_trial": 0.16666666666666666
+        }
+      },
+      "seed": 7112
+    },
+    {
+      "arms": {
+        "acquisition-v3": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 910571000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 1.0
+        },
+        "acquisition-v3-coverage": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 899251000,
+          "positive_hit_fraction": 0.5,
+          "replications_per_trial": 0.0
+        },
+        "conditional-tree": {
+          "null_false_per_trial": 0.5,
+          "observed_total_cpu_ns": 922551000,
+          "positive_hit_fraction": 0.5,
+          "replications_per_trial": 0.0
+        }
+      },
+      "seed": 7113
+    },
+    {
+      "arms": {
+        "acquisition-v3": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 912205000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 1.0
+        },
+        "acquisition-v3-coverage": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 914734000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 0.0
+        },
+        "conditional-tree": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 917340000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 0.0
+        }
+      },
+      "seed": 7114
+    },
+    {
+      "arms": {
+        "acquisition-v3": {
+          "null_false_per_trial": 1.5,
+          "observed_total_cpu_ns": 938656000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 1.0
+        },
+        "acquisition-v3-coverage": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 945889000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 0.0
+        },
+        "conditional-tree": {
+          "null_false_per_trial": 2.5,
+          "observed_total_cpu_ns": 929743000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 0.0
+        }
+      },
+      "seed": 7115
+    },
+    {
+      "arms": {
+        "acquisition-v3": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 953340000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 1.0
+        },
+        "acquisition-v3-coverage": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 899973000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 0.0
+        },
+        "conditional-tree": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 917900000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 0.0
+        }
+      },
+      "seed": 7116
+    },
+    {
+      "arms": {
+        "acquisition-v3": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 920329000,
+          "positive_hit_fraction": 0.25,
+          "replications_per_trial": 1.0
+        },
+        "acquisition-v3-coverage": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 909938000,
+          "positive_hit_fraction": 0.25,
+          "replications_per_trial": 0.16666666666666666
+        },
+        "conditional-tree": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 924868000,
+          "positive_hit_fraction": 0.5,
+          "replications_per_trial": 0.16666666666666666
+        }
+      },
+      "seed": 7117
+    },
+    {
+      "arms": {
+        "acquisition-v3": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 918383000,
+          "positive_hit_fraction": 0.5,
+          "replications_per_trial": 1.0
+        },
+        "acquisition-v3-coverage": {
+          "null_false_per_trial": 0.5,
+          "observed_total_cpu_ns": 906403000,
+          "positive_hit_fraction": 0.5,
+          "replications_per_trial": 0.0
+        },
+        "conditional-tree": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 904542000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 0.0
+        }
+      },
+      "seed": 7118
+    },
+    {
+      "arms": {
+        "acquisition-v3": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 901964000,
+          "positive_hit_fraction": 0.5,
+          "replications_per_trial": 1.0
+        },
+        "acquisition-v3-coverage": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 908195000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 0.0
+        },
+        "conditional-tree": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 891389000,
+          "positive_hit_fraction": 0.25,
+          "replications_per_trial": 0.0
+        }
+      },
+      "seed": 7119
+    },
+    {
+      "arms": {
+        "acquisition-v3": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 887453000,
+          "positive_hit_fraction": 0.5,
+          "replications_per_trial": 1.0
+        },
+        "acquisition-v3-coverage": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 928809000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 0.0
+        },
+        "conditional-tree": {
+          "null_false_per_trial": 0.0,
+          "observed_total_cpu_ns": 874934000,
+          "positive_hit_fraction": 0.75,
+          "replications_per_trial": 0.0
+        }
+      },
+      "seed": 7120
+    }
+  ],
+  "scenario_results": [
+    {
+      "fixture": "multi_context_steps",
+      "policies": {
+        "acquisition-v3": {
+          "distinct_planted_truth_edges_nominated": 23,
+          "exploration_queries": 220,
+          "failures": 0,
+          "false_nomination_events": 0,
+          "out_of_consumed_budget": 0,
+          "replication_queries": 20,
+          "total_cpu_ns": 3636781000,
+          "total_wall_ns": 5994764627,
+          "trials": 20,
+          "under_budget_true_hit_trials": 15
+        },
+        "acquisition-v3-coverage": {
+          "distinct_planted_truth_edges_nominated": 22,
+          "exploration_queries": 240,
+          "failures": 0,
+          "false_nomination_events": 0,
+          "out_of_consumed_budget": 0,
+          "replication_queries": 0,
+          "total_cpu_ns": 3606403000,
+          "total_wall_ns": 5956900011,
+          "trials": 20,
+          "under_budget_true_hit_trials": 14
+        },
+        "conditional-tree": {
+          "distinct_planted_truth_edges_nominated": 24,
+          "exploration_queries": 240,
+          "failures": 0,
+          "false_nomination_events": 0,
+          "out_of_consumed_budget": 0,
+          "replication_queries": 0,
+          "total_cpu_ns": 3677023000,
+          "total_wall_ns": 6037801665,
+          "trials": 20,
+          "under_budget_true_hit_trials": 15
+        }
+      },
+      "truth_edges": 6
+    },
+    {
+      "fixture": "rare_hidden_cliff",
+      "policies": {
+        "acquisition-v3": {
+          "distinct_planted_truth_edges_nominated": 5,
+          "exploration_queries": 220,
+          "failures": 0,
+          "false_nomination_events": 18,
+          "out_of_consumed_budget": 0,
+          "replication_queries": 20,
+          "total_cpu_ns": 2262246000,
+          "total_wall_ns": 4682441640,
+          "trials": 20,
+          "under_budget_true_hit_trials": 5
+        },
+        "acquisition-v3-coverage": {
+          "distinct_planted_truth_edges_nominated": 7,
+          "exploration_queries": 240,
+          "failures": 0,
+          "false_nomination_events": 16,
+          "out_of_consumed_budget": 0,
+          "replication_queries": 0,
+          "total_cpu_ns": 2250152000,
+          "total_wall_ns": 5230146625,
+          "trials": 20,
+          "under_budget_true_hit_trials": 7
+        },
+        "conditional-tree": {
+          "distinct_planted_truth_edges_nominated": 6,
+          "exploration_queries": 240,
+          "failures": 0,
+          "false_nomination_events": 13,
+          "out_of_consumed_budget": 0,
+          "replication_queries": 0,
+          "total_cpu_ns": 2233167000,
+          "total_wall_ns": 4628007389,
+          "trials": 20,
+          "under_budget_true_hit_trials": 6
+        }
+      },
+      "truth_edges": 1
+    },
+    {
+      "fixture": "smooth_no_jump",
+      "policies": {
+        "acquisition-v3": {
+          "distinct_planted_truth_edges_nominated": 0,
+          "exploration_queries": 220,
+          "failures": 0,
+          "false_nomination_events": 4,
+          "out_of_consumed_budget": 0,
+          "replication_queries": 20,
+          "total_cpu_ns": 2586283000,
+          "total_wall_ns": 5162862822,
+          "trials": 20,
+          "under_budget_true_hit_trials": 0
+        },
+        "acquisition-v3-coverage": {
+          "distinct_planted_truth_edges_nominated": 0,
+          "exploration_queries": 240,
+          "failures": 0,
+          "false_nomination_events": 3,
+          "out_of_consumed_budget": 0,
+          "replication_queries": 0,
+          "total_cpu_ns": 2478896000,
+          "total_wall_ns": 4896181197,
+          "trials": 20,
+          "under_budget_true_hit_trials": 0
+        },
+        "conditional-tree": {
+          "distinct_planted_truth_edges_nominated": 0,
+          "exploration_queries": 240,
+          "failures": 0,
+          "false_nomination_events": 6,
+          "out_of_consumed_budget": 0,
+          "replication_queries": 0,
+          "total_cpu_ns": 2523357000,
+          "total_wall_ns": 4927157654,
+          "trials": 20,
+          "under_budget_true_hit_trials": 0
+        }
+      },
+      "truth_edges": 0
+    },
+    {
+      "fixture": "multidim_null",
+      "policies": {
+        "acquisition-v3": {
+          "distinct_planted_truth_edges_nominated": 0,
+          "exploration_queries": 220,
+          "failures": 0,
+          "false_nomination_events": 0,
+          "out_of_consumed_budget": 0,
+          "replication_queries": 20,
+          "total_cpu_ns": 3254324000,
+          "total_wall_ns": 5598528199,
+          "trials": 20,
+          "under_budget_true_hit_trials": 0
+        },
+        "acquisition-v3-coverage": {
+          "distinct_planted_truth_edges_nominated": 0,
+          "exploration_queries": 240,
+          "failures": 0,
+          "false_nomination_events": 0,
+          "out_of_consumed_budget": 0,
+          "replication_queries": 0,
+          "total_cpu_ns": 3249524000,
+          "total_wall_ns": 5603572495,
+          "trials": 20,
+          "under_budget_true_hit_trials": 0
+        },
+        "conditional-tree": {
+          "distinct_planted_truth_edges_nominated": 0,
+          "exploration_queries": 240,
+          "failures": 0,
+          "false_nomination_events": 0,
+          "out_of_consumed_budget": 0,
+          "replication_queries": 0,
+          "total_cpu_ns": 3242071000,
+          "total_wall_ns": 5596812621,
+          "trials": 20,
+          "under_budget_true_hit_trials": 0
+        }
+      },
+      "truth_edges": 0
+    },
+    {
+      "fixture": "sparse_multi_step",
+      "policies": {
+        "acquisition-v3": {
+          "distinct_planted_truth_edges_nominated": 68,
+          "exploration_queries": 220,
+          "failures": 0,
+          "false_nomination_events": 2,
+          "out_of_consumed_budget": 0,
+          "replication_queries": 20,
+          "total_cpu_ns": 3356380000,
+          "total_wall_ns": 5830672328,
+          "trials": 20,
+          "under_budget_true_hit_trials": 20
+        },
+        "acquisition-v3-coverage": {
+          "distinct_planted_truth_edges_nominated": 74,
+          "exploration_queries": 235,
+          "failures": 0,
+          "false_nomination_events": 5,
+          "out_of_consumed_budget": 0,
+          "replication_queries": 5,
+          "total_cpu_ns": 3383578000,
+          "total_wall_ns": 6257084642,
+          "trials": 20,
+          "under_budget_true_hit_trials": 20
+        },
+        "conditional-tree": {
+          "distinct_planted_truth_edges_nominated": 71,
+          "exploration_queries": 235,
+          "failures": 0,
+          "false_nomination_events": 4,
+          "out_of_consumed_budget": 0,
+          "replication_queries": 5,
+          "total_cpu_ns": 3255792000,
+          "total_wall_ns": 5710442516,
+          "trials": 20,
+          "under_budget_true_hit_trials": 20
+        }
+      },
+      "truth_edges": 4
+    },
+    {
+      "fixture": "masked_interactions",
+      "policies": {
+        "acquisition-v3": {
+          "distinct_planted_truth_edges_nominated": 13,
+          "exploration_queries": 220,
+          "failures": 0,
+          "false_nomination_events": 0,
+          "out_of_consumed_budget": 0,
+          "replication_queries": 20,
+          "total_cpu_ns": 3407153000,
+          "total_wall_ns": 5761391424,
+          "trials": 20,
+          "under_budget_true_hit_trials": 10
+        },
+        "acquisition-v3-coverage": {
+          "distinct_planted_truth_edges_nominated": 16,
+          "exploration_queries": 240,
+          "failures": 0,
+          "false_nomination_events": 0,
+          "out_of_consumed_budget": 0,
+          "replication_queries": 0,
+          "total_cpu_ns": 3407966000,
+          "total_wall_ns": 5756934319,
+          "trials": 20,
+          "under_budget_true_hit_trials": 12
+        },
+        "conditional-tree": {
+          "distinct_planted_truth_edges_nominated": 15,
+          "exploration_queries": 240,
+          "failures": 0,
+          "false_nomination_events": 0,
+          "out_of_consumed_budget": 0,
+          "replication_queries": 0,
+          "total_cpu_ns": 3389704000,
+          "total_wall_ns": 5734592597,
+          "trials": 20,
+          "under_budget_true_hit_trials": 11
+        }
+      },
+      "truth_edges": 2
+    }
+  ],
+  "schema": 1,
+  "seed_cluster_count": 20,
+  "seed_cluster_paired_differences": {
+    "coverage_vs_acquisition-v3": {
+      "null_false_per_trial": {
+        "descriptive_seed_cluster_percentile95": [
+          -0.225,
+          0.125
+        ],
+        "mean_new_minus_old": -0.025,
+        "new_better_seed_clusters": 3,
+        "new_worse_seed_clusters": 2,
+        "seed_clusters": 20,
+        "statistical_superiority_claim": false,
+        "tied_seed_clusters": 15
+      },
+      "observed_total_cpu_ns": {
+        "descriptive_seed_cluster_percentile95": [
+          -14786100.0,
+          2304100.0
+        ],
+        "mean_new_minus_old": -6332400.0,
+        "new_better_seed_clusters": 6,
+        "new_worse_seed_clusters": 14,
+        "seed_clusters": 20,
+        "statistical_superiority_claim": false,
+        "tied_seed_clusters": 0
+      },
+      "positive_hit_fraction": {
+        "descriptive_seed_cluster_percentile95": [
+          -0.0125,
+          0.0875
+        ],
+        "mean_new_minus_old": 0.0375,
+        "new_better_seed_clusters": 4,
+        "new_worse_seed_clusters": 1,
+        "seed_clusters": 20,
+        "statistical_superiority_claim": false,
+        "tied_seed_clusters": 15
+      },
+      "replications_per_trial": {
+        "descriptive_seed_cluster_percentile95": [
+          -0.9833333333333334,
+          -0.925
+        ],
+        "mean_new_minus_old": -0.9583333333333334,
+        "new_better_seed_clusters": 0,
+        "new_worse_seed_clusters": 20,
+        "seed_clusters": 20,
+        "statistical_superiority_claim": false,
+        "tied_seed_clusters": 0
+      }
+    },
+    "coverage_vs_conditional-tree": {
+      "null_false_per_trial": {
+        "descriptive_seed_cluster_percentile95": [
+          -0.375,
+          0.125
+        ],
+        "mean_new_minus_old": -0.075,
+        "new_better_seed_clusters": 3,
+        "new_worse_seed_clusters": 2,
+        "seed_clusters": 20,
+        "statistical_superiority_claim": false,
+        "tied_seed_clusters": 15
+      },
+      "observed_total_cpu_ns": {
+        "descriptive_seed_cluster_percentile95": [
+          -6176700.0,
+          12350650.0
+        ],
+        "mean_new_minus_old": 2770250.0,
+        "new_better_seed_clusters": 10,
+        "new_worse_seed_clusters": 10,
+        "seed_clusters": 20,
+        "statistical_superiority_claim": false,
+        "tied_seed_clusters": 0
+      },
+      "positive_hit_fraction": {
+        "descriptive_seed_cluster_percentile95": [
+          -0.05,
+          0.0875
+        ],
+        "mean_new_minus_old": 0.0125,
+        "new_better_seed_clusters": 3,
+        "new_worse_seed_clusters": 3,
+        "seed_clusters": 20,
+        "statistical_superiority_claim": false,
+        "tied_seed_clusters": 14
+      },
+      "replications_per_trial": {
+        "descriptive_seed_cluster_percentile95": [
+          0.0,
+          0.0
+        ],
+        "mean_new_minus_old": 0.0,
+        "new_better_seed_clusters": 0,
+        "new_worse_seed_clusters": 0,
+        "seed_clusters": 20,
+        "statistical_superiority_claim": false,
+        "tied_seed_clusters": 20
+      }
+    }
+  },
+  "sota_claim": false,
+  "source_commit": "b5491873ccf534c6d2c26562a07f0d1b9f068d9c",
+  "source_manifest_sha256": "01c99e3e8c3f545b7a0f84e850bf3487759403d6829c16437be218fcbc52c10e",
+  "source_provenance": {
+    "masked_interactions": {
+      "plan_sha256": "44dd8b1a944e5f794511cd4fa5a9544c3ff2d0e7c7e426087f3d98ffce1af9f7",
+      "scorecard_sha256": "76f9c533cb46a27073ffb1f9fda62254699c291a7281eae1c442fd176e22a9a9",
+      "source_commit": "b5491873ccf534c6d2c26562a07f0d1b9f068d9c"
+    },
+    "multi_context_steps": {
+      "plan_sha256": "d47f2f807cc90dc2e73a2b722a7ed2d10b27e1cc229959cd69301519ef64be12",
+      "scorecard_sha256": "b60637273ed9fce6e413d1c914bcd75742586a7d939186d9b03e3c08e8e314ac",
+      "source_commit": "b5491873ccf534c6d2c26562a07f0d1b9f068d9c"
+    },
+    "multidim_null": {
+      "plan_sha256": "b7d37f5bf0ebe95110a751079a8f53587f505b9834477eace1b18e7725dea05c",
+      "scorecard_sha256": "d84f944ee1ad8946bcc3ee025a500e69966d8e5ddd791f88a8055e9dd356687f",
+      "source_commit": "b5491873ccf534c6d2c26562a07f0d1b9f068d9c"
+    },
+    "rare_hidden_cliff": {
+      "plan_sha256": "f5b9f651cba81590fed410531558bd2f4d4f05dc40e7b9d3941080dfdeaec28e",
+      "scorecard_sha256": "c7fc3f198a0e9a8c6c4e8486a5ec79dcb2525fc48a138340c1ec8f02bf085d24",
+      "source_commit": "b5491873ccf534c6d2c26562a07f0d1b9f068d9c"
+    },
+    "smooth_no_jump": {
+      "plan_sha256": "b8776c05e1058864491c9565d1ef710f76458e905c42e77c3d014e43c09900a8",
+      "scorecard_sha256": "2ffada75067c243aa215ed5d5d00fdb0920bf05b9ef86677a4bcb32e01127aa2",
+      "source_commit": "b5491873ccf534c6d2c26562a07f0d1b9f068d9c"
+    },
+    "sparse_multi_step": {
+      "plan_sha256": "20542ea101e7f87d219f22469042ddfb5335c3e645e7983e988bde50d7079825",
+      "scorecard_sha256": "a18dc93b80c5656748c469a42eea753a6f3975c780c5a2af4988d1a454938047",
+      "source_commit": "b5491873ccf534c6d2c26562a07f0d1b9f068d9c"
+    }
+  },
+  "suite": "evaluation"
+}

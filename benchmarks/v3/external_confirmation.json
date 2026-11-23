@@ -1,0 +1,77 @@
+{
+ "schema": 1,
+ "protocol": "phaseshift.v3-external-confirmation.1",
+ "suite": "confirmation",
+ "status": "FROZEN_NOT_OPENED",
+ "frozen_on": "2026-11-23",
+ "one_time": true,
+ "open_token": "OPEN-51001-51020",
+ "purpose": "One-time confirmatory test of hypotheses formed on executed development evidence: V18 acquisition-v3-coverage versus genuine SMAC3 2.4.1 and Optuna 4.6.0 TPE on the same real C++ sorting and Top-K workers.",
+ "development_evidence": {
+  "smac": {
+   "file": "docs/v3/external_evidence/smac3_vs_v18_development_final.json",
+   "sha256": "efd5b6ab14aaccae574da96afe56cf6865f81141386311c5e877626e1cdfefe4",
+   "seeds": "33001-33020",
+   "observed_v18_minus_smac_mean_per_cluster": 0.4
+  },
+  "optuna": {
+   "file": "docs/v3/external_evidence/optuna_tpe_random_vs_v18_development_final.json",
+   "sha256": "ba184fcbfe9cacfe9c2f666eb2b62a6e04b2a3492baba1617b13813342cf1624",
+   "seeds": "32001-32020",
+   "observed_v18_minus_tpe_mean_per_cluster": 0.0
+  }
+ },
+ "native_source_commit": "848e2b7df770a50c5070c0a80caf920a5d939765",
+ "pinned_native_source_blobs": {
+  "include/phaseshift/v3/conditional_pair.hpp": "352649a791af583dd5e779500d2db9336119901b",
+  "include/phaseshift/v3/acquisition.hpp": "4af662731363c76d87955008d8d655beb0f76566",
+  "apps/phaseshift_v3_pairs.cpp": "780d32f50514bdccfc47658230d8795b10fc8918"
+ },
+ "fixture_manifest": "benchmarks/v3/paired_development_manifest.json",
+ "fixture_manifest_blob_sha1": "2122d7f770d66bbc9145febe40ba7ac5cbc6f6d7",
+ "smac_version": "2.4.1",
+ "optuna_version": "4.6.0",
+ "policies": ["acquisition-v3-coverage", "smac3_hpo", "optuna_tpe"],
+ "policy_definitions": {
+  "acquisition-v3-coverage": "unchanged V18 native CLI, one invocation, 12 matched pairs, base seed S",
+  "smac3_hpo": "SMAC3 2.4.1 HyperparameterOptimizationFacade ask/tell, Scenario(deterministic=False, n_trials=12, seed=S), one continuous edge_coordinate in [0, edge_count] floor-clamped to a legal adjacent edge, loss 1/(1+|effect|), censored loss 1, query n config seed S+100000+1000n",
+  "optuna_tpe": "Optuna 4.6.0 TPESampler(seed=S, n_startup_trials=4, n_ei_candidates=24), maximize |effect|, censored reward 0, suggest_int edge_index, query n config seed S+100000+1000n"
+ },
+ "pair_budget": 12,
+ "confirmation_pairs": 20,
+ "max_distinct_candidates": 2,
+ "min_practical_ratio": 1.2,
+ "alpha": 0.05,
+ "scenarios": [
+  {"id": "sort_ascending", "source": "sort_pathology", "distribution": "ascending"},
+  {"id": "topk_uniform", "source": "topk_fraction", "distribution": "uniform"}
+ ],
+ "seeds": [51001, 51002, 51003, 51004, 51005, 51006, 51007, 51008, 51009, 51010,
+           51011, 51012, 51013, 51014, 51015, 51016, 51017, 51018, 51019, 51020],
+ "diagnostic_seeds": [50500],
+ "seed_derivation": "discovery base S; external query n uses S+100000+1000n (n<12); confirmation of nominated edge j uses 1000000000+10S+j; all derived seeds must be disjoint from every seed list in the repository and from all derived seeds of prior external studies",
+ "endpoint": "For seed cluster S and policy P: R_P(S) = number of P's nominated edges, summed over both scenarios, whose fresh-seed 20-pair exact sign test is REJECTED_UNDER_UNVERIFIED_SIGN_INDEPENDENCE after within-campaign Holm at alpha 0.05 (0..4).",
+ "hypotheses": [
+  {"id": "H1", "difference": "R_acquisition-v3-coverage - R_smac3_hpo", "alternative": "greater",
+   "test": "one-sided exact binomial sign test over seed clusters with nonzero difference; p=1 if none"},
+  {"id": "H2", "difference": "R_acquisition-v3-coverage - R_optuna_tpe", "alternative": "greater",
+   "test": "one-sided exact binomial sign test over seed clusters with nonzero difference; p=1 if none"}
+ ],
+ "family_alpha": 0.05,
+ "multiplicity": "Holm over {H1, H2}",
+ "decision_rules": {
+  "supported": "Holm-adjusted p <= 0.05: V18 nominates more fresh-seed-reproducible matched contrasts than that competitor on this endpoint, these two real workloads, this host class and fixed 12-query budget.",
+  "not_supported": "Otherwise: no advantage over that competitor is established; external competitiveness on this endpoint remains unproven.",
+  "incomplete": "Any missing, failed or unverifiable trial makes the whole confirmation INCOMPLETE_NO_CLAIM. The cohort is never rerun or extended."
+ },
+ "secondary_descriptive_only": [
+  "discovery wall and CPU per policy (process startup and optimizer overhead are not matched)",
+  "distinct legal edges queried",
+  "censored confirmation candidates",
+  "per-scenario rejection totals"
+ ],
+ "truth_status": "Real algorithm boundaries are not independently ground-truth labelled. The endpoint measures fresh-seed reproducibility of nominated matched contrasts, not recovery of known boundaries.",
+ "sign_independence_certified": false,
+ "eligible_for_scoped_claim": true,
+ "sota_claim": false
+}

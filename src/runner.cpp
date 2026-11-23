@@ -14,6 +14,7 @@
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <sys/prctl.h>
 #include <sys/resource.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -290,8 +291,12 @@ std::vector<Observation> measure(const Case& c,const std::vector<std::string>& n
  if(::access(worker.c_str(),X_OK)!=0)throw Error("dedicated phaseshift_worker binary absent or not executable alongside caller");
  const auto worker_path=worker.string();
  int in[2],out[2];if(pipe(in)!=0)throw Error("worker input pipe failed");if(pipe(out)!=0){close(in[0]);close(in[1]);throw Error("worker output pipe failed");}
+ const pid_t parent=getpid();
  const pid_t pid=fork();if(pid<0){close(in[0]);close(in[1]);close(out[0]);close(out[1]);throw Error("fork failed");}
  if(pid==0){
+  /* Never outlive a killed parent: an orphaned worker would keep consuming
+     CPU outside every accounting window. Guard the fork/prctl race. */
+  if(prctl(PR_SET_PDEATHSIG,SIGKILL)!=0||getppid()!=parent)_exit(126);
   close(in[1]);close(out[0]);setsid();dup2(in[0],STDIN_FILENO);dup2(out[1],STDOUT_FILENO);close(in[0]);close(out[1]);
   #ifndef PHASESHIFT_ASAN_BUILD
   struct rlimit mem{static_cast<rlim_t>(memory_mb)*1024*1024,static_cast<rlim_t>(memory_mb)*1024*1024};setrlimit(RLIMIT_AS,&mem);
@@ -339,25 +344,27 @@ std::vector<Observation> measure(const Case& c,const std::vector<std::string>& n
  }
  if(in[1]>=0)close(in[1]);
  close(out[0]);int status=0;
- pid_t reaped=waitpid(pid,&status,WNOHANG);
+ // Observe exit WITHOUT reaping: the unreaped leader keeps its process-group
+ // id pinned, so the group kill below cannot hit a recycled, unrelated pid.
+ auto exited=[&]{
+  siginfo_t info{};int rc=0;
+  while((rc=waitid(P_PID,static_cast<id_t>(pid),&info,WEXITED|WNOHANG|WNOWAIT))<0&&errno==EINTR){}
+  return rc==0&&info.si_pid==pid;
+ };
  // A failed read may observe pipe EOF before SIGCHLD becomes waitable.
- // Reap a genuinely crashed worker before deciding it timed out; a single
+ // Observe a genuinely crashed worker before deciding it timed out; a single
  // WNOHANG check can race the kernel's final exit notification and mislabel
  // SIGSEGV as an infrastructure failure. Never block indefinitely on hangs.
- if(reaped==0){
-  const auto reap_until=std::min(std::chrono::steady_clock::now()+std::chrono::milliseconds(150),hard_deadline);
-  while(reaped==0&&std::chrono::steady_clock::now()<reap_until){
-   (void)poll(nullptr,0,5);
-   reaped=waitpid(pid,&status,WNOHANG);
-   if(reaped<0&&errno==EINTR)reaped=0;
-  }
- }
- if(reaped==0){
-  for(auto& obs:result)if(obs.status=="infrastructure_error"&&obs.detail.find("timeout")!=std::string::npos)obs.status="timeout";
-  kill(-pid,SIGKILL);kill(pid,SIGKILL);while((reaped=waitpid(pid,&status,0))<0&&errno==EINTR){}
-  reaped=-1; /* Parent-enforced kill is not a worker crash. */
- }
- else if(reaped<0&&errno==EINTR){while((reaped=waitpid(pid,&status,0))<0&&errno==EINTR){}}
+ bool done=exited();
+ const auto reap_until=std::min(std::chrono::steady_clock::now()+std::chrono::milliseconds(150),hard_deadline);
+ while(!done&&std::chrono::steady_clock::now()<reap_until){(void)poll(nullptr,0,5);done=exited();}
+ if(!done)for(auto& obs:result)if(obs.status=="infrastructure_error"&&obs.detail.find("timeout")!=std::string::npos)obs.status="timeout";
+ // Always contain leftover members of the worker's process group (e.g. a
+ // grandchild left running after a normal exit), then reap the leader.
+ kill(-pid,SIGKILL);if(!done)kill(pid,SIGKILL);
+ pid_t reaped=0;
+ while((reaped=waitpid(pid,&status,0))<0&&errno==EINTR){}
+ if(!done)reaped=-1; /* Parent-enforced kill is not a worker crash. */
  for(auto& obs:result)if(obs.status=="infrastructure_error"&&
    obs.detail.find("worker RSS exceeded max_worker_rss_mb")!=std::string::npos)
    obs.status="out_of_memory";

@@ -1,0 +1,143 @@
+name: v3-01c-full-development-20-seed
+run-name: V3-01c frozen 20-seed development at ${{ github.sha }}
+
+on:
+  push:
+    branches:
+      - 'feature/phaseshift-v3-sota-research'
+    paths:
+      - '.github/workflows/v3-full-development.yml'
+      - 'benchmarks/v3/aggregate_full_development.py'
+      - 'tests/v3/full_development_contract.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v3-01c-development-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    name: Inventory and holdout isolation preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assert the frozen 240-trial design before spending CI resources
+        run: |
+          set -euo pipefail
+          python3 -m py_compile benchmarks/v3/aggregate_full_development.py tests/v3/full_development_contract.py benchmarks/v3/run_multidim.py benchmarks/v3/multidim_truth.py
+          python3 tests/v3/full_development_contract.py
+          python3 tests/v3/multidim_truth_test.py
+          python3 - <<'PY'
+          import sys
+          sys.path.insert(0,"benchmarks/v3")
+          from multidim_truth import load,order,split_check
+          split_check()
+          m,_=load("development")
+          assert len(order(m,False))==240
+          assert len(m["seeds"])==20
+          print("PASS: preregistered full 240-trial development inventory; sealed evaluation is untouched")
+          PY
+
+  shard:
+    name: Full real-worker development (${{ matrix.fixture }})
+    needs: contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        fixture:
+          - multi_context_steps
+          - rare_hidden_cliff
+          - smooth_no_jump
+          - multidim_null
+          - sparse_multi_step
+          - masked_interactions
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up worker build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libsqlite3-dev libjson-c-dev libssl-dev pkg-config
+      - name: Build native real worker and v14/v15 policies
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target phaseshift_v3_pairs phaseshift_v3_shapes_tests -j2
+          ctest --test-dir build -R v3_analytic_synthetic_worker_truth --output-on-failure
+      - name: Execute 40 frozen trials (20 matched seeds x two policies)
+        env:
+          FIXTURE: ${{ matrix.fixture }}
+        run: |
+          set -euo pipefail
+          python3 benchmarks/v3/run_multidim.py \
+            --binary build/phaseshift_v3_pairs \
+            --out build/v3c_development \
+            --suite development --shard "$FIXTURE"
+          python3 benchmarks/v3/run_multidim.py \
+            --out build/v3c_development --verify-only
+      - name: Preserve raw SQLite, logs, plans and scorecards even on failure
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v3c-development-${{ matrix.fixture }}
+          path: build/v3c_development/
+          retention-days: 30
+          if-no-files-found: error
+
+  aggregate:
+    name: Independent six-shard inventory / scoring / evidence closure
+    needs: shard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: v3c-development-*
+          path: build/v3c_downloaded
+          merge-multiple: false
+      - name: Independently replay all 240 trials and compute clustered scoring
+        run: |
+          set -euo pipefail
+          python3 tests/v3/full_development_contract.py
+          python3 benchmarks/v3/aggregate_full_development.py \
+            --artifacts build/v3c_downloaded --out build/v3c_full_scorecard.json
+          python3 benchmarks/v3/aggregate_full_development.py \
+            --artifacts build/v3c_downloaded --out build/v3c_full_scorecard.json --verify-only
+          python3 - <<'PY'
+          import json,os
+          v=json.load(open("build/v3c_full_scorecard.json"))
+          assert v["observed_trials"]==240 and v["suite"]=="development"
+          assert not v["eligible_for_claim"] and not v["sota_claim"]
+          print("FULL V3-01c DEVELOPMENT REPORT")
+          for f in v["scenario_results"]:
+              p=f["policies"]
+              print(f["fixture"],"truth_edges",f["truth_edges"],
+                    "v14 hit_runs",p["conditional-tree"]["hit_runs"],
+                    "v15 hit_runs",p["acquisition-v3"]["hit_runs"],
+                    "v14 false_nom",p["conditional-tree"]["false_nomination_observations"],
+                    "v15 false_nom",p["acquisition-v3"]["false_nomination_observations"])
+          print("Seed-clustered paired comparison",json.dumps(v["seed_clustered_comparison"],sort_keys=True))
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as out:
+              out.write("## V3-01c complete 20-seed development campaign\n\n")
+              out.write(f"**PASS: {v['observed_trials']} real-worker trials** across six frozen scenarios. ")
+              out.write("Independent SQLite and scorecard replay completed. ")
+              out.write("Development only; no confirmation, holdout use or SOTA claim.\n\n")
+              out.write("| Scenario | Truth edges | v14 hit trials | v15 hit trials | v14 false nominations | v15 false nominations |\n")
+              out.write("|---|---:|---:|---:|---:|---:|\n")
+              for f in v["scenario_results"]:
+                  p=f["policies"]
+                  out.write(f"| {f['fixture']} | {f['truth_edges']} | {p['conditional-tree']['hit_runs']} | {p['acquisition-v3']['hit_runs']} | {p['conditional-tree']['false_nomination_observations']} | {p['acquisition-v3']['false_nomination_observations']} |\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v3c-full-development-audited-scorecard
+          path: build/v3c_full_scorecard.json
+          retention-days: 60
+          if-no-files-found: warn

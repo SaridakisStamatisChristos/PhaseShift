@@ -1,0 +1,54 @@
+name: v3-scientific-benchmark
+on:
+  pull_request:
+    paths:
+      - 'benchmarks/v3/**'
+      - 'tests/v3/**'
+      - '.github/workflows/v3-scientific-benchmark.yml'
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Frozen suite (evaluation only after policy freeze)
+        type: choice
+        options: [development, evaluation]
+        default: development
+      full:
+        description: All 20 seeds and all eligible incumbents
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  scientific:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [early_cliff, late_cliff, sparse_cliff, dense_null, sparse_null, large_null, sorting, topk, graph]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - run: sudo apt-get update && sudo apt-get install -y cmake ninja-build g++ libsqlite3-dev libjson-c-dev libssl-dev pkg-config
+      - run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build build --target phaseshift phaseshift_worker -j2
+      - run: python3 tests/v3/scientific_contract.py
+      - name: Execute frozen scenario shard
+        env:
+          SUITE: ${{ inputs.suite || 'development' }}
+          FULL: ${{ inputs.full || false }}
+          SCENARIO: ${{ matrix.scenario }}
+        run: |
+          set -euo pipefail
+          flags=()
+          if [[ "$FULL" != true ]]; then flags+=(--diagnostic); fi
+          python3 benchmarks/v3/run_scientific.py --binary build/phaseshift --out build/scientific --suite "$SUITE" --shard "$SCENARIO" "${flags[@]}"
+          python3 benchmarks/v3/run_scientific.py --out build/scientific --verify-only
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: scientific-${{ matrix.scenario }}-${{ github.run_id }}
+          path: build/scientific/
+          retention-days: 14
+          if-no-files-found: warn

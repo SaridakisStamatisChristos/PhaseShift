@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "claim": "noisy synthetic diagnostic, not statistical calibration or SOTA",
+  "seeds_per_scenario": 20,
+  "results": {
+    "0": {"campaigns": 20, "nonempty_detection": 0, "near_planted_boundary": 0, "persistent_jump_screened": 0, "persistent_jump_near_truth": 0},
+    "1": {"campaigns": 20, "nonempty_detection": 20, "near_planted_boundary": 20, "persistent_jump_screened": 20, "persistent_jump_near_truth": 20},
+    "2": {"campaigns": 20, "nonempty_detection": 20, "near_planted_boundary": 20, "persistent_jump_screened": 20, "persistent_jump_near_truth": 20},
+    "3": {"campaigns": 20, "nonempty_detection": 20, "near_planted_boundary": 0, "persistent_jump_screened": 0, "persistent_jump_near_truth": 0},
+    "4": {"campaigns": 20, "nonempty_detection": 16, "near_planted_boundary": 0, "persistent_jump_screened": 0, "persistent_jump_near_truth": 0},
+    "slope": {"campaigns": 20, "nonempty_detection": 20, "near_planted_boundary": 20, "persistent_jump_screened": 0, "persistent_jump_near_truth": 0}
+  }
+}

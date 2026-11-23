@@ -1,0 +1,314 @@
+{
+  "schema": 1,
+  "suite": "development",
+  "policies": [
+    "conditional-tree",
+    "acquisition-v3"
+  ],
+  "seeds": [
+    2101,
+    2102,
+    2103,
+    2104,
+    2105,
+    2106,
+    2107,
+    2108,
+    2109,
+    2110,
+    2111,
+    2112,
+    2113,
+    2114,
+    2115,
+    2116,
+    2117,
+    2118,
+    2119,
+    2120
+  ],
+  "diagnostic_seeds": [
+    2101
+  ],
+  "pairs": 12,
+  "cpu_ceiling_ns": 15000000000,
+  "wall_ceiling_ns": 60000000000,
+  "fixtures": [
+    {
+      "name": "conditional_cliffs",
+      "truth": "calibration_threshold",
+      "config": {
+        "schema_version": 1,
+        "experiment_id": "v3-compare-conditional_cliffs",
+        "seed": 0,
+        "search": {
+          "policy_version": "v2",
+          "method": "uniform_v2",
+          "max_cases": 24,
+          "admissible_subspaces": [
+            {
+              "negative": [
+                false
+              ],
+              "threshold": [
+                4,
+                8
+              ]
+            },
+            {
+              "negative": [
+                false
+              ],
+              "threshold": [
+                12
+              ]
+            },
+            {
+              "negative": [
+                true
+              ]
+            }
+          ]
+        },
+        "measurement": {
+          "paired_discovery_blocks": 1,
+          "paired_confirm_blocks": 20,
+          "warmup_iterations": 0
+        },
+        "detection": {
+          "min_practical_ratio": 1.2
+        },
+        "limits": {
+          "total_wall_seconds": 45,
+          "max_search_queue": 64,
+          "max_case_bytes": 1048576,
+          "max_worker_rss_mb": 512,
+          "max_sample_wall_ms": 1500
+        },
+        "problem_family": "calibration",
+        "algorithms": [
+          "calibration"
+        ],
+        "primary_axis": "x",
+        "axes": {
+          "x": {
+            "values": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15
+            ]
+          },
+          "threshold": {
+            "values": [
+              4,
+              8,
+              12
+            ]
+          },
+          "negative": {
+            "values": [
+              false,
+              true
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "constant_null",
+      "truth": "calibration_null",
+      "config": {
+        "schema_version": 1,
+        "experiment_id": "v3-compare-constant_null",
+        "seed": 0,
+        "search": {
+          "policy_version": "v2",
+          "method": "uniform_v2",
+          "max_cases": 24
+        },
+        "measurement": {
+          "paired_discovery_blocks": 1,
+          "paired_confirm_blocks": 20,
+          "warmup_iterations": 0
+        },
+        "detection": {
+          "min_practical_ratio": 1.2
+        },
+        "limits": {
+          "total_wall_seconds": 45,
+          "max_search_queue": 64,
+          "max_case_bytes": 1048576,
+          "max_worker_rss_mb": 512,
+          "max_sample_wall_ms": 1500
+        },
+        "problem_family": "calibration",
+        "algorithms": [
+          "calibration"
+        ],
+        "primary_axis": "x",
+        "axes": {
+          "x": {
+            "values": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15
+            ]
+          },
+          "threshold": {
+            "values": [
+              4,
+              8,
+              12
+            ]
+          }
+        },
+        "fixed": {
+          "negative": true
+        }
+      }
+    },
+    {
+      "name": "sort_pathology",
+      "truth": "unlabelled",
+      "config": {
+        "schema_version": 1,
+        "experiment_id": "v3-compare-sort_pathology",
+        "seed": 0,
+        "search": {
+          "policy_version": "v2",
+          "method": "uniform_v2",
+          "max_cases": 24
+        },
+        "measurement": {
+          "paired_discovery_blocks": 1,
+          "paired_confirm_blocks": 20,
+          "warmup_iterations": 0
+        },
+        "detection": {
+          "min_practical_ratio": 1.2
+        },
+        "limits": {
+          "total_wall_seconds": 45,
+          "max_search_queue": 64,
+          "max_case_bytes": 1048576,
+          "max_worker_rss_mb": 512,
+          "max_sample_wall_ms": 1500
+        },
+        "problem_family": "integer_array",
+        "algorithms": [
+          "std_sort",
+          "quicksort_first_pivot"
+        ],
+        "primary_axis": "n",
+        "axes": {
+          "n": {
+            "values": [
+              64,
+              128,
+              192,
+              256,
+              384,
+              512,
+              768,
+              1024
+            ]
+          },
+          "distribution": {
+            "values": [
+              "ascending",
+              "uniform",
+              "all_equal"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "topk_fraction",
+      "truth": "unlabelled",
+      "config": {
+        "schema_version": 1,
+        "experiment_id": "v3-compare-topk_fraction",
+        "seed": 0,
+        "search": {
+          "policy_version": "v2",
+          "method": "uniform_v2",
+          "max_cases": 24
+        },
+        "measurement": {
+          "paired_discovery_blocks": 1,
+          "paired_confirm_blocks": 20,
+          "warmup_iterations": 0
+        },
+        "detection": {
+          "min_practical_ratio": 1.2
+        },
+        "limits": {
+          "total_wall_seconds": 45,
+          "max_search_queue": 64,
+          "max_case_bytes": 1048576,
+          "max_worker_rss_mb": 512,
+          "max_sample_wall_ms": 1500
+        },
+        "problem_family": "topk",
+        "algorithms": [
+          "topk_heap",
+          "topk_nth"
+        ],
+        "primary_axis": "k",
+        "axes": {
+          "k": {
+            "values": [
+              1,
+              8,
+              32,
+              64,
+              128,
+              256,
+              512,
+              768,
+              1024
+            ]
+          },
+          "distribution": {
+            "values": [
+              "uniform",
+              "heavy_duplicate"
+            ]
+          }
+        },
+        "fixed": {
+          "n": 1024
+        }
+      }
+    }
+  ],
+  "eligible_for_claim": false,
+  "sota_claim": false
+}

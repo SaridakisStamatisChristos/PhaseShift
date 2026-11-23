@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "protocol": "phaseshift.v3-external-optuna-real-algorithm-development.1",
+  "suite": "development",
+  "eligible_for_sota": false,
+  "confirmation_not_certification": true,
+  "opened_sealed_evaluation": false,
+  "source_real_manifest": "benchmarks/v3/paired_development_manifest.json",
+  "source_real_blob_sha1": "2122d7f770d66bbc9145febe40ba7ac5cbc6f6d7",
+  "retained_v18_commit": "cfd0e8bc4ee7040866a95651c8bd8b183b8fa0ac",
+  "optuna_version": "4.6.0",
+  "policies": [
+    "acquisition-v3-coverage",
+    "optuna_tpe",
+    "optuna_random"
+  ],
+  "pair_budget": 12,
+  "confirmation_pairs": 20,
+  "max_distinct_candidates": 2,
+  "min_practical_ratio": 1.2,
+  "alpha": 0.05,
+  "seeds": [
+    32001,
+    32002,
+    32003,
+    32004,
+    32005,
+    32006,
+    32007,
+    32008,
+    32009,
+    32010,
+    32011,
+    32012,
+    32013,
+    32014,
+    32015,
+    32016,
+    32017,
+    32018,
+    32019,
+    32020
+  ],
+  "diagnostic_seeds": [
+    32001
+  ],
+  "scenarios": [
+    {
+      "id": "sort_ascending",
+      "source": "sort_pathology",
+      "distribution": "ascending"
+    },
+    {
+      "id": "topk_uniform",
+      "source": "topk_fraction",
+      "distribution": "uniform"
+    }
+  ],
+  "comparison": "same_native_cpp_worker_correctness_oracle_and_legal_adjacent_edges;external_objective_absolute_matched_log_ratio_change;trial_limits_equal_but_actual_consumption_and_process_startup_differ",
+  "limits": {
+    "cpu_ceiling_ns": 30000000000,
+    "wall_ceiling_ns": 90000000000
+  },
+  "evaluation_context_disclaimer": "This is a new real-worker development study, not the already-open 7101–7120 synthetic evaluation, no real-algorithm ground-truth set available.",
+  "pinned_native_source_blobs": {
+    "include/phaseshift/v3/conditional_pair.hpp": "352649a791af583dd5e779500d2db9336119901b",
+    "include/phaseshift/v3/acquisition.hpp": "4af662731363c76d87955008d8d655beb0f76566",
+    "apps/phaseshift_v3_pairs.cpp": "780d32f50514bdccfc47658230d8795b10fc8918"
+  }
+}

@@ -1,0 +1,137 @@
+name: v3-genuine-smac3-real-worker-comparison
+on:
+  push:
+    branches: ['feature/phaseshift-v3-sota-research']
+    paths:
+      - '.github/workflows/v3-real-smac.yml'
+      - 'benchmarks/v3/real_smac_development.json'
+      - 'benchmarks/v3/run_real_smac.py'
+      - 'benchmarks/v3/aggregate_real_smac.py'
+      - 'benchmarks/v3/run_real_external.py'
+      - 'benchmarks/v3/real_external_development.json'
+      - 'tests/v3/real_smac_contract.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: v3-real-smac-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate SMAC source, truth blindness, seed isolation and original V18
+        run: |
+          set -euo pipefail
+          python3 -m py_compile benchmarks/v3/run_real_smac.py benchmarks/v3/aggregate_real_smac.py tests/v3/real_smac_contract.py
+          python3 tests/v3/real_smac_contract.py
+  smoke:
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install actual SMAC3 2.4.1 and compile native PhaseShift
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libsqlite3-dev libjson-c-dev libssl-dev pkg-config python3-venv
+          python3 -m venv build/smac_env
+          build/smac_env/bin/pip install --disable-pip-version-check 'smac==2.4.1'
+          build/smac_env/bin/python -c 'from importlib.metadata import version; assert version("smac")=="2.4.1"'
+          cmake -S . -B build/native -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/native --target phaseshift_v3_pairs phaseshift_v3_coverage_acquisition_tests -j2
+          ctest --test-dir build/native -R 'v18_coverage_acquisition_deterministic_and_legacy_replay' --output-on-failure
+      - name: Real C++ smoke - sorting and Top-K, genuine SMAC ask/tell and 20 fresh replications
+        run: |
+          set -euo pipefail
+          for sc in sort_ascending topk_uniform; do
+            build/smac_env/bin/python benchmarks/v3/run_real_smac.py --binary build/native/phaseshift_v3_pairs --scenario "$sc" --seed 33001 --out "build/smac_smoke/$sc"
+            build/smac_env/bin/python benchmarks/v3/run_real_smac.py --out "build/smac_smoke/$sc" --verify-only
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v3-real-smac-smoke
+          path: build/smac_smoke/
+          retention-days: 21
+          if-no-files-found: warn
+  full:
+    needs: smoke
+    name: Full 20-seed real worker challenge (${{ matrix.scenario }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [sort_ascending, topk_uniform]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install genuine SMAC and build original V18 native C++ source
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libsqlite3-dev libjson-c-dev libssl-dev pkg-config python3-venv
+          python3 -m venv build/smac_env
+          build/smac_env/bin/pip install --disable-pip-version-check 'smac==2.4.1'
+          cmake -S . -B build/native -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/native --target phaseshift_v3_pairs -j2
+      - name: 20 complete native matched SMAC/V18 campaigns and independent evidence replay
+        env:
+          SCENARIO: ${{ matrix.scenario }}
+        run: |
+          set -euo pipefail
+          for seed in $(seq 33001 33020); do
+            build/smac_env/bin/python benchmarks/v3/run_real_smac.py --binary build/native/phaseshift_v3_pairs --scenario "$SCENARIO" --seed "$seed" --out "build/real_smac/seed_$seed"
+            build/smac_env/bin/python benchmarks/v3/run_real_smac.py --out "build/real_smac/seed_$seed" --verify-only
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v3-real-smac-${{ matrix.scenario }}
+          path: build/real_smac/
+          retention-days: 60
+          if-no-files-found: warn
+  aggregate:
+    needs: full
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: v3-real-smac-*
+          path: build/shards
+          merge-multiple: false
+      - name: Replay all 80 native SMAC3/V18 campaigns and publish negative results
+        run: |
+          set -euo pipefail
+          mkdir -p build/input
+          for sc in sort_ascending topk_uniform; do
+            mv "build/shards/v3-real-smac-$sc" "build/input/$sc"
+          done
+          python3 benchmarks/v3/aggregate_real_smac.py --artifacts build/input --out build/smac_final.json
+          python3 benchmarks/v3/aggregate_real_smac.py --artifacts build/input --out build/smac_final.json --verify-only
+          python3 - <<'PY'
+          import json,os
+          a=json.load(open("build/smac_final.json"))
+          assert a["observed_complete_campaigns"]==80
+          assert a["total_native_discovery_queries"]==960
+          assert not a["external_sota_claim"]
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as out:
+            out.write("## Genuine SMAC3 2.4.1 versus V18 on real sorting/Top-K\n\n")
+            out.write("| Scenario | Policy | Nominal fresh-seed rejections | Unique queried edges | Discovery CPU (s) |\n|---|---|---:|---:|---:|\n")
+            for sc in a["scenarios"]:
+              for policy,d in sc["policies"].items():
+                out.write(f"| {sc['scenario']} | {policy} | {d['fresh_nominal_sign_rejections']} | {d['distinct_edges_queried']} | {d['discovery_cpu_ns']/1e9:.3f} |\n")
+            out.write("\nNo certified statistical/real-ground-truth or end-to-end cost comparison; no SOTA assertion.\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v3-real-smac-full-audited-scorecard
+          path: build/smac_final.json
+          retention-days: 90
+          if-no-files-found: warn

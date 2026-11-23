@@ -1,0 +1,65 @@
+name: v3-policy-search-loss-attribution
+
+on:
+  push:
+    branches: ['feature/phaseshift-v3-sota-research']
+    paths:
+      - '.github/workflows/v3-policy-diagnosis.yml'
+      - 'benchmarks/v3/analyze_policy_trajectory.py'
+      - 'tests/v3/policy_trajectory_contract.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  diagnose:
+    name: Audit v14-v15 actual exploration and missed planted edges
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preflight genuine trajectory falsifiers
+        run: |
+          set -euo pipefail
+          python3 -m py_compile benchmarks/v3/analyze_policy_trajectory.py tests/v3/policy_trajectory_contract.py
+          python3 tests/v3/policy_trajectory_contract.py
+      - name: Import frozen 240-trial real-worker development evidence
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 45026057899
+          pattern: v3c-development-*
+          path: build/old_v3
+          github-token: ${{ github.token }}
+      - name: Audit all original SQLite pairs and attribute true misses
+        run: |
+          set -euo pipefail
+          python3 benchmarks/v3/analyze_policy_trajectory.py \
+            --artifacts build/old_v3 --out build/policy_trajectory_report.json
+          python3 benchmarks/v3/analyze_policy_trajectory.py \
+            --artifacts build/old_v3 --out build/policy_trajectory_report.json --verify-only
+          python3 - <<'PY'
+          import json,os
+          v=json.load(open("build/policy_trajectory_report.json"))
+          assert v["observed_trials"]==240 and v["pair_budget"]==12
+          assert v["source_commit"]=="b8a713f2430578f3ae7ec5e00cadb348348bbcd6"
+          assert v["evaluation_opened"] is False and not v["sota_claim"]
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as out:
+              out.write("## V3 policy loss attribution: 240 archived development trials\n\n")
+              out.write("**Post-hoc hypothesis diagnosis, not an external SOTA claim or a new policy benchmark.**\n\n")
+              out.write("| Scenario | v14 hits | v15 hits | v14 replicate pairs | v15 replicate pairs | v15 loses seeds | v15 gains seeds | v15 unvisited misses | v15 visited-but-not-nominated misses |\n")
+              out.write("|---|---:|---:|---:|---:|---:|---:|---:|---:|\n")
+              for f in v["scenario_results"]:
+                  a=f["policies"]["conditional-tree"];b=f["policies"]["acquisition-v3"]
+                  p=f["matched_seed_differences"]
+                  out.write(f"| {f['fixture']} | {a['hit']} | {b['hit']} | {a['replication_queries']} | {b['replication_queries']} | {p['v15_loses_detection_seed_count']} | {p['v15_gains_detection_seed_count']} | {b['miss_due_to_unvisited_boundary']} | {b['miss_due_to_non_nominated_exposed_boundary']} |\n")
+              out.write("\nNo holdout opened; raw SQLite and original independent truth labels were independently replayed.\n")
+          PY
+      - name: Keep full trajectory and diagnosis for new algorithm design
+        uses: actions/upload-artifact@v4
+        with:
+          name: v3-policy-loss-attribution-development-240
+          path: build/policy_trajectory_report.json
+          retention-days: 60
+          if-no-files-found: error

@@ -1,3 +1,5 @@
+> **Current-state notice (22 November 2026):** PR #5 has been merged; v2 baseline `main` is `279a8c65ad7ec3741a727ff49aa7f84e0628a6f1` at this checkpoint. The original exact-main jobs passed 93/93 CTests per lane and 95.19% production line coverage. See [v3 baseline provenance](../v3/BASELINE.json) and [historical research scorecards](../v3/V2_HISTORICAL_SCORECARDS.json). Statements below are original historical checkpoints, not live PR/branch status. Expensive research was observed on its earlier PR merge checkout, not established on exact merged main.
+
 # PhaseShift v2 — UCS-Pro R7 completion campaign
 
 **Base:** merged `main` commit `8e795197b65af9ac73abff84bfaaefe29d6c92fb` (PR #4). **Working PR:** [#5](https://github.com/SaridakisStamatisChristos/PhaseShift/pull/5), `feature/phaseshift-v2-r7-completion`, DRAFT and NOT merged. **Experimental source checkpoint:** `64f34adc3cea2d68c6c4f0e14403b122f0533e6d`, exact-workflow verification still required at this document writing. This document supersedes historical references to an unmerged PR #4, but retains their actual earlier CI provenance.

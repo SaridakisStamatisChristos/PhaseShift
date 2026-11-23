@@ -1,0 +1,73 @@
+name: v3-multidim-truth-and-unified-score
+on:
+  pull_request:
+    paths:
+      - 'benchmarks/v3/**'
+      - 'src/algorithms.cpp'
+      - 'tests/v3/**'
+      - '.github/workflows/v3-multidim.yml'
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Frozen research suite; evaluation must remain untuned
+        type: choice
+        options: [development, evaluation]
+        default: development
+      full:
+        description: Execute all 20 predeclared seeds per scenario
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  paired-truth:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [multi_context_steps, rare_hidden_cliff, smooth_no_jump, multidim_null, sparse_multi_step, masked_interactions]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - run: sudo apt-get update && sudo apt-get install -y cmake ninja-build g++ libsqlite3-dev libjson-c-dev libssl-dev pkg-config
+      - name: Compile actual C++ workers and policies
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target phaseshift phaseshift_v3_pairs phaseshift_v3_shapes_tests -j2
+      - name: Independent analytic oracle and adversarial checks
+        run: |
+          python3 -m py_compile benchmarks/v3/multidim_truth.py benchmarks/v3/run_multidim.py benchmarks/v3/unified_score.py tests/v3/multidim_truth_test.py
+          python3 tests/v3/multidim_truth_test.py
+          ctest --test-dir build -R v3_analytic_synthetic_worker_truth --output-on-failure
+      - name: Run real multidimensional matched-worker experiments
+        env:
+          SUITE: ${{ inputs.suite || 'development' }}
+          FULL: ${{ inputs.full || false }}
+          SCENARIO: ${{ matrix.scenario }}
+        run: |
+          set -euo pipefail
+          options=()
+          if [[ "$FULL" != true ]]; then options+=(--diagnostic); fi
+          python3 benchmarks/v3/run_multidim.py --binary build/phaseshift_v3_pairs --out build/multidim --suite "$SUITE" --shard "$SCENARIO" "${options[@]}"
+          python3 benchmarks/v3/run_multidim.py --out build/multidim --verify-only
+      - name: Audit cross-engine comparability using a real legacy worker
+        if: matrix.scenario == 'multi_context_steps'
+        env:
+          SUITE: ${{ inputs.suite || 'development' }}
+        run: |
+          set -euo pipefail
+          python3 benchmarks/v3/run_scientific.py --binary build/phaseshift --out build/incumbent --suite "$SUITE" --shard early_cliff --diagnostic
+          python3 benchmarks/v3/run_scientific.py --out build/incumbent --verify-only
+          python3 benchmarks/v3/unified_score.py --incumbent-root build/incumbent --multidim-root build/multidim --out build/multidim/unified.json
+          python3 benchmarks/v3/unified_score.py --incumbent-root build/incumbent --multidim-root build/multidim --out build/multidim/unified.json --verify-only
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v3b-${{ matrix.scenario }}-${{ github.run_id }}
+          path: |
+            build/multidim/
+            build/incumbent/
+          retention-days: 14
+          if-no-files-found: warn

@@ -6,7 +6,7 @@
 namespace ps {
 std::vector<std::string> families(){return {"calibration","integer_array","topk","graph"};}
 std::vector<std::string> algorithms_for(const std::string& family){
- if(family=="calibration")return {"calibration"};
+ if(family=="calibration")return {"calibration","calibration_null_v3","calibration_null_fault_v3","calibration_steps_v3","calibration_smooth_v3","calibration_seed_shared_null_v3"};
  if(family=="integer_array")return {"std_sort","quicksort_first_pivot","mergesort","insertion_sort"};
  if(family=="topk")return {"topk_full_sort","topk_heap","topk_nth"};
  if(family=="graph")return {"bellman_ford","dijkstra_heap","dijkstra_dense","zero_one_bfs"};
@@ -79,9 +79,46 @@ static Result run_topk(const Case& c,const std::string& algorithm){
 }
 Result execute(const Case& c,const std::string& algorithm){
  if(c.family=="calibration"){
-  if(algorithm!="calibration")throw Error("invalid calibration algorithm");
+  if(algorithm!="calibration"&&algorithm!="calibration_null_v3"&&algorithm!="calibration_null_fault_v3"&&algorithm!="calibration_steps_v3"&&algorithm!="calibration_smooth_v3"&&algorithm!="calibration_seed_shared_null_v3")
+   throw Error("invalid calibration algorithm");
   auto a=decode_values(c.bytes);if(a.size()!=3||a[0]<0||a[1]<1||a[2]<0||a[2]>1)throw Error("invalid calibration payload");
-  const auto work=a[2]==1?1000ULL:(a[0]<a[1]?static_cast<std::uint64_t>(a[0]+10):static_cast<std::uint64_t>(a[0]+10000));
+  auto work=a[2]==1?1000ULL:(a[0]<a[1]?static_cast<std::uint64_t>(a[0]+10):static_cast<std::uint64_t>(a[0]+10000));
+  if((algorithm=="calibration_steps_v3"||algorithm=="calibration_smooth_v3")&&
+     (a[0]>1024||a[1]>1024))
+   throw Error("v3 synthetic calibration coordinate exceeds bounded 0..1024 domain");
+  // Opt-in analytic cost landscapes: values are still checked against the
+  // independent calibration correctness oracle, so only work varies.
+  // Work is *not* a claim about elapsed time on a particular CPU.
+  if(algorithm=="calibration_seed_shared_null_v3"){
+   // Explicit V3-01e null: for each matched seed BOTH endpoints execute
+   // identical loop work, regardless of x and threshold. The seed-only
+   // multiplier stresses timing without introducing any structural cliff.
+   if(a[2]!=1||a[0]>1024||a[1]>1024)
+    throw Error("v3 seed-shared null requires negative=true and bounded coordinates");
+   std::uint64_t shared_state=c.seed^0x5d6c9e3a712bf084ULL;
+   work=1024ULL << ((splitmix64(shared_state)>>7)&3ULL);
+  }else if(algorithm=="calibration_steps_v3"){
+   const auto x=static_cast<std::uint64_t>(a[0]),t=static_cast<std::uint64_t>(a[1]);
+   work=a[2]?1024ULL:1024ULL+4ULL*x+(x>=t?8192ULL:0ULL)+
+     (x>=t+4ULL?16384ULL:0ULL);
+  }else if(algorithm=="calibration_smooth_v3"){
+   const auto x=static_cast<std::uint64_t>(a[0]);
+   work=a[2]?1024ULL:1024ULL+40ULL*x+2ULL*x*x;
+  }else if(algorithm!="calibration"){
+   // Explicit synthetic null: common seed-level log-work shock plus a
+   // symmetric coordinate-local shock of unequal amplitude. Log-work
+   // center is constant; this does NOT assert a null for elapsed time.
+   std::uint64_t common=c.seed^std::uint64_t{0xf20c938bda5716a1ULL};
+   std::uint64_t local=c.seed^(static_cast<std::uint64_t>(a[0])*0x9e3779b97f4a7c15ULL)^
+      (static_cast<std::uint64_t>(a[1])*0x94d049bb133111ebULL)^0xb58154fca3ad590dULL;
+   const auto cs=splitmix64(common);
+   const auto ls=splitmix64(local);
+   const auto magnitude=(ls&15ULL)==0?3:static_cast<int>(a[0]%3);
+   const int exponent=6+((cs&1ULL)?1:-1)+((ls&16ULL)?magnitude:-magnitude);
+   work=64ULL<<static_cast<unsigned>(exponent); // bounded 256..65536
+   if(algorithm=="calibration_null_fault_v3"&&a[0]%4==3&&(splitmix64(local)&7ULL)==0)
+    a[2]=2; // genuine independent worker oracle disagreement, not fake status
+  }
   volatile std::uint64_t sink=0;for(std::uint64_t i=0;i<work;i++)sink=sink^i;
   (void)sink;return {{a[0],a[1],a[2]},work};
  }

@@ -1,0 +1,630 @@
+{
+ "binary_sha256": "a60e1adcb65a66b56f8a315f79660d74da23c8e67a978ae3a5d7eacd1bea9c53",
+ "clusters": [
+  {
+   "R": {
+    "acquisition-v3-coverage": 3,
+    "optuna_tpe": 4,
+    "smac3_hpo": 3
+   },
+   "seed": 51001
+  },
+  {
+   "R": {
+    "acquisition-v3-coverage": 4,
+    "optuna_tpe": 3,
+    "smac3_hpo": 4
+   },
+   "seed": 51002
+  },
+  {
+   "R": {
+    "acquisition-v3-coverage": 4,
+    "optuna_tpe": 4,
+    "smac3_hpo": 4
+   },
+   "seed": 51003
+  },
+  {
+   "R": {
+    "acquisition-v3-coverage": 4,
+    "optuna_tpe": 3,
+    "smac3_hpo": 4
+   },
+   "seed": 51004
+  },
+  {
+   "R": {
+    "acquisition-v3-coverage": 4,
+    "optuna_tpe": 4,
+    "smac3_hpo": 4
+   },
+   "seed": 51005
+  },
+  {
+   "R": {
+    "acquisition-v3-coverage": 4,
+    "optuna_tpe": 4,
+    "smac3_hpo": 3
+   },
+   "seed": 51006
+  },
+  {
+   "R": {
+    "acquisition-v3-coverage": 4,
+    "optuna_tpe": 4,
+    "smac3_hpo": 3
+   },
+   "seed": 51007
+  },
+  {
+   "R": {
+    "acquisition-v3-coverage": 4,
+    "optuna_tpe": 4,
+    "smac3_hpo": 3
+   },
+   "seed": 51008
+  },
+  {
+   "R": {
+    "acquisition-v3-coverage": 4,
+    "optuna_tpe": 4,
+    "smac3_hpo": 4
+   },
+   "seed": 51009
+  },
+  {
+   "R": {
+    "acquisition-v3-coverage": 3,
+    "optuna_tpe": 4,
+    "smac3_hpo": 4
+   },
+   "seed": 51010
+  },
+  {
+   "R": {
+    "acquisition-v3-coverage": 4,
+    "optuna_tpe": 3,
+    "smac3_hpo": 3
+   },
+   "seed": 51011
+  },
+  {
+   "R": {
+    "acquisition-v3-coverage": 4,
+    "optuna_tpe": 3,
+    "smac3_hpo": 3
+   },
+   "seed": 51012
+  },
+  {
+   "R": {
+    "acquisition-v3-coverage": 3,
+    "optuna_tpe": 4,
+    "smac3_hpo": 4
+   },
+   "seed": 51013
+  },
+  {
+   "R": {
+    "acquisition-v3-coverage": 4,
+    "optuna_tpe": 4,
+    "smac3_hpo": 4
+   },
+   "seed": 51014
+  },
+  {
+   "R": {
+    "acquisition-v3-coverage": 4,
+    "optuna_tpe": 3,
+    "smac3_hpo": 4
+   },
+   "seed": 51015
+  },
+  {
+   "R": {
+    "acquisition-v3-coverage": 3,
+    "optuna_tpe": 4,
+    "smac3_hpo": 3
+   },
+   "seed": 51016
+  },
+  {
+   "R": {
+    "acquisition-v3-coverage": 3,
+    "optuna_tpe": 4,
+    "smac3_hpo": 4
+   },
+   "seed": 51017
+  },
+  {
+   "R": {
+    "acquisition-v3-coverage": 3,
+    "optuna_tpe": 4,
+    "smac3_hpo": 3
+   },
+   "seed": 51018
+  },
+  {
+   "R": {
+    "acquisition-v3-coverage": 4,
+    "optuna_tpe": 4,
+    "smac3_hpo": 4
+   },
+   "seed": 51019
+  },
+  {
+   "R": {
+    "acquisition-v3-coverage": 3,
+    "optuna_tpe": 4,
+    "smac3_hpo": 4
+   },
+   "seed": 51020
+  }
+ ],
+ "descriptive_totals": {
+  "sort_ascending": {
+   "acquisition-v3-coverage": {
+    "censored": 0,
+    "child_cpu_ns": 11993441000,
+    "distinct_edges": 140,
+    "harness_cpu_ns": 66651000,
+    "nominations": 40,
+    "rejections": 40,
+    "wall_ns": 14304474749
+   },
+   "optuna_tpe": {
+    "censored": 0,
+    "child_cpu_ns": 13586620000,
+    "distinct_edges": 129,
+    "harness_cpu_ns": 835989000,
+    "nominations": 40,
+    "rejections": 39,
+    "wall_ns": 17120070587
+   },
+   "smac3_hpo": {
+    "censored": 0,
+    "child_cpu_ns": 13752717000,
+    "distinct_edges": 84,
+    "harness_cpu_ns": 46538950000,
+    "nominations": 40,
+    "rejections": 40,
+    "wall_ns": 62192981225
+   }
+  },
+  "topk_uniform": {
+   "acquisition-v3-coverage": {
+    "censored": 0,
+    "child_cpu_ns": 14787058000,
+    "distinct_edges": 160,
+    "harness_cpu_ns": 414365000,
+    "nominations": 40,
+    "rejections": 33,
+    "wall_ns": 16992010605
+   },
+   "optuna_tpe": {
+    "censored": 0,
+    "child_cpu_ns": 16962170000,
+    "distinct_edges": 144,
+    "harness_cpu_ns": 920573000,
+    "nominations": 40,
+    "rejections": 36,
+    "wall_ns": 20331999955
+   },
+   "smac3_hpo": {
+    "censored": 0,
+    "child_cpu_ns": 17009529000,
+    "distinct_edges": 92,
+    "harness_cpu_ns": 53333284000,
+    "nominations": 37,
+    "rejections": 32,
+    "wall_ns": 71573142574
+   }
+  }
+ },
+ "evidence_sha256": {
+  "sort_ascending/51001": {
+   "acquisition-v3-coverage/confirmation.json": "dfae4f14e147c06b1b025aaa0a29852ced704102424d647ba00b8348f5912c9e",
+   "acquisition-v3-coverage/discovery.json": "13c8f0921668128bd2f837915ac01f567eb2dc49a203ccb2914d35ed188b2ff4",
+   "optuna_tpe/confirmation.json": "3a0d6ad3686fd3720ab84c6be49c9de7fa8fc7e26f8f0f87ef86d71f19b3ea28",
+   "optuna_tpe/discovery.json": "651a23a603c4d923bac9fc9767ffbb343fb7a4afe00eaab24da3b412fb5f225d",
+   "smac3_hpo/confirmation.json": "212a3210251dde7f6b2d7c89e7863951b3d02f8bfd18ee232451bc73184b4c02",
+   "smac3_hpo/discovery.json": "84643e62c7c5fdcb6ae266d637487cf8e69ae0b3fa995a9981f9447cf1e1de80",
+   "trial.json": "fa71d0e31c7682dd51fd79a0c4c9c8b5e7010b3a118835f1a2c3d6b9a884d411"
+  },
+  "sort_ascending/51002": {
+   "acquisition-v3-coverage/confirmation.json": "fc608de22dbf9e6255811575d1288e93e2d1ad16d87fc1d7935b7be2d76ab02c",
+   "acquisition-v3-coverage/discovery.json": "c8e1c39e26c642f01fde9a1a283f4fe7474c0cd8bee2a695d199e424ef9f2010",
+   "optuna_tpe/confirmation.json": "1e86bbce91f0236b4b0e85d1ff83de6daac6cdd26c27d37715b2d62ced756375",
+   "optuna_tpe/discovery.json": "29953082d944a1f3133f3acfa933bdef53bccff6e27c4a816041e3dde6bbcd84",
+   "smac3_hpo/confirmation.json": "ae600b4817aa7a2039c366d20d048a2c5f97ccc8ca85e57a4512ed0ba6541546",
+   "smac3_hpo/discovery.json": "23797fca92ba437c3e7e540246c063459ae2b4bb952499518d7ac6e5f58e1079",
+   "trial.json": "ede8d1f39d8616e58bcebc5417fcb32b7acace5cdf70a205cc131c18827a84d4"
+  },
+  "sort_ascending/51003": {
+   "acquisition-v3-coverage/confirmation.json": "14bafb16a7c08716178455b8fd3dab473e9203555d46634adf7e9021c8559c46",
+   "acquisition-v3-coverage/discovery.json": "02a45f8ee557fb51efc114ad07af47fd33ca2e4ec67d798c240c5f08201dca0d",
+   "optuna_tpe/confirmation.json": "c1ee9c0c971b52133df5caa03cab79ae41c542d7e6d4a11c53a368dbb502df57",
+   "optuna_tpe/discovery.json": "7a2e43d1e53db44ddb02b1c65c5ea3b225e40c712f5ac1c9aeaa8494afeb0a0a",
+   "smac3_hpo/confirmation.json": "14707894079e32499f1609f995e39307533ff02610a8fab45c9cd95ae8986367",
+   "smac3_hpo/discovery.json": "959eb8b1ea148b09e9dbc405176f19cc3947928c4ececd69d23448ea1037c505",
+   "trial.json": "2f95686325094f187ad75266fb31e4a40268765ce66cf3925025790ac00b5643"
+  },
+  "sort_ascending/51004": {
+   "acquisition-v3-coverage/confirmation.json": "c19c042f6f6934a43fe629c36aa042965ad302e7669966b740172e66d33b721c",
+   "acquisition-v3-coverage/discovery.json": "624c4e50122c67a0522e7b6f4648d7166e757dbff1ebe363afeb37a2b2fed64e",
+   "optuna_tpe/confirmation.json": "2b1b479e9ceaba71b5643d99ef172fcdfc4e2a38ad1428179e898df2dd3ee4dd",
+   "optuna_tpe/discovery.json": "628400bba9943a7b1843d072e190837ba855e7b35d48d279ad5dc7f7a395ee87",
+   "smac3_hpo/confirmation.json": "68be6f1784885ecbf497399978814e8224f528a95fd85213e5920de04ad2b167",
+   "smac3_hpo/discovery.json": "6958eeb22a385670621b349d0fffa3157e49660b9d5578479df57f7a1beec143",
+   "trial.json": "2e48c0ef9dc0c9e0ee152b9180f3177b5906fff658d3d4d59804c84c6f93f868"
+  },
+  "sort_ascending/51005": {
+   "acquisition-v3-coverage/confirmation.json": "1d5afd542bd1b15f0c30d58ed01bfddf14b29619e50d6a51e47250001498947e",
+   "acquisition-v3-coverage/discovery.json": "5fa6c43156e62908cae01945ac735b1889550e0fa7ede1f6eb58404113ba6d20",
+   "optuna_tpe/confirmation.json": "bf2e7a5f9c3bb79011f671ae9b5ed72c4ba44ff79daff572bd7b261f737d774a",
+   "optuna_tpe/discovery.json": "165e24f42b9c6d27804746817ce1236d1c93a619c1dff3b2cf6f9d5a39982f29",
+   "smac3_hpo/confirmation.json": "34a2982127bbe09eccbc45c6f69b0b46596edfe55a188be6aef0782e8354ed15",
+   "smac3_hpo/discovery.json": "fa95d4d61f2cb1cba0aea5c0f48450e8bfb55447346a79ef9afcc8c037123e91",
+   "trial.json": "21e1ebd8ca36da9cd42731d07ce97d4eab0900bc59b8788dcaea54b8ac5edc0f"
+  },
+  "sort_ascending/51006": {
+   "acquisition-v3-coverage/confirmation.json": "baf1ca9b5100967a51fafcee63f6fe954358d10051e27d1ae4e73195ea91392d",
+   "acquisition-v3-coverage/discovery.json": "e28f5123c2a02b0cd00bb632b4273b5239b1bae2508b7a1f8dd72585a36b1f36",
+   "optuna_tpe/confirmation.json": "2bb006bd04e9aae81976109405345caea18e4c446412bbcc63aa956472d3f4b3",
+   "optuna_tpe/discovery.json": "50d604e12b0face975a5fae3e94fc2a694a6683a9bda23f5c92b8661f5c8178c",
+   "smac3_hpo/confirmation.json": "7741857989f3696a0584cb0fe922b755a1675ca276504db3581b857a6c5d3eae",
+   "smac3_hpo/discovery.json": "1f575992d7734a39e70b185bb3e0dd060cebd877a117aa7ebd67d0364defc232",
+   "trial.json": "d3d80b657242e8c2dd0b10499a8b34f46390f56c42e5c5ef032e80b459a09e32"
+  },
+  "sort_ascending/51007": {
+   "acquisition-v3-coverage/confirmation.json": "0c05cafe92efa328d302389f90477482de6eacfb11f0711a226dcee9d083b7ff",
+   "acquisition-v3-coverage/discovery.json": "2ffe72c9d444317965d200cb6b08456de6a25f4e5689d366b96c66eabb49f124",
+   "optuna_tpe/confirmation.json": "68376387864be63aa57f08759e4c0eb5e0d50a588acf81992bbaddddb263f83e",
+   "optuna_tpe/discovery.json": "91de5e4ab77b158a9c7383f7156a2da5e0658f476c42b7ce5a6f0ccb869e3f2b",
+   "smac3_hpo/confirmation.json": "01a0012c9dafbf6acd0cf26635c4a8df60719ad8620dc2516b748b5e0a73a644",
+   "smac3_hpo/discovery.json": "2fc6882dfdd7c8c143824077e1e451bacd6a27914e14d6cbb53ce1c66004e659",
+   "trial.json": "9b53794d94688c0242991e8b5d464faa3b7619c8cecb8fb0d70ad1cb338cc24a"
+  },
+  "sort_ascending/51008": {
+   "acquisition-v3-coverage/confirmation.json": "1347ad8220c6dac43f5d22d282b53347b83a4df2d30ee138dc61fc906e660eb0",
+   "acquisition-v3-coverage/discovery.json": "1bb7a9af187ddf8fafef394b0c1bd6504c9b9534064e2e290fde6c045aab2cd8",
+   "optuna_tpe/confirmation.json": "9b09f1350b7d71c98e03048e7c5013f7bfa0a4d8760cf10a4bfc087f8c8b5043",
+   "optuna_tpe/discovery.json": "7c4b97cb0ae5c9c073517376fa208a9ee85e9e796856ed6f646e8f77cc787356",
+   "smac3_hpo/confirmation.json": "9bfc16edc3363e38497fc9d1f6a0f817ef48e445a1d053585e7c133bcfa575a4",
+   "smac3_hpo/discovery.json": "281b73655f5845c660117d3c50a508d517e28b97e7850daa712c3d350a303709",
+   "trial.json": "f90728dc197c159c6d13aabd730716c7a7d5f2db8e9600cb64d5337e275a2771"
+  },
+  "sort_ascending/51009": {
+   "acquisition-v3-coverage/confirmation.json": "8e9906f3cd949c478358d9d378ee4ea3276fe877ed5d2e4a9fc980b0ecd7f71b",
+   "acquisition-v3-coverage/discovery.json": "7234ee4de82987054f2afe92ff03e60f0d068b7b2fd528249826f5bbdc4f32df",
+   "optuna_tpe/confirmation.json": "b43e12fdcf5a39baa2b47bcafdc3607663dd1ed3574bbac5493c4a7ed0dd85cb",
+   "optuna_tpe/discovery.json": "212123eccd20035f62f407bd3d526c72c184f03c9140ced4fb260b877c050e5a",
+   "smac3_hpo/confirmation.json": "05761e569245c35d457257650329912c7ceff3fc9ea58b8c0387aacde5716a0f",
+   "smac3_hpo/discovery.json": "7eeae81ed8da258be36325564f3a3d8d9bb554d985229b012034c780a37c9bca",
+   "trial.json": "bc9da49eaf6de31f239d23268fb56aacee9c0ce964c7d9443be637f786100cc2"
+  },
+  "sort_ascending/51010": {
+   "acquisition-v3-coverage/confirmation.json": "107baad2317574b5c699493681a39728b886403273cbd8f377f06f4160331ac0",
+   "acquisition-v3-coverage/discovery.json": "66bad6b0d01bf85b228b759c77f3660bb424242e094bd7a9e737e296a8fa8d1e",
+   "optuna_tpe/confirmation.json": "4892b280e33b29533b8bb13743a3569bf6e23d5b844a55a43e32dc41c62a08bc",
+   "optuna_tpe/discovery.json": "de54f702e11416bffde3de772340828ab6f0a9aa540a4ffc8cb7ba00295b01b1",
+   "smac3_hpo/confirmation.json": "3c915457e315a583aa9b51e70284b6a46fd85d7c51168a522dc4cc80c2a386b3",
+   "smac3_hpo/discovery.json": "a1756e26cdddab54024c842275d3c177302891ae09f0b03f04a8070231b74238",
+   "trial.json": "ee37921863f32eaf987af8cb3bdb8242703b497ae361321ac2f6955b49642363"
+  },
+  "sort_ascending/51011": {
+   "acquisition-v3-coverage/confirmation.json": "40893f611aa4eced80050b437c359604a5a77805de83cb646c450daa429b2637",
+   "acquisition-v3-coverage/discovery.json": "ff81f741b30b21dea25c85422939b49922add3eada2a99e055369772e89591cd",
+   "optuna_tpe/confirmation.json": "6fef55c00acd74828286dbefd5f4af9f31b5dee0394e8ffdf07c2b831186245c",
+   "optuna_tpe/discovery.json": "5227fdad09c11b7177174b2d4f855d9dabae227cfbaf495ce9697ae7fee20158",
+   "smac3_hpo/confirmation.json": "49a7456dfb8b172a29ca5a148d04a1984d826f103f702ac3f6cc3a8a73eb044c",
+   "smac3_hpo/discovery.json": "7c63303481cdadd35bddac97975747d46ae97d0491a505f79cdaa80211da7f1d",
+   "trial.json": "a0df2b2a39766f700ad060ba6bb92254fc2e303cdc44d0dd13de9f64f0a4fc80"
+  },
+  "sort_ascending/51012": {
+   "acquisition-v3-coverage/confirmation.json": "9fc3ff94ec10ea02896a33cc4e3716a4a72ba951c5e31c12649c8db228bbb155",
+   "acquisition-v3-coverage/discovery.json": "c91b905f9562e4594c8a072969ecd5b2bac07aec02624e1ee7d388ed621c315d",
+   "optuna_tpe/confirmation.json": "13e589583d69b23954f0f033da0a718fd1ae3fbb14a765522e739e790882c5b9",
+   "optuna_tpe/discovery.json": "ea8c13f8b596cf59672e1aa1839c1b90ef8e3f26cf012b6a5a745752825d7015",
+   "smac3_hpo/confirmation.json": "87b411a9da9f500541ee180a1bb4088a3d1d3f071bf38caeecd7aac2252d8157",
+   "smac3_hpo/discovery.json": "386cb701fe70602aa36c40d6d7b1d7cb679c3a71dca0ceac20ea10adf5ed6293",
+   "trial.json": "319543843da719867deeec4577afb92527204b16cb62af9bc6a7356ecc1b3b8a"
+  },
+  "sort_ascending/51013": {
+   "acquisition-v3-coverage/confirmation.json": "f9b10e42edb054e2eb8edb45d5d080826bb187cb1ba4fe8c025df41601e1593a",
+   "acquisition-v3-coverage/discovery.json": "943922a2bcb9113f6e7557dbe8a11dd049af6cc4daf35fba31cab868a6f698d4",
+   "optuna_tpe/confirmation.json": "d6b69af9b231d5fb03fe9a7bfc748e837b210be5a52e85e4b75fcfafe0a02720",
+   "optuna_tpe/discovery.json": "0bb07189acec0fb8281396c95782441639661c9e2384956dd4dee44db86497b7",
+   "smac3_hpo/confirmation.json": "bf09f662a83b813e8352e62fb54dcb68105fd5df7a579b017b69bafa66f3b48f",
+   "smac3_hpo/discovery.json": "40028696c5086a866b05b7ce2d3721091123414cb51663803942daf9d51313a5",
+   "trial.json": "c8d4bb634af289435902eb587e35b94f1d37511c944f344c1ce5a1a4998eccca"
+  },
+  "sort_ascending/51014": {
+   "acquisition-v3-coverage/confirmation.json": "befb505b3acca6b7c6d85b543d2e51947d66241f5d9364d4a1b8cb95977b501d",
+   "acquisition-v3-coverage/discovery.json": "563cbe2a38937a15f654f31550f1f798dffd6fb7e7298d9c6cf1e56afb184b0b",
+   "optuna_tpe/confirmation.json": "82d52b79127b20b61e69543e971ab77a66e98e0cb893e6049197bdc086f9c432",
+   "optuna_tpe/discovery.json": "7ee832f220b36d8f9d52f8c43a993d8f9e3847f28bd5e22cd2b2f908aedf65a9",
+   "smac3_hpo/confirmation.json": "9cc09755b950a0c55ed5e7776f9171e3ae9ff0b5abef8bb3638f7765451d71f9",
+   "smac3_hpo/discovery.json": "6454f73ef190486baf1bbacefa55de473b9fc959ac4673fdd1b0f53f34f651d1",
+   "trial.json": "9b11ac02d72c83592f95e2f3eb9749c7531b958da2eb5d03dc28271360a696f0"
+  },
+  "sort_ascending/51015": {
+   "acquisition-v3-coverage/confirmation.json": "314f5686bbb67df0b69e3a6d710146c7c1ecf3ece625bc44f3d722de0fd0810e",
+   "acquisition-v3-coverage/discovery.json": "ff79c325280874a64987623e96d1bf91de69e94531bdf55b5e66babbdd5c0a0b",
+   "optuna_tpe/confirmation.json": "3cb26476963c85a5882f9b3a8474633d1c20fefd3cde223364d1b03df539d9d9",
+   "optuna_tpe/discovery.json": "580bf67659ac9bd76b132bd2cd236bc64dc433271d7f218d3e929742257d4952",
+   "smac3_hpo/confirmation.json": "db18d67831396ec8ceb4f9182fe451f0cf70db0c23eca33980fe6fd2586e6c40",
+   "smac3_hpo/discovery.json": "01fcb07317eb7ee20ac252f18ba9944db29685bdfcfc0631cb27ee27344176df",
+   "trial.json": "c7c5a824cf972923ab7870e4fa876bd041c3972ec78067f5e8a77dea59f9fb58"
+  },
+  "sort_ascending/51016": {
+   "acquisition-v3-coverage/confirmation.json": "1d8fedba64b79a6ab5f5a3f7b5f67dfcf8b676cf6df37f534d7828c6d42c9b5b",
+   "acquisition-v3-coverage/discovery.json": "4121f67630d6147e9782fde2a0093d65681fc8bca761f59d78d46159797b46bf",
+   "optuna_tpe/confirmation.json": "16efc29afb56bb0c6c36039b70c68bc2401f68acc88a8a97aa245c90db982755",
+   "optuna_tpe/discovery.json": "71ed8120e2f15274a349b17acbfd982eb665a88c39f8bb89aa5d8387bfba3dc5",
+   "smac3_hpo/confirmation.json": "300412ba25675ba75902fda4c87117cbec31d16c84f48e863330ba84c208ecd4",
+   "smac3_hpo/discovery.json": "96d7dfd67299046e6e3bf35cbff69aaded6fdb33bc9d26f274a15f85a7853283",
+   "trial.json": "045c0e06a628208d55d7cb2e56cc3d7345a19ba5be26a059ecdfd6f1af35c007"
+  },
+  "sort_ascending/51017": {
+   "acquisition-v3-coverage/confirmation.json": "9b9971112b8b8c60f592ad46547cfaac8ef67286ef50fb33a09946c260ad496e",
+   "acquisition-v3-coverage/discovery.json": "a9145812b55c0685035a3177441a356eb42cbfabbadbed34e6a9973011d51dfb",
+   "optuna_tpe/confirmation.json": "05fcb3c70900c64f67dca8391a078acf069c16d3e8961c764cde2f60840b0649",
+   "optuna_tpe/discovery.json": "088789f076c2554854c6ef03827b5849bbf7d4bd5b4af0458cc6de879561f7fc",
+   "smac3_hpo/confirmation.json": "1427b9ac9c933f07e6a62c84b4fad4a289ec479ee71e6ec80d42debb25a51685",
+   "smac3_hpo/discovery.json": "e7db3d120aaf720594ac882219ca56e1ec05ee4ec4a58c913475a8f2493dbaa1",
+   "trial.json": "37c62c71b60c48b5d31f3f00cfe29760a95350262c86b531df298dff58b04b92"
+  },
+  "sort_ascending/51018": {
+   "acquisition-v3-coverage/confirmation.json": "51a0fd5ff5c335fbcaf25725cdabb9239633ec38ce239739e455b7b8f7b4b488",
+   "acquisition-v3-coverage/discovery.json": "f655c9bfd847cececdaaeda61f6a0cc8f2c21f236b5429dcb5a46136b3b5e246",
+   "optuna_tpe/confirmation.json": "341251925f8f9b89610c8b8c8f0206320d951b20a0d8b2eff565778faf5427b0",
+   "optuna_tpe/discovery.json": "fb68c30a6c5109c09f8c0e35dac85024a6f9ca4378ef29f738f65d2f65a97c6c",
+   "smac3_hpo/confirmation.json": "32d8f4de9b516496331b1590ce911fd7a0ca7677cd745819d89f1425499e3464",
+   "smac3_hpo/discovery.json": "9e7206acd714d0b69d2ad9a847c4b71ac5f221d5a1df7d84868c1516f9aee19b",
+   "trial.json": "efdf4aa6627c46a41e499f5195e2fe6ac27dedabb15f94221c1cda6e7a70b152"
+  },
+  "sort_ascending/51019": {
+   "acquisition-v3-coverage/confirmation.json": "5a6ef2612f93630e4093f41a4e547ec5d1a989322d4aa13b0e5bfd97bdc4a183",
+   "acquisition-v3-coverage/discovery.json": "e5cbac9e2ca77b0597b55430fa16c479d6027f2a28544b9025d3b4065f0d5db1",
+   "optuna_tpe/confirmation.json": "399dfbafd8a7fdc88d60035409656aaa9547a1c59485cea8204f4d6d9cbf97e2",
+   "optuna_tpe/discovery.json": "03ceb4a782f4ec6bda54fb6bbaad6a76ff5f91b175c1bd83e9f3b05acd2a032b",
+   "smac3_hpo/confirmation.json": "92fe17b406712c4d0e968fc5c5ff1e423b0c06477536404dfef936dac00e6220",
+   "smac3_hpo/discovery.json": "8632769e406c038645a982a98b7264b0aa07ad75c6fd29401ceb68c2e59be0f5",
+   "trial.json": "6a425deda1eff7afecf169193e6389c57b6c198ad1e42a4c171bc29e1b8311a3"
+  },
+  "sort_ascending/51020": {
+   "acquisition-v3-coverage/confirmation.json": "309970fe14c73bff4640037c243f0fcb1e0a78a32ed82e0b2696cd62d0f70e5e",
+   "acquisition-v3-coverage/discovery.json": "5b2350caf42cdf4b5a14c67c68b271ff22981d85229f73b2c28d9956aee18e6f",
+   "optuna_tpe/confirmation.json": "55ba3679a0aa1e69567467c51c3722d5da07cd9a1bfc2d58333211262208c6ee",
+   "optuna_tpe/discovery.json": "99872aa4d0bdfd86973d999f8fb1364ccfc1dc2c4e951a9e9a6949759923ac10",
+   "smac3_hpo/confirmation.json": "6a7389dd2a25a8aa898d7632c16791d245daf9dcd26445744de8224430cb2812",
+   "smac3_hpo/discovery.json": "1648e10d18e64d406e3c06b134cf4f978b72087449984b3390b94b79480096c0",
+   "trial.json": "d39acb106c9732ac51db896ffb4f3a72c3cc400e57d2b0c0c44943ffbfbd0f85"
+  },
+  "topk_uniform/51001": {
+   "acquisition-v3-coverage/confirmation.json": "df8fda5f650c471ce25894e80d060f6de2db3b8c092576a8697bc5e2db50151d",
+   "acquisition-v3-coverage/discovery.json": "b0157da3b2dc78b88a258459dd6dc1590671fa8563ea6fe6a9d4ac6978fb760d",
+   "optuna_tpe/confirmation.json": "6e31191c8cea204b0c75e43cdf3222def4613308994924378431e672637a7527",
+   "optuna_tpe/discovery.json": "af7d52e157832c7a363ed771b8f6652d6d6956eca976a828c91a369b5cf4d02e",
+   "smac3_hpo/confirmation.json": "69a4cd5864e7e4742ce92135cb1ec5548027888c30a7da05b7ed00b4cc5663fb",
+   "smac3_hpo/discovery.json": "eb320a6141c3c5f3680f1d07ca55c50810ba5ada4567ce6c7073986176162604",
+   "trial.json": "c95562106e7280765722f897377b83c048fe540e8e535dd705ec4f3dd14a7894"
+  },
+  "topk_uniform/51002": {
+   "acquisition-v3-coverage/confirmation.json": "77f0f5be5e12210e442940b6f3ad42a3d3c4e068472fb1d5ad2f5f653d30adb0",
+   "acquisition-v3-coverage/discovery.json": "335b75130661d642ef86ee391f0ced4e2f4c4bc83d57c262e2d2e11767038516",
+   "optuna_tpe/confirmation.json": "aeb14300e5af0627aa7fe326516e83a84cadb732bcaf10752f7fe101dce085db",
+   "optuna_tpe/discovery.json": "978250f1c05b6452de4d615b9f90bf5c6827d06e28192e81766c33d2ab8a66c2",
+   "smac3_hpo/confirmation.json": "abece457d4e7dd464cbe7369ee8de984faa692b6db48ffdf7b6b1b0ce6076799",
+   "smac3_hpo/discovery.json": "354044bda52b4084950582d5623ecc0856a149e88ab18ad39d761a948feebc66",
+   "trial.json": "3cdfee7268c76ecfc0b08fb5801d743f63e9758426cf163b3a5db51408bb8f03"
+  },
+  "topk_uniform/51003": {
+   "acquisition-v3-coverage/confirmation.json": "5260e87f371a36c75d586e389573c39ebdfe4cc2509a5fa9ebab3b7ad2613cf3",
+   "acquisition-v3-coverage/discovery.json": "625683726d6f55acb285d11eb6355fc45d2f6f73b39a0984c2cf304680fff480",
+   "optuna_tpe/confirmation.json": "9f7eddbd3f9eea92ee3986c16bd6c6e5929c45c2a623eccaeb2c8983e79b1249",
+   "optuna_tpe/discovery.json": "110c88c58a2ba437d554460be799f7fb4a7fb5408e94252cc649256b62c93da9",
+   "smac3_hpo/confirmation.json": "c6de11cbdc57b9b9d2096022adcd614bdaffda759bcdb673d7650f978b322fd3",
+   "smac3_hpo/discovery.json": "56ef017a51ed089e6d9e3176ba63a46bfa2ae489e2dfb58584650821f769fae5",
+   "trial.json": "46a8c88fe6726ba9b685ae654cc1678f0b14fc51ed35979085d79b62f4496f7e"
+  },
+  "topk_uniform/51004": {
+   "acquisition-v3-coverage/confirmation.json": "92e015a7a6ff9dbdf79062f271825ec3d9066e1e8528a0bf9ef7ae680c6ecb18",
+   "acquisition-v3-coverage/discovery.json": "e4b05feba180ced2e6ca6f787658f24898ef0f4e5a1550c4ee8966a2c66a5ede",
+   "optuna_tpe/confirmation.json": "9079d693277cde1b24c929b4043188e72bc07dc634f875b829ee91beed26d8d5",
+   "optuna_tpe/discovery.json": "37c7ed44bd9aef4871a1970324700d70a6897fdae34c038bb0ee16a4b1080840",
+   "smac3_hpo/confirmation.json": "dc1829dd3fe8ac9abcc15a74c8f32cf6daaabc6cad58b8879b20e46cbbc22b41",
+   "smac3_hpo/discovery.json": "5396eef0b4a82444fa4f99b9240d820ef2ab6d855b3585b0c6d0b992c0f84273",
+   "trial.json": "a570b731f1bc8ce6230d668a058ebbcfa88dcd446aeeb7f1b9628fa94d786de6"
+  },
+  "topk_uniform/51005": {
+   "acquisition-v3-coverage/confirmation.json": "7f88c6f6afbe8239540d47b34f6af17b7f06b87527d48bcd5b1878b10685755a",
+   "acquisition-v3-coverage/discovery.json": "51f834c3a1b78342211313b4e33bca83534eaea91b637c0866b43a68d19eb047",
+   "optuna_tpe/confirmation.json": "1b569fd1753c9a871b7cfcd2e481212ddd5c5b8955df664a0b9f41d3fe7327dc",
+   "optuna_tpe/discovery.json": "6af68aeed2aaf6cbbd4e9269e5da6bb833dc7381e93935e8a23e8c6b6c3f276e",
+   "smac3_hpo/confirmation.json": "f74568481969ce2487d4aecf36b909ce871d59b48765a72abcda8a23bbaee3b9",
+   "smac3_hpo/discovery.json": "c20304ad22182087e78ac1d203830ce0ccd9175c8b1005202f0f901d6b68ef8d",
+   "trial.json": "77d438586d906842b5f8fc4f7665be8668bb813b6a55a73a25f63e60d7426d50"
+  },
+  "topk_uniform/51006": {
+   "acquisition-v3-coverage/confirmation.json": "f1b946d5d5769c440437c803308a60222173bc81c08258a3252373551f6cd4a1",
+   "acquisition-v3-coverage/discovery.json": "2f2ea378b4126cab2db2f5a589eca5acde77df03ded82fdd3e9d4beecbfd1fbc",
+   "optuna_tpe/confirmation.json": "d86ff4078a589bbdd550cd58dd52205b0e3f17f5a594a005e06c7dc36fd6f77e",
+   "optuna_tpe/discovery.json": "8eca58b8b1f842fdcfd0064806272386311ec225a486f4cb9e075fda7ecd1daf",
+   "smac3_hpo/confirmation.json": "16f88a0c90baab66e3f776a48033f208acbc0042ad3624a0569ef13ad8afb151",
+   "smac3_hpo/discovery.json": "58e22a2991fcc57f8e8be00ccfa3617a7cd752f753ae9cfebb19bdc0009afc29",
+   "trial.json": "b3d7602bebd6588c6ef15ba2c063bb237f86bde89fad203e9bba2af4a56c5e76"
+  },
+  "topk_uniform/51007": {
+   "acquisition-v3-coverage/confirmation.json": "2f99c49f5fa44cdff0acc115489a60b36e1a08948698cd58a11d292ed25edc57",
+   "acquisition-v3-coverage/discovery.json": "7f4f4d61c6879278995d97fde9c32a399c92d43a941c5651b653579174cbe85e",
+   "optuna_tpe/confirmation.json": "4583757c55e84de994e04d749b39c868fd6169c4b2eaa719520397536c9dcb3f",
+   "optuna_tpe/discovery.json": "1c038adcb61777e293202eca04d9970082883bb09d760142c4bd6fb00c6b8452",
+   "smac3_hpo/confirmation.json": "7916631fb5bf952ca53434dc83622781bc5498aa933c9a1d8ccdf8a772a85553",
+   "smac3_hpo/discovery.json": "60ab79a0036ea02ca928d1096b0b1a9c29d4b244616505483c69dfbe42556cb9",
+   "trial.json": "570f7e330b712d9fc0e526927d36a646b484bb0b994cef9d076c6e7ea3395152"
+  },
+  "topk_uniform/51008": {
+   "acquisition-v3-coverage/confirmation.json": "b2dbc58c443479cab462d284f99daea1f1308e96dad9ae4b6484d8fc82ce9192",
+   "acquisition-v3-coverage/discovery.json": "99c99753ad5e5458f39efefc5e3cde8d6b1153aae7e7e2e77ca1492ade79d3e8",
+   "optuna_tpe/confirmation.json": "708bcb804c11ee9e393d6603c12fb5d4ace4a399b6c13dba10d08f0350f2e4da",
+   "optuna_tpe/discovery.json": "18480f4c2c0ded7a539e5fd0c9b8fee0fa6d803f3d9933e322b2021031108cc6",
+   "smac3_hpo/confirmation.json": "cc2ff317e003abb134c84187d7b4b99ffd4b7796adc182a24901c7660a98b4ae",
+   "smac3_hpo/discovery.json": "2ffd4d65af4d1ec3d35d2aec9134279f2f8faa67580e982a10b695a8a9e887b4",
+   "trial.json": "9b5c658ad3b2e7173252a19ddb2359c8a8dd9182ee1ad31bf17b0fc5050c1330"
+  },
+  "topk_uniform/51009": {
+   "acquisition-v3-coverage/confirmation.json": "531041d6d3d5bdbfca81ba0b71b17f49f50b5622504499a2b67a628354f729f3",
+   "acquisition-v3-coverage/discovery.json": "afd1bf84e8367c7de3e13382c7df37b30759479c8203b571823df73ca750fc9b",
+   "optuna_tpe/confirmation.json": "c08e90f6839b779c52bc0c69422258d0340bbce7cbbe7d5b7a4f4c36b5bd172b",
+   "optuna_tpe/discovery.json": "7f28d126f437fbf918e23c85a7f33dba87ef2cc8b03d38ba6567eeb83afb676b",
+   "smac3_hpo/confirmation.json": "b94cd91ca0d0ef024a7437b22ede9704ded1a645e415e53996b71c8427e67948",
+   "smac3_hpo/discovery.json": "36367cbb5932fbacc244aa3ea29fb48db5928460d4c43998b18b70d170574f05",
+   "trial.json": "f033480620d7972e60eb43d4daff76a42befd4e6fd6a7992dd526a7145c6f201"
+  },
+  "topk_uniform/51010": {
+   "acquisition-v3-coverage/confirmation.json": "d8ad47685e0874953aa7ffe251710e4209d3702379848139f27ecf4bc07640bb",
+   "acquisition-v3-coverage/discovery.json": "d915115fd1f86f6013be87d5b3edc3ccfe375facf196a4d7f28408de608d7c50",
+   "optuna_tpe/confirmation.json": "6015d3eddb77667905df2be692db2d736a644f00adf73d527193f199d929d91e",
+   "optuna_tpe/discovery.json": "fa6314dd953e7e137ec6dfdeebf8f3203b230f8e8d743d7eedffe6c58a63ceaf",
+   "smac3_hpo/confirmation.json": "ec0b86bb35eb9930798e08cc2d391e750289c7cfb2ca278e5626340e1a08f45e",
+   "smac3_hpo/discovery.json": "d3a76c5bc3c90a5c4b1ce447a3579e4692ed2c89f192c0fcf7731a6708e106ad",
+   "trial.json": "bcca715e02de5d89d3cf60e94d7902703b47c5c08ee3994cf48b0eb237049138"
+  },
+  "topk_uniform/51011": {
+   "acquisition-v3-coverage/confirmation.json": "1516ed132ca2a7aff76071321861d78e82c7e1af6bc84f142b29475a5b0f09d3",
+   "acquisition-v3-coverage/discovery.json": "92199425a51891eb8911c954c5bb7625288ac30517aa78c60793b5df6996a972",
+   "optuna_tpe/confirmation.json": "28e7dee4e663dcb244f8344dd39e0055ca902136bff841a55733a2d388b702a9",
+   "optuna_tpe/discovery.json": "16bf3d7fd73dc6c2759d1750d22ea8810583da5e7657b5488024bbe578754cfa",
+   "smac3_hpo/confirmation.json": "0a1dd9eb0bf5e02955d20b870ff88cb2039776abda7b5c767d059b05e3a09166",
+   "smac3_hpo/discovery.json": "03aef19f03c98e2c1d044829c5183720f6a87e78dfe42a7910429c0caec6c9bb",
+   "trial.json": "777a3ac11847177f63768feca94b7b713ebd6f13db32d1aca46711e5af5e980b"
+  },
+  "topk_uniform/51012": {
+   "acquisition-v3-coverage/confirmation.json": "b97ff58f430231e412c519bcb7dae18fdf2c405e0cf4082b84a833fff0e221dc",
+   "acquisition-v3-coverage/discovery.json": "232303feae811bb67bba2d7b4de12e32d340ce7c29a345459b1d2dff49ff2809",
+   "optuna_tpe/confirmation.json": "fac659b3f126e26998f7812657c7de1d76f390aec74ebf306debeab96e5bff1d",
+   "optuna_tpe/discovery.json": "09be1ea37e4a55d40393a690cb28e560aaa1835312b9ad3a9bcac9b3109bd55d",
+   "smac3_hpo/confirmation.json": "9a555af7b1dfb4cdb7bf13fcb1ecbde55e0d31dfaff3f949e214465d45a044c8",
+   "smac3_hpo/discovery.json": "32ede6815f4c9dff2fcc245d3834f88e48dfc0cb8fa9e8e162b11c0a30b3db9c",
+   "trial.json": "de8448f9338b05cd35a4e11c0378c7558d40b37ac480fde1a328515243844216"
+  },
+  "topk_uniform/51013": {
+   "acquisition-v3-coverage/confirmation.json": "a993e766683c07c1551c4e82f44c02422564770eca979a5c9ca2eca80ec8a5d6",
+   "acquisition-v3-coverage/discovery.json": "a1fcbbed97dfd21279944bbe6f79df559c214d6d06869e30100265417e705203",
+   "optuna_tpe/confirmation.json": "8e9c963782761e82f9b84d910efcb0bbfe274d531de355c20174aa9b83840deb",
+   "optuna_tpe/discovery.json": "401e4d2c8ef8f27248044398c6a92715c39fd7af0eeeb26223b230e606491a87",
+   "smac3_hpo/confirmation.json": "43ec9100b1f8c367e7684efdfae1902c33cddcdda586247def4a91b0c1367a72",
+   "smac3_hpo/discovery.json": "d469e1faef00d17c851d28403d80a7e88bb71ff9ee5b40b1169da8476116d1aa",
+   "trial.json": "bb2e0a597b098d03f10bfc757e1a31d8388149450e838030157f1eefcf78200c"
+  },
+  "topk_uniform/51014": {
+   "acquisition-v3-coverage/confirmation.json": "b4c298d5c3cb57302dba1ecbc7718ad91c7122923ffc4a290503e8accf7636ed",
+   "acquisition-v3-coverage/discovery.json": "b228db6fe06a69288b2ef2aca2467ff88ffbc221265abd57a7a1835484f394a3",
+   "optuna_tpe/confirmation.json": "37916fe45852a648656315b84c74cc5998c50932608dd617300c33abc7b76cc3",
+   "optuna_tpe/discovery.json": "f50b13be1cf170aa82ea0827fed1de950becfd57263098ed901d5362690ddd3c",
+   "smac3_hpo/confirmation.json": "5ea65a31a3258b534f5f53edc66b54194fb4af708be57e55c74d8028ecc9eb1e",
+   "smac3_hpo/discovery.json": "126bceb794f49133aa233536da87e1dce11d21d65d437078ebff7725b65264ae",
+   "trial.json": "6d6ff81ca183451490dbaeba973dccecb6745fe9ac97ce4478bf4c4d78e48708"
+  },
+  "topk_uniform/51015": {
+   "acquisition-v3-coverage/confirmation.json": "586a44bfd26a2a88343be2a0604b313342daa9e2bd385985f3718c4a48675719",
+   "acquisition-v3-coverage/discovery.json": "1b5a4670ebd684644452b481eb52b8ee0ab63e7d90d03c4699e67ff984787032",
+   "optuna_tpe/confirmation.json": "aa0452f6c4d23e6f7f026b5691e2f5ff7c6fc77bc5b62b62e5e89a6cf4282daf",
+   "optuna_tpe/discovery.json": "3a1629a1eb6c78b67f923905de5381643d65817b12fe6b2c1a4e5c5bf269d87f",
+   "smac3_hpo/confirmation.json": "789db19573e0616dc5e06d10c4231b5a496c207a42b3b1add2485d251306a5f9",
+   "smac3_hpo/discovery.json": "6786dbeda57762213941f64e42397bcfee9784fb56113a3add6621ed7537e360",
+   "trial.json": "b52ac83059fe45cef9d624205b368a680db959bc002db98ac88678d2af7aa30a"
+  },
+  "topk_uniform/51016": {
+   "acquisition-v3-coverage/confirmation.json": "695334b1834529962c4a54e460d1480e303e241c68652a80d60d7f656dfb7724",
+   "acquisition-v3-coverage/discovery.json": "fc9d6b505ffa1788e3bea9b1e7a5f657cc2d74c040b65c0b6a464c7b8ff87bfa",
+   "optuna_tpe/confirmation.json": "c810596398e016199ce49da717a5ade65ba04b6279d78ce823d5fc43d2520496",
+   "optuna_tpe/discovery.json": "41d9f9222187e746ffd946753666693507348b74f157763402a659dd017c2fb6",
+   "smac3_hpo/confirmation.json": "8c19b229861e3c049dfe27d250ff3f3ac3ae02fcc0dafd529e32c401aeb096ef",
+   "smac3_hpo/discovery.json": "7f90fdc17ac107ad9fe528fcdbc33634f6a95602b6725f5cde5755d73cd783c7",
+   "trial.json": "a67023310f05aae1ef7cea5e758c920e85b35285eb94f3516b522b285f0b7978"
+  },
+  "topk_uniform/51017": {
+   "acquisition-v3-coverage/confirmation.json": "08a1ad43386e15c3f7bb07714bd518b56802bd211981bf726fd5a3769b00504b",
+   "acquisition-v3-coverage/discovery.json": "96437dea47a829492b7f653cc81ce1905d842cc54f60baf6c524a9fc0209cabc",
+   "optuna_tpe/confirmation.json": "dd19f19ecf644802127b411fc65f39fb11d88c4fcf5493b1febf840ff9eaed7f",
+   "optuna_tpe/discovery.json": "935e7648b19e8fd5ee2e65c34b6070036d69c617dff112a753ed8d76b0d4b56c",
+   "smac3_hpo/confirmation.json": "4cbf1c7c2c64ae6046cdca3a18d6c4c79839261dd0760fb012e1f66da28a71da",
+   "smac3_hpo/discovery.json": "331779d23efb86db17024538a6e16990a7ac9cd97e1c457a286ff2ce867862c5",
+   "trial.json": "3ddc9c175e3e18c28e4cab0855fb544aa5fafec34c0753a4db26c6f69365fb2d"
+  },
+  "topk_uniform/51018": {
+   "acquisition-v3-coverage/confirmation.json": "e32cd59cc29b25e2e6a1b4fb62802bc6e753bab3703a9285869fd690a66e28d7",
+   "acquisition-v3-coverage/discovery.json": "dae7dd5565b7dfb2247ed1d6951ea9f36a31b66b28f7f30214ca1332e76d176d",
+   "optuna_tpe/confirmation.json": "e17a9d427fd38940d5758c2d34a6cc40f4f20577420bb20b310f30f731ccdd22",
+   "optuna_tpe/discovery.json": "2c6c9bac804e48ac851a105b23cb9494734bff1b344eb9912d047dc422528627",
+   "smac3_hpo/confirmation.json": "52d6c3fbb2fc1837d9fc2cf452387e1cbab984bde6f377b1d47fb793ee60bf47",
+   "smac3_hpo/discovery.json": "8d536adc8d532de85236c048002e72336b1f54cbfb62916bf244dda9ee1f1536",
+   "trial.json": "4262e0ce9016789d929e3cc8f51531e8577098178b5eccd6c2e98b26e3ce1fad"
+  },
+  "topk_uniform/51019": {
+   "acquisition-v3-coverage/confirmation.json": "27b5071ebe652dd9355c6d14e7ac6aae298bc74202a2fa786752bddb7ec7e803",
+   "acquisition-v3-coverage/discovery.json": "8c7ab10d16d22d39593ea968dee1f634dd1ab6f548fe3aa456cc6e1add889e93",
+   "optuna_tpe/confirmation.json": "b5b2c68a38ed3d27eab36d36004b4c23e7cc749ae0bd2a57ebd316b83af8da3c",
+   "optuna_tpe/discovery.json": "da8250567d1aac8c80b5ef902926284a6c5570595e66531f6311d8768be831cc",
+   "smac3_hpo/confirmation.json": "090f0ddaa955d5c510c292a1519f00b64dc76d1162aa9b28b0ee7e9a75e893ff",
+   "smac3_hpo/discovery.json": "4bd845a99269faaf8e54859974cf95fe8486f1e7a6bf64c1620c803bc2f1efdb",
+   "trial.json": "3567764ba240495f44cf9bfe04cad168d97c60df4cfd8ffc32b703b88ae38f81"
+  },
+  "topk_uniform/51020": {
+   "acquisition-v3-coverage/confirmation.json": "06f62dbab14d968c80affe535fb631345232d9a1b0412d0da45a49bf204adbd9",
+   "acquisition-v3-coverage/discovery.json": "2be0b7578376c55ae8978a1c85167226338ea3af6e602a692ea3e0eac8dc473b",
+   "optuna_tpe/confirmation.json": "bab33f00729c987d70b262bc76c3af2245896ef83dab593e4aee4a8069ff424c",
+   "optuna_tpe/discovery.json": "01671817d8e419bd0e6941ecf8b82f8c2718cda954c1e420c5b0df4552e01582",
+   "smac3_hpo/confirmation.json": "726cb0b29ac0539823e20f6983643a60a57ca6ef17cf16b5d17fbf313055975e",
+   "smac3_hpo/discovery.json": "7932889f7fcdd501b46fe1b510dcaffa31a507eeb9a977b9def2b350c0ed0221",
+   "trial.json": "c0f5cd757ee02f9e78d07ecaaa715b3da290edcff43594dcf796be4c4a0c1748"
+  }
+ },
+ "expected_trials": 40,
+ "hypotheses": [
+  {
+   "comparator": "smac3_hpo",
+   "decision": "NOT_SUPPORTED",
+   "holm_p": 1.0,
+   "id": "H1",
+   "mean_difference": 0.05,
+   "negative_clusters": 4,
+   "positive_clusters": 5,
+   "raw_p": 0.5,
+   "statement": "Otherwise: no advantage over that competitor is established; external competitiveness on this endpoint remains unproven.",
+   "ties": 11
+  },
+  {
+   "comparator": "optuna_tpe",
+   "decision": "NOT_SUPPORTED",
+   "holm_p": 1.0,
+   "id": "H2",
+   "mean_difference": -0.1,
+   "negative_clusters": 7,
+   "positive_clusters": 5,
+   "raw_p": 0.80615234375,
+   "statement": "Otherwise: no advantage over that competitor is established; external competitiveness on this endpoint remains unproven.",
+   "ties": 8
+  }
+ ],
+ "limitations": [
+  "Real algorithm boundaries are not independently ground-truth labelled. The endpoint measures fresh-seed reproducibility of nominated matched contrasts, not recovery of known boundaries.",
+  "Sign-test independence across seed clusters is assumed, not certified",
+  "Discovery cost is descriptive only: Python optimizer and process startup overhead are not matched",
+  "Single CI host class; no hardware-general or multi-host claim"
+ ],
+ "manifest_sha256": "6758b3ea0f4cf0dacb64da027d4f5e0776d7ad62d12a67093213f6bd28a20d8d",
+ "missing_trials": [],
+ "native_source_commit": "848e2b7df770a50c5070c0a80caf920a5d939765",
+ "observed_trials": 40,
+ "protocol": "phaseshift.v3-external-confirmation.1",
+ "schema": 1,
+ "sign_independence_certified": false,
+ "sota_claim": false,
+ "status": "COMPLETE",
+ "suite": "confirmation"
+}

@@ -1,0 +1,1418 @@
+{
+  "comparator": "ruptures.Pelt l2, min_size=3, jump=1, penalty=2.5",
+  "dataset_sha256": "d11e924142f51e1f89f7f69069da87e640c18ee479a5e9a225836ef90d1cad37",
+  "ineligible_slope_rows": "20 slope-specific sequences use a different model/objective",
+  "library_version": "v1.1.10",
+  "limitations": [
+    "Only fixed offline change-point segmentation, not acquisition, confirmation or system CPU",
+    "Python interpreter and C++ benchmark timing are not comparable",
+    "External PELT is unconstrained in K; rows with >3 cuts have unmatched feasible sets",
+    "Numerical score inputs were serialized to CSV with finite decimal precision",
+    "Results must be retained including negative/mismatching outputs"
+  ],
+  "matched_feasible_set_rows": 100,
+  "numpy_version": "2.5.5",
+  "phaseshift_cpp_max_changes": 3,
+  "rows": [
+    {
+      "absolute_objective_difference_if_matched": 2.220446049250313e-16,
+      "external_change_count": 0,
+      "external_changes": [],
+      "external_penalized_sse": 1.0499999999999998,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 1.05,
+      "ruptures_call_wall_ns": 7340997,
+      "scenario": "0",
+      "seed": 0
+    },
+    {
+      "absolute_objective_difference_if_matched": 0.0,
+      "external_change_count": 0,
+      "external_changes": [],
+      "external_penalized_sse": 1.0725,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 1.0725,
+      "ruptures_call_wall_ns": 7046348,
+      "scenario": "0",
+      "seed": 1
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.999999999810711e-06,
+      "external_change_count": 0,
+      "external_changes": [],
+      "external_penalized_sse": 1.0631249999999999,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 1.06312,
+      "ruptures_call_wall_ns": 6669523,
+      "scenario": "0",
+      "seed": 2
+    },
+    {
+      "absolute_objective_difference_if_matched": 5.000000000032756e-06,
+      "external_change_count": 0,
+      "external_changes": [],
+      "external_penalized_sse": 1.078125,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 1.07812,
+      "ruptures_call_wall_ns": 6720737,
+      "scenario": "0",
+      "seed": 3
+    },
+    {
+      "absolute_objective_difference_if_matched": 5.000000000032756e-06,
+      "external_change_count": 0,
+      "external_changes": [],
+      "external_penalized_sse": 1.033125,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 1.03312,
+      "ruptures_call_wall_ns": 7073172,
+      "scenario": "0",
+      "seed": 4
+    },
+    {
+      "absolute_objective_difference_if_matched": 2.220446049250313e-16,
+      "external_change_count": 0,
+      "external_changes": [],
+      "external_penalized_sse": 1.0499999999999998,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 1.05,
+      "ruptures_call_wall_ns": 6176689,
+      "scenario": "0",
+      "seed": 5
+    },
+    {
+      "absolute_objective_difference_if_matched": 2.220446049250313e-16,
+      "external_change_count": 0,
+      "external_changes": [],
+      "external_penalized_sse": 1.0499999999999998,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 1.05,
+      "ruptures_call_wall_ns": 7117319,
+      "scenario": "0",
+      "seed": 6
+    },
+    {
+      "absolute_objective_difference_if_matched": 5.000000000032756e-06,
+      "external_change_count": 0,
+      "external_changes": [],
+      "external_penalized_sse": 1.078125,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 1.07812,
+      "ruptures_call_wall_ns": 6439086,
+      "scenario": "0",
+      "seed": 7
+    },
+    {
+      "absolute_objective_difference_if_matched": 0.0,
+      "external_change_count": 0,
+      "external_changes": [],
+      "external_penalized_sse": 1.0125,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 1.0125,
+      "ruptures_call_wall_ns": 7094056,
+      "scenario": "0",
+      "seed": 8
+    },
+    {
+      "absolute_objective_difference_if_matched": 5.000000000032756e-06,
+      "external_change_count": 0,
+      "external_changes": [],
+      "external_penalized_sse": 1.078125,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 1.07812,
+      "ruptures_call_wall_ns": 6873414,
+      "scenario": "0",
+      "seed": 9
+    },
+    {
+      "absolute_objective_difference_if_matched": 0.0,
+      "external_change_count": 0,
+      "external_changes": [],
+      "external_penalized_sse": 0.988125,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 0.988125,
+      "ruptures_call_wall_ns": 7074660,
+      "scenario": "0",
+      "seed": 10
+    },
+    {
+      "absolute_objective_difference_if_matched": 0.0,
+      "external_change_count": 0,
+      "external_changes": [],
+      "external_penalized_sse": 1.0725,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 1.0725,
+      "ruptures_call_wall_ns": 6664711,
+      "scenario": "0",
+      "seed": 11
+    },
+    {
+      "absolute_objective_difference_if_matched": 5.000000000032756e-06,
+      "external_change_count": 0,
+      "external_changes": [],
+      "external_penalized_sse": 1.033125,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 1.03312,
+      "ruptures_call_wall_ns": 7009367,
+      "scenario": "0",
+      "seed": 12
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.999999999810711e-06,
+      "external_change_count": 0,
+      "external_changes": [],
+      "external_penalized_sse": 1.0631249999999999,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 1.06312,
+      "ruptures_call_wall_ns": 7132664,
+      "scenario": "0",
+      "seed": 13
+    },
+    {
+      "absolute_objective_difference_if_matched": 5.000000000032756e-06,
+      "external_change_count": 0,
+      "external_changes": [],
+      "external_penalized_sse": 1.078125,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 1.07812,
+      "ruptures_call_wall_ns": 7016215,
+      "scenario": "0",
+      "seed": 14
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.999999999810711e-06,
+      "external_change_count": 0,
+      "external_changes": [],
+      "external_penalized_sse": 1.0631249999999999,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 1.06312,
+      "ruptures_call_wall_ns": 6419218,
+      "scenario": "0",
+      "seed": 15
+    },
+    {
+      "absolute_objective_difference_if_matched": 5.000000000032756e-06,
+      "external_change_count": 0,
+      "external_changes": [],
+      "external_penalized_sse": 1.078125,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 1.07812,
+      "ruptures_call_wall_ns": 6811992,
+      "scenario": "0",
+      "seed": 16
+    },
+    {
+      "absolute_objective_difference_if_matched": 0.0,
+      "external_change_count": 0,
+      "external_changes": [],
+      "external_penalized_sse": 1.0725,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 1.0725,
+      "ruptures_call_wall_ns": 6646006,
+      "scenario": "0",
+      "seed": 17
+    },
+    {
+      "absolute_objective_difference_if_matched": 5.000000000032756e-06,
+      "external_change_count": 0,
+      "external_changes": [],
+      "external_penalized_sse": 1.078125,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 1.07812,
+      "ruptures_call_wall_ns": 6506569,
+      "scenario": "0",
+      "seed": 18
+    },
+    {
+      "absolute_objective_difference_if_matched": 0.0,
+      "external_change_count": 0,
+      "external_changes": [],
+      "external_penalized_sse": 1.08,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 1.08,
+      "ruptures_call_wall_ns": 6390100,
+      "scenario": "0",
+      "seed": 19
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.440892098500626e-16,
+      "external_change_count": 1,
+      "external_changes": [
+        24
+      ],
+      "external_penalized_sse": 3.5199999999999996,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 3.52,
+      "ruptures_call_wall_ns": 3230548,
+      "scenario": "1",
+      "seed": 0
+    },
+    {
+      "absolute_objective_difference_if_matched": 8.881784197001252e-16,
+      "external_change_count": 1,
+      "external_changes": [
+        24
+      ],
+      "external_penalized_sse": 3.486249999999999,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 3.48625,
+      "ruptures_call_wall_ns": 3414021,
+      "scenario": "1",
+      "seed": 1
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.440892098500626e-16,
+      "external_change_count": 1,
+      "external_changes": [
+        24
+      ],
+      "external_penalized_sse": 3.5649999999999995,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 3.565,
+      "ruptures_call_wall_ns": 3475016,
+      "scenario": "1",
+      "seed": 2
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.440892098500626e-16,
+      "external_change_count": 1,
+      "external_changes": [
+        24
+      ],
+      "external_penalized_sse": 3.5612499999999994,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 3.56125,
+      "ruptures_call_wall_ns": 3427235,
+      "scenario": "1",
+      "seed": 3
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.440892098500626e-16,
+      "external_change_count": 1,
+      "external_changes": [
+        24
+      ],
+      "external_penalized_sse": 3.5424999999999995,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 3.5425,
+      "ruptures_call_wall_ns": 3329742,
+      "scenario": "1",
+      "seed": 4
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.440892098500626e-16,
+      "external_change_count": 1,
+      "external_changes": [
+        24
+      ],
+      "external_penalized_sse": 3.5612499999999994,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 3.56125,
+      "ruptures_call_wall_ns": 3318484,
+      "scenario": "1",
+      "seed": 5
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.440892098500626e-16,
+      "external_change_count": 1,
+      "external_changes": [
+        24
+      ],
+      "external_penalized_sse": 3.5162499999999994,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 3.51625,
+      "ruptures_call_wall_ns": 3432122,
+      "scenario": "1",
+      "seed": 6
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.440892098500626e-16,
+      "external_change_count": 1,
+      "external_changes": [
+        24
+      ],
+      "external_penalized_sse": 3.5499999999999994,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 3.55,
+      "ruptures_call_wall_ns": 3674167,
+      "scenario": "1",
+      "seed": 7
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.440892098500626e-16,
+      "external_change_count": 1,
+      "external_changes": [
+        24
+      ],
+      "external_penalized_sse": 3.5649999999999995,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 3.565,
+      "ruptures_call_wall_ns": 3555421,
+      "scenario": "1",
+      "seed": 8
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.440892098500626e-16,
+      "external_change_count": 1,
+      "external_changes": [
+        24
+      ],
+      "external_penalized_sse": 3.4262499999999996,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 3.42625,
+      "ruptures_call_wall_ns": 3442589,
+      "scenario": "1",
+      "seed": 9
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.440892098500626e-16,
+      "external_change_count": 1,
+      "external_changes": [
+        24
+      ],
+      "external_penalized_sse": 3.5424999999999995,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 3.5425,
+      "ruptures_call_wall_ns": 3335953,
+      "scenario": "1",
+      "seed": 10
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.440892098500626e-16,
+      "external_change_count": 1,
+      "external_changes": [
+        24
+      ],
+      "external_penalized_sse": 3.5424999999999995,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 3.5425,
+      "ruptures_call_wall_ns": 3455829,
+      "scenario": "1",
+      "seed": 11
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.440892098500626e-16,
+      "external_change_count": 1,
+      "external_changes": [
+        24
+      ],
+      "external_penalized_sse": 3.5612499999999994,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 3.56125,
+      "ruptures_call_wall_ns": 3477419,
+      "scenario": "1",
+      "seed": 12
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.440892098500626e-16,
+      "external_change_count": 1,
+      "external_changes": [
+        24
+      ],
+      "external_penalized_sse": 3.5649999999999995,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 3.565,
+      "ruptures_call_wall_ns": 3335898,
+      "scenario": "1",
+      "seed": 13
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.440892098500626e-16,
+      "external_change_count": 1,
+      "external_changes": [
+        24
+      ],
+      "external_penalized_sse": 3.5724999999999993,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 3.5725,
+      "ruptures_call_wall_ns": 3480044,
+      "scenario": "1",
+      "seed": 14
+    },
+    {
+      "absolute_objective_difference_if_matched": 8.881784197001252e-16,
+      "external_change_count": 1,
+      "external_changes": [
+        24
+      ],
+      "external_penalized_sse": 3.5124999999999993,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 3.5125,
+      "ruptures_call_wall_ns": 3348949,
+      "scenario": "1",
+      "seed": 15
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.440892098500626e-16,
+      "external_change_count": 1,
+      "external_changes": [
+        24
+      ],
+      "external_penalized_sse": 3.5649999999999995,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 3.565,
+      "ruptures_call_wall_ns": 3336149,
+      "scenario": "1",
+      "seed": 16
+    },
+    {
+      "absolute_objective_difference_if_matched": 8.881784197001252e-16,
+      "external_change_count": 1,
+      "external_changes": [
+        24
+      ],
+      "external_penalized_sse": 3.5124999999999993,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 3.5125,
+      "ruptures_call_wall_ns": 3279327,
+      "scenario": "1",
+      "seed": 17
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.440892098500626e-16,
+      "external_change_count": 1,
+      "external_changes": [
+        24
+      ],
+      "external_penalized_sse": 3.5612499999999994,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 3.56125,
+      "ruptures_call_wall_ns": 3412542,
+      "scenario": "1",
+      "seed": 18
+    },
+    {
+      "absolute_objective_difference_if_matched": 8.881784197001252e-16,
+      "external_change_count": 1,
+      "external_changes": [
+        24
+      ],
+      "external_penalized_sse": 3.5124999999999993,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 3.5125,
+      "ruptures_call_wall_ns": 3313456,
+      "scenario": "1",
+      "seed": 19
+    },
+    {
+      "absolute_objective_difference_if_matched": 8.881784197001252e-16,
+      "external_change_count": 2,
+      "external_changes": [
+        16,
+        32
+      ],
+      "external_penalized_sse": 6.057499999999999,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 6.0575,
+      "ruptures_call_wall_ns": 2295989,
+      "scenario": "2",
+      "seed": 0
+    },
+    {
+      "absolute_objective_difference_if_matched": 0.0,
+      "external_change_count": 2,
+      "external_changes": [
+        16,
+        32
+      ],
+      "external_penalized_sse": 5.93375,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 5.93375,
+      "ruptures_call_wall_ns": 2255882,
+      "scenario": "2",
+      "seed": 1
+    },
+    {
+      "absolute_objective_difference_if_matched": 0.0,
+      "external_change_count": 2,
+      "external_changes": [
+        16,
+        32
+      ],
+      "external_penalized_sse": 6.06875,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 6.06875,
+      "ruptures_call_wall_ns": 2327039,
+      "scenario": "2",
+      "seed": 2
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.999999998922533e-06,
+      "external_change_count": 2,
+      "external_changes": [
+        16,
+        32
+      ],
+      "external_penalized_sse": 6.051874999999999,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 6.05187,
+      "ruptures_call_wall_ns": 2273438,
+      "scenario": "2",
+      "seed": 3
+    },
+    {
+      "absolute_objective_difference_if_matched": 0.0,
+      "external_change_count": 2,
+      "external_changes": [
+        16,
+        32
+      ],
+      "external_penalized_sse": 5.97875,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 5.97875,
+      "ruptures_call_wall_ns": 2265022,
+      "scenario": "2",
+      "seed": 4
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.999999999810711e-06,
+      "external_change_count": 2,
+      "external_changes": [
+        16,
+        32
+      ],
+      "external_penalized_sse": 6.029375,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 6.02937,
+      "ruptures_call_wall_ns": 2285324,
+      "scenario": "2",
+      "seed": 5
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.999999999810711e-06,
+      "external_change_count": 2,
+      "external_changes": [
+        16,
+        32
+      ],
+      "external_penalized_sse": 6.063124999999999,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 6.06312,
+      "ruptures_call_wall_ns": 2270249,
+      "scenario": "2",
+      "seed": 6
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.999999999810711e-06,
+      "external_change_count": 2,
+      "external_changes": [
+        16,
+        32
+      ],
+      "external_penalized_sse": 6.029375,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 6.02937,
+      "ruptures_call_wall_ns": 2277971,
+      "scenario": "2",
+      "seed": 7
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.999999998922533e-06,
+      "external_change_count": 2,
+      "external_changes": [
+        16,
+        32
+      ],
+      "external_penalized_sse": 6.006874999999999,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 6.00687,
+      "ruptures_call_wall_ns": 2245025,
+      "scenario": "2",
+      "seed": 8
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.999999999810711e-06,
+      "external_change_count": 2,
+      "external_changes": [
+        16,
+        32
+      ],
+      "external_penalized_sse": 6.029375,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 6.02937,
+      "ruptures_call_wall_ns": 2251195,
+      "scenario": "2",
+      "seed": 9
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.999999999810711e-06,
+      "external_change_count": 2,
+      "external_changes": [
+        16,
+        32
+      ],
+      "external_penalized_sse": 5.973125,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 5.97312,
+      "ruptures_call_wall_ns": 2253863,
+      "scenario": "2",
+      "seed": 10
+    },
+    {
+      "absolute_objective_difference_if_matched": 8.881784197001252e-16,
+      "external_change_count": 2,
+      "external_changes": [
+        16,
+        32
+      ],
+      "external_penalized_sse": 6.057499999999999,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 6.0575,
+      "ruptures_call_wall_ns": 2296300,
+      "scenario": "2",
+      "seed": 11
+    },
+    {
+      "absolute_objective_difference_if_matched": 0.0,
+      "external_change_count": 2,
+      "external_changes": [
+        16,
+        32
+      ],
+      "external_penalized_sse": 5.93375,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 5.93375,
+      "ruptures_call_wall_ns": 2278700,
+      "scenario": "2",
+      "seed": 12
+    },
+    {
+      "absolute_objective_difference_if_matched": 8.881784197001252e-16,
+      "external_change_count": 2,
+      "external_changes": [
+        16,
+        32
+      ],
+      "external_penalized_sse": 6.057499999999999,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 6.0575,
+      "ruptures_call_wall_ns": 2235174,
+      "scenario": "2",
+      "seed": 13
+    },
+    {
+      "absolute_objective_difference_if_matched": 0.0,
+      "external_change_count": 2,
+      "external_changes": [
+        16,
+        32
+      ],
+      "external_penalized_sse": 6.00125,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 6.00125,
+      "ruptures_call_wall_ns": 2248479,
+      "scenario": "2",
+      "seed": 14
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.999999999810711e-06,
+      "external_change_count": 2,
+      "external_changes": [
+        16,
+        32
+      ],
+      "external_penalized_sse": 6.029375,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 6.02937,
+      "ruptures_call_wall_ns": 2127890,
+      "scenario": "2",
+      "seed": 15
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.999999999810711e-06,
+      "external_change_count": 2,
+      "external_changes": [
+        16,
+        32
+      ],
+      "external_penalized_sse": 5.984375,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 5.98437,
+      "ruptures_call_wall_ns": 2298047,
+      "scenario": "2",
+      "seed": 16
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.999999998922533e-06,
+      "external_change_count": 2,
+      "external_changes": [
+        16,
+        32
+      ],
+      "external_penalized_sse": 6.006874999999999,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 6.00687,
+      "ruptures_call_wall_ns": 2197447,
+      "scenario": "2",
+      "seed": 17
+    },
+    {
+      "absolute_objective_difference_if_matched": 8.881784197001252e-16,
+      "external_change_count": 2,
+      "external_changes": [
+        16,
+        32
+      ],
+      "external_penalized_sse": 6.034999999999999,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 6.035,
+      "ruptures_call_wall_ns": 2144466,
+      "scenario": "2",
+      "seed": 18
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.999999999810711e-06,
+      "external_change_count": 2,
+      "external_changes": [
+        16,
+        32
+      ],
+      "external_penalized_sse": 6.0181249999999995,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 6.01812,
+      "ruptures_call_wall_ns": 2302801,
+      "scenario": "2",
+      "seed": 19
+    },
+    {
+      "absolute_objective_difference_if_matched": 2.709030100689347e-06,
+      "external_change_count": 2,
+      "external_changes": [
+        12,
+        35
+      ],
+      "external_penalized_sse": 6.8490127090301005,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 6.84901,
+      "ruptures_call_wall_ns": 6520674,
+      "scenario": "3",
+      "seed": 0
+    },
+    {
+      "absolute_objective_difference_if_matched": 0.0,
+      "external_change_count": 2,
+      "external_changes": [
+        12,
+        30
+      ],
+      "external_penalized_sse": 7.6347,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 7.6347,
+      "ruptures_call_wall_ns": 6771734,
+      "scenario": "3",
+      "seed": 1
+    },
+    {
+      "absolute_objective_difference_if_matched": 2.44755244782624e-06,
+      "external_change_count": 1,
+      "external_changes": [
+        26
+      ],
+      "external_penalized_sse": 6.753247552447553,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 6.75325,
+      "ruptures_call_wall_ns": 6483343,
+      "scenario": "3",
+      "seed": 2
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.7826086957414304e-06,
+      "external_change_count": 1,
+      "external_changes": [
+        25
+      ],
+      "external_penalized_sse": 6.848765217391304,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 6.84877,
+      "ruptures_call_wall_ns": 6477511,
+      "scenario": "3",
+      "seed": 3
+    },
+    {
+      "absolute_objective_difference_if_matched": 0.0,
+      "external_change_count": 1,
+      "external_changes": [
+        18
+      ],
+      "external_penalized_sse": 7.0032,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 7.0032,
+      "ruptures_call_wall_ns": 6177970,
+      "scenario": "3",
+      "seed": 4
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.782608694853252e-06,
+      "external_change_count": 1,
+      "external_changes": [
+        25
+      ],
+      "external_penalized_sse": 7.175165217391305,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 7.17517,
+      "ruptures_call_wall_ns": 6417506,
+      "scenario": "3",
+      "seed": 5
+    },
+    {
+      "absolute_objective_difference_if_matched": 3.3333333329110815e-06,
+      "external_change_count": 1,
+      "external_changes": [
+        27
+      ],
+      "external_penalized_sse": 5.755466666666667,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 5.75547,
+      "ruptures_call_wall_ns": 6405010,
+      "scenario": "3",
+      "seed": 6
+    },
+    {
+      "absolute_objective_difference_if_matched": 8.695652180534807e-07,
+      "external_change_count": 1,
+      "external_changes": [
+        25
+      ],
+      "external_penalized_sse": 6.745460869565218,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 6.74546,
+      "ruptures_call_wall_ns": 6157405,
+      "scenario": "3",
+      "seed": 7
+    },
+    {
+      "absolute_objective_difference_if_matched": 0.0,
+      "external_change_count": 1,
+      "external_changes": [
+        24
+      ],
+      "external_penalized_sse": 6.888,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 6.888,
+      "ruptures_call_wall_ns": 6537488,
+      "scenario": "3",
+      "seed": 8
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.615384614936602e-06,
+      "external_change_count": 1,
+      "external_changes": [
+        22
+      ],
+      "external_penalized_sse": 7.209415384615385,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 7.20942,
+      "ruptures_call_wall_ns": 6607797,
+      "scenario": "3",
+      "seed": 9
+    },
+    {
+      "absolute_objective_difference_if_matched": 1.7703349275421942e-06,
+      "external_change_count": 2,
+      "external_changes": [
+        11,
+        30
+      ],
+      "external_penalized_sse": 6.9111282296650725,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 6.91113,
+      "ruptures_call_wall_ns": 6804058,
+      "scenario": "3",
+      "seed": 10
+    },
+    {
+      "absolute_objective_difference_if_matched": 2.517482516672942e-06,
+      "external_change_count": 1,
+      "external_changes": [
+        22
+      ],
+      "external_penalized_sse": 7.229282517482517,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 7.22928,
+      "ruptures_call_wall_ns": 6576362,
+      "scenario": "3",
+      "seed": 11
+    },
+    {
+      "absolute_objective_difference_if_matched": 3.916083915811441e-06,
+      "external_change_count": 1,
+      "external_changes": [
+        22
+      ],
+      "external_penalized_sse": 6.295883916083916,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 6.29588,
+      "ruptures_call_wall_ns": 6467076,
+      "scenario": "3",
+      "seed": 12
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.957983193776272e-06,
+      "external_change_count": 2,
+      "external_changes": [
+        21,
+        38
+      ],
+      "external_penalized_sse": 7.218405042016807,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 7.21841,
+      "ruptures_call_wall_ns": 6331788,
+      "scenario": "3",
+      "seed": 13
+    },
+    {
+      "absolute_objective_difference_if_matched": 8.695652171653023e-07,
+      "external_change_count": 1,
+      "external_changes": [
+        23
+      ],
+      "external_penalized_sse": 7.167860869565217,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 7.16786,
+      "ruptures_call_wall_ns": 6322307,
+      "scenario": "3",
+      "seed": 14
+    },
+    {
+      "absolute_objective_difference_if_matched": 1.4285714282635809e-06,
+      "external_change_count": 2,
+      "external_changes": [
+        16,
+        30
+      ],
+      "external_penalized_sse": 6.873271428571428,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 6.87327,
+      "ruptures_call_wall_ns": 6391252,
+      "scenario": "3",
+      "seed": 15
+    },
+    {
+      "absolute_objective_difference_if_matched": 3.6234817812896836e-06,
+      "external_change_count": 2,
+      "external_changes": [
+        13,
+        29
+      ],
+      "external_penalized_sse": 6.678356376518218,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 6.67836,
+      "ruptures_call_wall_ns": 6565004,
+      "scenario": "3",
+      "seed": 16
+    },
+    {
+      "absolute_objective_difference_if_matched": 7.692307688600408e-07,
+      "external_change_count": 2,
+      "external_changes": [
+        13,
+        34
+      ],
+      "external_penalized_sse": 7.244430769230769,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 7.24443,
+      "ruptures_call_wall_ns": 6508819,
+      "scenario": "3",
+      "seed": 17
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.2986425334845535e-06,
+      "external_change_count": 2,
+      "external_changes": [
+        18,
+        35
+      ],
+      "external_penalized_sse": 6.455145701357466,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 6.45515,
+      "ruptures_call_wall_ns": 6560884,
+      "scenario": "3",
+      "seed": 18
+    },
+    {
+      "absolute_objective_difference_if_matched": 1.7391304343306047e-06,
+      "external_change_count": 1,
+      "external_changes": [
+        23
+      ],
+      "external_penalized_sse": 7.198121739130435,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 7.19812,
+      "ruptures_call_wall_ns": 6505094,
+      "scenario": "3",
+      "seed": 19
+    },
+    {
+      "absolute_objective_difference_if_matched": 8.333333331833614e-06,
+      "external_change_count": 0,
+      "external_changes": [],
+      "external_penalized_sse": 15.494791666666668,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 15.4948,
+      "ruptures_call_wall_ns": 4027795,
+      "scenario": "4",
+      "seed": 0
+    },
+    {
+      "absolute_objective_difference_if_matched": 1.923583662843953e-05,
+      "external_change_count": 2,
+      "external_changes": [
+        23,
+        26
+      ],
+      "external_penalized_sse": 16.65061923583663,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 16.6506,
+      "ruptures_call_wall_ns": 3297640,
+      "scenario": "4",
+      "seed": 1
+    },
+    {
+      "absolute_objective_difference_if_matched": 3.610013175148197e-05,
+      "external_change_count": 2,
+      "external_changes": [
+        23,
+        26
+      ],
+      "external_penalized_sse": 16.58356389986825,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 16.5836,
+      "ruptures_call_wall_ns": 3543629,
+      "scenario": "4",
+      "seed": 2
+    },
+    {
+      "absolute_objective_difference_if_matched": 1.5678524373896607e-05,
+      "external_change_count": 2,
+      "external_changes": [
+        23,
+        26
+      ],
+      "external_penalized_sse": 17.435915678524374,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 17.4359,
+      "ruptures_call_wall_ns": 3764497,
+      "scenario": "4",
+      "seed": 3
+    },
+    {
+      "absolute_objective_difference_if_matched": 3.333333333088717e-05,
+      "external_change_count": 0,
+      "external_changes": [],
+      "external_penalized_sse": 17.71666666666667,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 17.7167,
+      "ruptures_call_wall_ns": 4067116,
+      "scenario": "4",
+      "seed": 4
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.761904760286484e-06,
+      "external_change_count": 2,
+      "external_changes": [
+        24,
+        27
+      ],
+      "external_penalized_sse": 15.12309523809524,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 15.1231,
+      "ruptures_call_wall_ns": 3843667,
+      "scenario": "4",
+      "seed": 5
+    },
+    {
+      "absolute_objective_difference_if_matched": 7.77338603619171e-06,
+      "external_change_count": 2,
+      "external_changes": [
+        22,
+        25
+      ],
+      "external_penalized_sse": 15.064907773386036,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 15.0649,
+      "ruptures_call_wall_ns": 4339093,
+      "scenario": "4",
+      "seed": 6
+    },
+    {
+      "absolute_objective_difference_if_matched": 3.768115941937822e-05,
+      "external_change_count": 2,
+      "external_changes": [
+        22,
+        25
+      ],
+      "external_penalized_sse": 16.67036231884058,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 16.6704,
+      "ruptures_call_wall_ns": 3662748,
+      "scenario": "4",
+      "seed": 7
+    },
+    {
+      "absolute_objective_difference_if_matched": 3.1884057971609536e-05,
+      "external_change_count": 2,
+      "external_changes": [
+        22,
+        25
+      ],
+      "external_penalized_sse": 15.091231884057972,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 15.0912,
+      "ruptures_call_wall_ns": 4192272,
+      "scenario": "4",
+      "seed": 8
+    },
+    {
+      "absolute_objective_difference_if_matched": 3.768115941937822e-05,
+      "external_change_count": 2,
+      "external_changes": [
+        23,
+        26
+      ],
+      "external_penalized_sse": 15.13036231884058,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 15.1304,
+      "ruptures_call_wall_ns": 4046797,
+      "scenario": "4",
+      "seed": 9
+    },
+    {
+      "absolute_objective_difference_if_matched": 3.3333333334439885e-05,
+      "external_change_count": 0,
+      "external_changes": [],
+      "external_penalized_sse": 15.639166666666666,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 15.6392,
+      "ruptures_call_wall_ns": 4246402,
+      "scenario": "4",
+      "seed": 10
+    },
+    {
+      "absolute_objective_difference_if_matched": 3.333333333088717e-05,
+      "external_change_count": 2,
+      "external_changes": [
+        24,
+        27
+      ],
+      "external_penalized_sse": 15.026666666666669,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 15.0267,
+      "ruptures_call_wall_ns": 3635841,
+      "scenario": "4",
+      "seed": 11
+    },
+    {
+      "absolute_objective_difference_if_matched": 2.4769433466076407e-05,
+      "external_change_count": 2,
+      "external_changes": [
+        22,
+        25
+      ],
+      "external_penalized_sse": 17.521824769433465,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 17.5218,
+      "ruptures_call_wall_ns": 4017811,
+      "scenario": "4",
+      "seed": 12
+    },
+    {
+      "absolute_objective_difference_if_matched": 2.8590250330751132e-05,
+      "external_change_count": 2,
+      "external_changes": [
+        22,
+        25
+      ],
+      "external_penalized_sse": 16.66627140974967,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 16.6663,
+      "ruptures_call_wall_ns": 3516521,
+      "scenario": "4",
+      "seed": 13
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.0974967063789336e-05,
+      "external_change_count": 2,
+      "external_changes": [
+        23,
+        26
+      ],
+      "external_penalized_sse": 16.627140974967062,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 16.6271,
+      "ruptures_call_wall_ns": 3483035,
+      "scenario": "4",
+      "seed": 14
+    },
+    {
+      "absolute_objective_difference_if_matched": 2.5032938069102784e-06,
+      "external_change_count": 2,
+      "external_changes": [
+        23,
+        26
+      ],
+      "external_penalized_sse": 16.674097496706192,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 16.6741,
+      "ruptures_call_wall_ns": 3386029,
+      "scenario": "4",
+      "seed": 15
+    },
+    {
+      "absolute_objective_difference_if_matched": 8.333333333609971e-06,
+      "external_change_count": 0,
+      "external_changes": [],
+      "external_penalized_sse": 15.594791666666666,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 15.5948,
+      "ruptures_call_wall_ns": 3890170,
+      "scenario": "4",
+      "seed": 16
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.65085638978735e-05,
+      "external_change_count": 2,
+      "external_changes": [
+        22,
+        25
+      ],
+      "external_penalized_sse": 16.6383465085639,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 16.6383,
+      "ruptures_call_wall_ns": 3659684,
+      "scenario": "4",
+      "seed": 17
+    },
+    {
+      "absolute_objective_difference_if_matched": 4.6508563901426214e-05,
+      "external_change_count": 2,
+      "external_changes": [
+        23,
+        26
+      ],
+      "external_penalized_sse": 15.098346508563901,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 15.0983,
+      "ruptures_call_wall_ns": 3612754,
+      "scenario": "4",
+      "seed": 18
+    },
+    {
+      "absolute_objective_difference_if_matched": 2.4769433466076407e-05,
+      "external_change_count": 2,
+      "external_changes": [
+        22,
+        25
+      ],
+      "external_penalized_sse": 15.121824769433466,
+      "not_comparable_to_full_engine_latency": true,
+      "objective_feasible_set_matched": true,
+      "phaseshift_penalized_sse": 15.1218,
+      "ruptures_call_wall_ns": 4587913,
+      "scenario": "4",
+      "seed": 19
+    }
+  ],
+  "schema_version": 1,
+  "search_policy_comparison": false,
+  "sota_claim": false,
+  "total_scenario_seed_rows": 100
+}

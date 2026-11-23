@@ -1,0 +1,170 @@
+name: v3-real-algorithm-v18-vs-Optuna-development
+on:
+  push:
+    branches: ['feature/phaseshift-v3-sota-research']
+    paths:
+      - '.github/workflows/v3-real-external.yml'
+      - 'benchmarks/v3/real_external_development.json'
+      - 'benchmarks/v3/run_real_external.py'
+      - 'benchmarks/v3/aggregate_real_external.py'
+      - 'tests/v3/real_external_contract.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: v3-real-external-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  preflight:
+    name: Frozen external competition protocol; no sealed evaluation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify source pins, legal native edges and fresh candidate selection
+        run: |
+          set -euo pipefail
+          python3 -m py_compile benchmarks/v3/run_real_external.py benchmarks/v3/aggregate_real_external.py tests/v3/real_external_contract.py
+          python3 tests/v3/real_external_contract.py
+          python3 - <<'PY'
+          import sys
+          sys.path.insert(0,"benchmarks/v3")
+          from run_real_external import manifest,config
+          m,fixtures=manifest()
+          for scenario in m["scenarios"]:
+              for conditional in (True,False):
+                  c=config(scenario,fixtures[scenario["source"]],m["seeds"][0],conditional)
+                  assert c["search"]["max_cases"]==40
+                  assert c["search"]["max_cases"]<=c["limits"]["max_search_queue"], "native v2 candidate memory bound"
+                  assert c["search"]["max_cases"]>=2*m["confirmation_pairs"], "confirmation case capacity"
+          print("PASS native v2 memory bound for both v18 and external legal-edge configs")
+          assert m["pair_budget"]==12 and m["confirmation_pairs"]==20
+          assert m["seeds"]==list(range(32001,32021))
+          assert set(m["seeds"]).isdisjoint(range(7101,7121))
+          assert m["eligible_for_sota"] is False
+          print("PASS 120 predeclared real native C++ development campaigns and source pinned V18")
+          PY
+  smoke:
+    name: Actual native-worker and Optuna TPE smoke with fresh-seed confirmation
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned external Optuna release and compile PhaseShift worker
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libsqlite3-dev libjson-c-dev libssl-dev pkg-config
+          python3 -m pip install --no-input 'optuna==4.6.0'
+          python3 - <<'PY'
+          import optuna
+          assert optuna.__version__=="4.6.0"
+          print("Genuine Optuna 4.6.0 release verified")
+          PY
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target phaseshift_v3_pairs phaseshift_v3_acquisition_tests phaseshift_v3_coverage_acquisition_tests -j2
+          ctest --test-dir build -R 'v18_coverage_acquisition_deterministic_and_legacy_replay|v3_acquisition_cost_calibration_drift_and_ablations' --output-on-failure
+      - name: Run 1 native three-way worker/confirmation campaign on each real family
+        run: |
+          set -euo pipefail
+          mkdir -p build/real_smoke
+          for scenario in sort_ascending topk_uniform; do
+            python3 benchmarks/v3/run_real_external.py --binary build/phaseshift_v3_pairs \
+              --scenario "$scenario" --seed 32001 --out "build/real_smoke/$scenario"
+            python3 benchmarks/v3/run_real_external.py \
+              --out "build/real_smoke/$scenario" --verify-only
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v3-real-external-native-smoke
+          path: build/real_smoke
+          retention-days: 30
+          if-no-files-found: warn
+  full:
+    name: Full 60-campaign native V18/Optuna run (${{ matrix.scenario }})
+    needs: smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        scenario: [sort_ascending, topk_uniform]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned external Optuna and native C++ worker
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libsqlite3-dev libjson-c-dev libssl-dev pkg-config
+          python3 -m pip install --no-input 'optuna==4.6.0'
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target phaseshift_v3_pairs -j2
+      - name: Execute all twenty predeclared seeds, no selective exclusions
+        env:
+          SCENARIO: ${{ matrix.scenario }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/real_external
+          for seed in $(seq 32001 32020); do
+            python3 benchmarks/v3/run_real_external.py --binary build/phaseshift_v3_pairs \
+              --scenario "$SCENARIO" --seed "$seed" \
+              --out "build/real_external/seed_$seed"
+            python3 benchmarks/v3/run_real_external.py \
+              --out "build/real_external/seed_$seed" --verify-only
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v3-real-external-${{ matrix.scenario }}
+          path: build/real_external/
+          retention-days: 60
+          if-no-files-found: warn
+  aggregate:
+    name: Independent native SQLite and fresh-seed sign audit of 120 campaigns
+    needs: full
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: v3-real-external-*
+          path: build/downloads
+          merge-multiple: false
+      - name: Reconstruct every committed real worker observation and Optuna result
+        run: |
+          set -euo pipefail
+          mkdir -p build/real_shards
+          for scenario in sort_ascending topk_uniform; do
+            mv "build/downloads/v3-real-external-$scenario" "build/real_shards/$scenario"
+          done
+          python3 benchmarks/v3/aggregate_real_external.py \
+            --artifacts build/real_shards --out build/v3_external_real_final.json
+          python3 benchmarks/v3/aggregate_real_external.py \
+            --artifacts build/real_shards --out build/v3_external_real_final.json --verify-only
+          python3 - <<'PY'
+          import json,os
+          a=json.load(open("build/v3_external_real_final.json"))
+          assert a["total_completed_campaigns"]==120
+          assert a["total_native_discovery_pairs"]==1440
+          assert not a["external_sota_claim"] and not a["sealed_synthetic_evaluation_reused"]
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as f:
+              f.write("## PhaseShift V18 versus actual Optuna 4.6.0 on real sorting and Top-K\n\n")
+              f.write("20 development seeds per scenario; 12 pair queries and 20 fresh confirmation pairs per nominated edge.\n\n")
+              f.write("| Real worker | Policy | Nominations | Fresh model-nominal rejections | Distinct queried edges | Discovery CPU (s) | Discovery wall (s) |\n")
+              f.write("|---|---|---:|---:|---:|---:|---:|\n")
+              for g in a["scenarios"]:
+                  for policy,v in g["policies"].items():
+                      f.write(f"| {g['scenario']} | {policy} | {v['discovery_candidate_nominations']} | {v['fresh_seed_model_nominal_rejections']} | {v['distinct_edges_visited']} | {v['discovery_parent_and_children_cpu_ns']/1e9:.3f} | {v['discovery_wall_ns']/1e9:.3f} |\n")
+              f.write("\nNo SOTA or calibrated confirmation claim: real ground truth and seed-independence certification absent; runner overhead differs.\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v3-external-real-120-campaign-final-audited-report
+          path: build/v3_external_real_final.json
+          retention-days: 90
+          if-no-files-found: warn

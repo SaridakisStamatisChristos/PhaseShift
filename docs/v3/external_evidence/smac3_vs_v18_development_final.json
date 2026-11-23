@@ -1,0 +1,125 @@
+{
+  "binary_sha256": "a60e1adcb65a66b56f8a315f79660d74da23c8e67a978ae3a5d7eacd1bea9c53",
+  "expected_complete_campaigns": 80,
+  "external_sota_claim": false,
+  "full_system_cost_matched": false,
+  "independent_real_boundary_truth_available": false,
+  "observed_complete_campaigns": 80,
+  "paired_v18_minus_smac_nominal_sign_rejections_per_seed_cluster": {
+    "exploratory_cluster_percentile95": [
+      0.1,
+      0.7
+    ],
+    "mean": 0.4,
+    "negative_seed_clusters": 1,
+    "positive_seed_clusters": 8,
+    "statistical_superiority_established": false,
+    "ties": 11
+  },
+  "pinned_smac_version": "2.4.1",
+  "protocol": "phaseshift.v3-external-smac24-real-algorithm-development.2",
+  "scenarios": [
+    {
+      "policies": {
+        "acquisition-v3-coverage": {
+          "campaign_count": 20,
+          "campaigns_with_rejection": 20,
+          "censored_candidates": 0,
+          "discovery_cpu_ns": 12653078000,
+          "discovery_wall_ns": 14989063443,
+          "distinct_edges_queried": 140,
+          "fresh_nominal_sign_rejections": 38,
+          "nominated_candidates": 40,
+          "query_count": 240
+        },
+        "smac3_hpo": {
+          "campaign_count": 20,
+          "campaigns_with_rejection": 20,
+          "censored_candidates": 0,
+          "discovery_cpu_ns": 35172522000,
+          "discovery_wall_ns": 43366394853,
+          "distinct_edges_queried": 89,
+          "fresh_nominal_sign_rejections": 37,
+          "nominated_candidates": 40,
+          "query_count": 240
+        }
+      },
+      "scenario": "sort_ascending"
+    },
+    {
+      "policies": {
+        "acquisition-v3-coverage": {
+          "campaign_count": 20,
+          "campaigns_with_rejection": 20,
+          "censored_candidates": 0,
+          "discovery_cpu_ns": 13289981000,
+          "discovery_wall_ns": 15703688630,
+          "distinct_edges_queried": 160,
+          "fresh_nominal_sign_rejections": 34,
+          "nominated_candidates": 40,
+          "query_count": 240
+        },
+        "smac3_hpo": {
+          "campaign_count": 20,
+          "campaigns_with_rejection": 20,
+          "censored_candidates": 0,
+          "discovery_cpu_ns": 35156710000,
+          "discovery_wall_ns": 43974336895,
+          "distinct_edges_queried": 94,
+          "fresh_nominal_sign_rejections": 27,
+          "nominated_candidates": 38,
+          "query_count": 240
+        }
+      },
+      "scenario": "topk_uniform"
+    }
+  ],
+  "schema": 1,
+  "sealed_evaluation_reused": false,
+  "sign_test_independence_certified": false,
+  "source_commit": "848e2b7df770a50c5070c0a80caf920a5d939765",
+  "suite": "development",
+  "total_native_discovery_queries": 960,
+  "trial_scorecard_sha256": {
+    "sort_ascending/33001": "5c819656efe62eb8878d7704e2666fbd2bfd530ca130a5bcd3d8026224a6f6e0",
+    "sort_ascending/33002": "8e2508923963996239dc2b6a3d2b11c1b6d477810ac89df43baa9a3ec07ef27c",
+    "sort_ascending/33003": "149e65c5f4bb2c5e50a64354e1d7640c056d27914a3590290e09fc2159184ecb",
+    "sort_ascending/33004": "0b5ba20c1fb961e8e3a5c2e7c22a1fdab0e1e0b5ae099196fdbeeed1c9bc4ea9",
+    "sort_ascending/33005": "2febabf0ca540654f54e20fab95813c608ef17ef62cc2450d33cd27ff0787cd2",
+    "sort_ascending/33006": "77e9a8d8d4c736bf5c96110b8380d089b1b52e8fa64c0d8bd8067cfdd72932a9",
+    "sort_ascending/33007": "3853ec87e0123aebdc668c3bc64475ff9164a27f772d060ea28b7d243720e72c",
+    "sort_ascending/33008": "1b33bb4b3c99f8d8a4da5bdf0502da85df1ecea6624493cc21105e93c061bd28",
+    "sort_ascending/33009": "7f07fd866721847c7054fdf5ee2e1c2be5b7cb91eb02a34743b63aa560667a9c",
+    "sort_ascending/33010": "fa3eaed1d155d340c7ef405de395908c187d1d03caf20ff1402f03cdfe353df0",
+    "sort_ascending/33011": "01af8a159a6e9dfecf11e9e34b13a8837f25a0a2a36ca014d127ea82795f3fff",
+    "sort_ascending/33012": "83f357fce97662382729fa31b4937561c9b6c82743a9947b31106f0707c517a8",
+    "sort_ascending/33013": "6885bafbb158f8ebac1c651aeefa074de097b2d33bad698b601e69666af7ad9d",
+    "sort_ascending/33014": "5910b77280156d7a05ec710417039aaddbc974b552269e6e3615fa6ce58b5276",
+    "sort_ascending/33015": "bb301c8f21aa11f0ae55e9138076a5e77a57dff9269e464425249729ef0ad197",
+    "sort_ascending/33016": "8571b7ed6e6b5f578082e865ba270b152d99b0ce65cc26bc04f48c161022ed2d",
+    "sort_ascending/33017": "0ee716c8549c597f4296b32f711022715d53e70f2335edce7407074f0d126d29",
+    "sort_ascending/33018": "cd06b60c0fa8eec120686cf7db3d773c2d3c0ba37e693266ba53b2f509542c48",
+    "sort_ascending/33019": "5a77a830230dec421218a1132cc5c14bbcb7548e0549da8f9b64a7c5a6e12b1f",
+    "sort_ascending/33020": "1ec79c945cf3da4f932cbd7d103e972a94f7fca14f23a4576505d61b173d8931",
+    "topk_uniform/33001": "6bf5cdd65b28d861c4529f8b95964875a32a274ed351590c1f3182c7952700d4",
+    "topk_uniform/33002": "5932f07c90b9abfeead50aab883a5f561ab38acb618cf0b3320da302d0b5c67a",
+    "topk_uniform/33003": "b110c850550f70f999e08dd097b37655db0192b8da46d2307691e9f89ff8b18e",
+    "topk_uniform/33004": "142eff5f19ea9ec83e2304019045902156ea7cb800b8c677bff89fbabaede86f",
+    "topk_uniform/33005": "3f3a4d34b1ea04faac235a28d508f53690df6c885d6cb71127b0013f3c8f6157",
+    "topk_uniform/33006": "6a2f660032785a8149328486a3b374ce21184988a55dec0907ff2065eba30737",
+    "topk_uniform/33007": "616c1043afe3c067a3f77e9786a08c7f2f42ecca9efdb4501a7a6a6c79916b19",
+    "topk_uniform/33008": "07bf1512afb3bc6b14d2c433a8250b0690c263b77040496e3c36f104cac39b19",
+    "topk_uniform/33009": "ed92242a0bc18dab4c58bc87cc8cb357d4fbdf0df1215887aadeceadc887b85f",
+    "topk_uniform/33010": "1cabc32c74d5359c0ab0d385d0483e41f76c1d4d57c6f462c131db7c61cdff7d",
+    "topk_uniform/33011": "4521b6019ad70b2d7d4b41c89d0fecf7cc9e3349cf335a99ec6e5b2498171c96",
+    "topk_uniform/33012": "18acacb716070c9a4cad5c6920383bd58758a028af227f794a5729d8429bbaa1",
+    "topk_uniform/33013": "0a6b9bc94a65db0aaf071c27275ca712d434cd08276933eaf03accdcfd81554d",
+    "topk_uniform/33014": "89d8e131db9216e913604854a72297870318cf7d2264fb2c5b6df9a2cd998863",
+    "topk_uniform/33015": "41f268e1077b224556cddaacd09599a199c1de89dd1314e956caefbeafa77814",
+    "topk_uniform/33016": "e437ad85a0a76154c5d10a66a2347ef9dddcb536108f982fc16f45f9fdd75938",
+    "topk_uniform/33017": "cb4806a67fdfb09a14dbb9cd7e98c4f8d593f0d64bc550726f14f3e28c8629c2",
+    "topk_uniform/33018": "4a99e0983cd4e91ec52226d7a897e4a72b2a0521891ea394d7dcc9dac495d9ee",
+    "topk_uniform/33019": "b67ea6189ce671cf5ddf4ed10e78f8ae49bb54ebeadb00a170c1ab151a517b55",
+    "topk_uniform/33020": "dd3293dcad158852daf9d11ae753064795d938b75b788d47984ede0f90f67024"
+  }
+}

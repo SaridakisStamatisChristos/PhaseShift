@@ -1,0 +1,68 @@
+name: v3-independent-ruptures-detector-only-comparison
+on:
+  push:
+    branches: ['feature/phaseshift-v3-sota-research']
+    paths:
+      - '.github/workflows/v3-ruptures-detector.yml'
+      - 'benchmarks/v3/audit_real_ruptures.py'
+permissions:
+  contents: read
+jobs:
+  frozen-detector:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate auditor before dataset access
+        run: |
+          set -euo pipefail
+          python3 -m py_compile benchmarks/v3/audit_real_ruptures.py
+          python3 - <<'PY'
+          import sys
+          sys.path.insert(0,"benchmarks/v3")
+          from audit_real_ruptures import sse,need
+          assert sse([0.,0.,0.,2.,2.,2.],[3,6])==0.
+          assert sse([0.,0.,0.,0.,0.,0.],[6])==0.
+          try:
+            sse([0.,0.,2.,2.],[2,4])
+            raise AssertionError("accepted illegal 2-point segment")
+          except ValueError:pass
+          print("PASS independent detector SSE and minimum segment falsifiers")
+          PY
+      - name: Build original C++ challenge and pin true external ruptures dependency
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libsqlite3-dev libjson-c-dev libssl-dev pkg-config python3-venv
+          python3 -m venv build/ruptures_env
+          build/ruptures_env/bin/pip install --disable-pip-version-check 'ruptures==1.1.10'
+          cmake -S . -B build/native -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/native --target phaseshift_v2_noisy_detection_tests -j2
+      - name: Execute original native C++ exact DP/PELT challenge (100 fixed series)
+        run: |
+          set -euo pipefail
+          ctest --test-dir build/native -R '^v2_noisy_holdout_segmentation_challenge$' --output-on-failure
+      - name: Execute real ruptures.Pelt and independently audit raw C++ generated signals
+        run: |
+          set -euo pipefail
+          build/ruptures_env/bin/python benchmarks/v2/external_ruptures.py --dataset-root build/native/ctest_v2_noisy --out build/native/ctest_v2_noisy/ruptures_comparison.json
+          build/ruptures_env/bin/python benchmarks/v3/audit_real_ruptures.py --dataset-root build/native/ctest_v2_noisy --external build/native/ctest_v2_noisy/ruptures_comparison.json --out build/native/ctest_v2_noisy/independent_ruptures_audit.json
+          build/ruptures_env/bin/python benchmarks/v3/audit_real_ruptures.py --dataset-root build/native/ctest_v2_noisy --external build/native/ctest_v2_noisy/ruptures_comparison.json --out build/native/ctest_v2_noisy/independent_ruptures_audit.json --verify-only
+          python3 - <<'PY'
+          import json,os
+          p=json.load(open("build/native/ctest_v2_noisy/independent_ruptures_audit.json"))
+          assert p["total_series"]==100 and not p["sota_claim"]
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as f:
+            f.write("## Genuine ruptures 1.1.10 versus PhaseShift native exact DP (detector only)\n\n")
+            f.write("| C++ generated signal | Count | ruptures nonempty | ruptures near planted discontinuity | native DP nonempty | Same feasible K | Different feasible K |\n|---|---:|---:|---:|---:|---:|---:|\n")
+            for scenario,v in p["scenarios"].items():
+              f.write(f"| {scenario} | {v['trials']} | {v['ruptures_nonempty']} | {v['ruptures_near_planted']} | {v['cpp_nonempty']} | {v['matched_K_feasible']} | {v['unmatched_K_feasible']} |\n")
+            f.write("\nComparability: same fully observed sequence, squared-error cost and penalty; original C++ K<=3 restriction differs from external PELT. Not adaptive acquisition or end-to-end SOTA.\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v3-ruptures-100-real-cpp-series-audited-results
+          path: build/native/ctest_v2_noisy/
+          retention-days: 90
+          if-no-files-found: warn

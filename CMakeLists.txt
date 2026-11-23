@@ -526,3 +526,229 @@ add_test(NAME v2_cliff_bracketing_cli_holdout_contract
  COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/verify_v2_cliff_bracket_cli.py
  --binary $<TARGET_FILE:phaseshift> --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_cliff_bracket_v2)
 set_tests_properties(v2_cliff_bracketing_cli_holdout_contract PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+
+# V3-01 independent Python benchmark contract falsification (offline, no workers).
+add_test(NAME v3_independent_benchmark_fairness_contract
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/benchmark_fairness.py)
+set_tests_properties(v3_independent_benchmark_fairness_contract PROPERTIES TIMEOUT 30)
+
+# V3-01 actual explore/resume/confirm/SQLite benchmark and scorecard smoke.
+add_test(NAME v3_real_worker_consumed_budget_scorecard
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/run_real_cli_diagnostic.py
+ --binary $<TARGET_FILE:phaseshift> --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_quick)
+set_tests_properties(v3_real_worker_consumed_budget_scorecard PROPERTIES
+ TIMEOUT 180 RUN_SERIAL TRUE)
+
+# V3-02 opt-in typed control-plane and V3-03 paired-plan contract tests.
+add_executable(phaseshift_v3_contract_tests tests/v3/control_plane.cpp)
+target_link_libraries(phaseshift_v3_contract_tests PRIVATE phaseshift_core)
+add_test(NAME v3_typed_keys_frozen_discovery_budget_and_matched_seeds
+ COMMAND phaseshift_v3_contract_tests)
+set_tests_properties(v3_typed_keys_frozen_discovery_budget_and_matched_seeds PROPERTIES TIMEOUT 30)
+
+# V3-02 differential characterization of the extracted v2 policy selector.
+add_executable(phaseshift_v3_selector_characterization tests/v3/selector_characterization.cpp)
+target_link_libraries(phaseshift_v3_selector_characterization PRIVATE phaseshift_core)
+add_test(NAME v3_legacy_policy_extraction_characterization
+ COMMAND phaseshift_v3_selector_characterization)
+set_tests_properties(v3_legacy_policy_extraction_characterization PROPERTIES TIMEOUT 30)
+
+# V3-04 guarded ordered-axis legal-space challenger and billion-index oracle.
+add_executable(phaseshift_v3_axis_slice_tests tests/v3/axis_slice.cpp)
+target_link_libraries(phaseshift_v3_axis_slice_tests PRIVATE phaseshift_core)
+add_test(NAME v3_axis_slice_exhaustive_legal_and_large_sparse
+ COMMAND phaseshift_v3_axis_slice_tests)
+set_tests_properties(v3_axis_slice_exhaustive_legal_and_large_sparse PROPERTIES TIMEOUT 60)
+
+# V3-03 opt-in real-worker paired discovery, isolated from legacy CLI.
+add_executable(phaseshift_v3_pairs apps/phaseshift_v3_pairs.cpp)
+target_link_libraries(phaseshift_v3_pairs PRIVATE phaseshift_core)
+add_dependencies(phaseshift_v3_pairs phaseshift_worker)
+add_test(NAME v3_paired_discovery_real_worker_atomic_resume
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/paired_worker_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/uniform_replicates.json
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_paired_workers)
+set_tests_properties(v3_paired_discovery_real_worker_atomic_resume PROPERTIES
+ TIMEOUT 180 RUN_SERIAL TRUE)
+
+# V3-03 discovery-only adaptive explore-versus-replicate (schema v11).
+add_executable(phaseshift_v3_adaptive_policy_tests tests/v3/adaptive_pair.cpp)
+target_link_libraries(phaseshift_v3_adaptive_policy_tests PRIVATE phaseshift_core)
+add_test(NAME v3_adaptive_paired_uncertainty_and_seed_confounding
+ COMMAND phaseshift_v3_adaptive_policy_tests)
+set_tests_properties(v3_adaptive_paired_uncertainty_and_seed_confounding PROPERTIES TIMEOUT 30)
+
+add_test(NAME v3_adaptive_worker_resume_and_tamper_rejection
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/adaptive_worker_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/uniform_replicates.json
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_adaptive_workers)
+set_tests_properties(v3_adaptive_worker_resume_and_tamper_rejection PROPERTIES
+ TIMEOUT 180 RUN_SERIAL TRUE)
+
+# V3-04 opt-in multi-dimensional conditional paired search (schema v12).
+add_executable(phaseshift_v3_conditional_policy_tests tests/v3/conditional_pair.cpp)
+target_link_libraries(phaseshift_v3_conditional_policy_tests PRIVATE phaseshift_core)
+add_test(NAME v3_conditional_rare_xor_and_sparse_billion_space
+ COMMAND phaseshift_v3_conditional_policy_tests)
+set_tests_properties(v3_conditional_rare_xor_and_sparse_billion_space PROPERTIES TIMEOUT 75)
+
+add_test(NAME v3_conditional_disjoint_rectangles_worker_resume
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/conditional_worker_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/admissible_calibration.json
+ --unsupported-config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/conditional_implications.json
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_conditional_workers)
+set_tests_properties(v3_conditional_disjoint_rectangles_worker_resume PROPERTIES
+ TIMEOUT 180 RUN_SERIAL TRUE)
+
+# V3-04 frozen v2 conditional implication compilation (opt-in schema v13).
+add_test(NAME v3_conditional_implication_compiler_worker_replay
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/conditional_rules_worker_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/conditional_implications.json
+ --old-config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/admissible_calibration.json
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_implication_workers)
+set_tests_properties(v3_conditional_implication_compiler_worker_replay PROPERTIES
+ TIMEOUT 180 RUN_SERIAL TRUE)
+
+# V3-04 region-tree conditional discovery, new opt-in schema v14.
+add_executable(phaseshift_v3_region_tree_tests tests/v3/region_tree.cpp)
+target_link_libraries(phaseshift_v3_region_tree_tests PRIVATE phaseshift_core)
+add_test(NAME v3_region_tree_double_cliff_xor_rare_billion_sparse
+ COMMAND phaseshift_v3_region_tree_tests)
+set_tests_properties(v3_region_tree_double_cliff_xor_rare_billion_sparse PROPERTIES
+ TIMEOUT 75)
+
+add_test(NAME v3_region_tree_real_worker_replay
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/region_tree_worker_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/admissible_calibration.json
+ --unsupported-config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/conditional_implications.json
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_region_tree_workers)
+set_tests_properties(v3_region_tree_real_worker_replay PROPERTIES
+ TIMEOUT 180 RUN_SERIAL TRUE)
+
+# V3-05 bounded empirical cost acquisition, opt-in schema v15.
+add_executable(phaseshift_v3_acquisition_tests tests/v3/acquisition.cpp)
+target_link_libraries(phaseshift_v3_acquisition_tests PRIVATE phaseshift_core)
+add_test(NAME v3_acquisition_cost_calibration_drift_and_ablations
+ COMMAND phaseshift_v3_acquisition_tests)
+set_tests_properties(v3_acquisition_cost_calibration_drift_and_ablations PROPERTIES TIMEOUT 30)
+add_test(NAME v3_acquisition_real_worker_cost_replay
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/acquisition_worker_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/admissible_calibration.json
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_acquisition_workers)
+set_tests_properties(v3_acquisition_real_worker_cost_replay PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+
+# Experimental V18 coverage-first acquisition keeps v14 and v15 immutable.
+add_executable(phaseshift_v3_coverage_acquisition_tests tests/v3/coverage_acquisition.cpp)
+target_link_libraries(phaseshift_v3_coverage_acquisition_tests PRIVATE phaseshift_core)
+add_test(NAME v18_coverage_acquisition_deterministic_and_legacy_replay
+ COMMAND phaseshift_v3_coverage_acquisition_tests)
+set_tests_properties(v18_coverage_acquisition_deterministic_and_legacy_replay
+ PROPERTIES TIMEOUT 30)
+
+# Real multi-family matched-pair development comparison (non-promotional smoke).
+add_test(NAME v3_paired_development_multifamily_scorecard
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/paired_development_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --runner ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/v3/run_paired_development.py
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_paired_development)
+set_tests_properties(v3_paired_development_multifamily_scorecard PROPERTIES
+ TIMEOUT 300 RUN_SERIAL TRUE)
+
+# V3-07 read-only descriptive taxonomy and independent small-partition oracle.
+add_executable(phaseshift_v3_taxonomy_tests tests/v3/taxonomy.cpp)
+target_link_libraries(phaseshift_v3_taxonomy_tests PRIVATE phaseshift_core)
+add_test(NAME v3_taxonomy_rival_shapes_sparse_and_exhaustive_oracle
+ COMMAND phaseshift_v3_taxonomy_tests)
+set_tests_properties(v3_taxonomy_rival_shapes_sparse_and_exhaustive_oracle PROPERTIES TIMEOUT 30)
+add_test(NAME v3_taxonomy_readonly_real_worker_replay
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/taxonomy_worker_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/admissible_calibration.json
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_taxonomy)
+set_tests_properties(v3_taxonomy_readonly_real_worker_replay PROPERTIES TIMEOUT 180 RUN_SERIAL TRUE)
+
+# V3-08 frozen whole-family seed-matched holdout and exact sign-tail oracle.
+add_executable(phaseshift_v3_fixed_family_tests tests/v3/fixed_family.cpp)
+target_link_libraries(phaseshift_v3_fixed_family_tests PRIVATE phaseshift_core)
+add_test(NAME v3_fixed_family_exact_sign_oracle_and_holm
+ COMMAND phaseshift_v3_fixed_family_tests)
+set_tests_properties(v3_fixed_family_exact_sign_oracle_and_holm PROPERTIES TIMEOUT 30)
+add_test(NAME v3_fixed_family_real_worker_sealed_holdout
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/fixed_family_worker_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/admissible_calibration.json
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_fixed_family)
+set_tests_properties(v3_fixed_family_real_worker_sealed_holdout PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE)
+
+# V3-08 real-worker null stress and frozen-family scorecard replay.
+add_test(NAME v3_null_calibration_real_worker_campaigns
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/null_calibration_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --runner ${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/v3/run_null_calibration.py
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_null_calibration)
+set_tests_properties(v3_null_calibration_real_worker_campaigns PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE)
+
+# V3-09 opt-in schema 17: durable attempts and honest partial Linux accounting.
+add_test(NAME v3_attempt_accounting_crash_and_replay
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/attempt_accounting_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/admissible_calibration.json
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_attempt_accounting)
+set_tests_properties(v3_attempt_accounting_crash_and_replay PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE)
+
+# V3-09 opt-in schema-19 holdout sidecar: journaled attempts expose re-measured holdout pairs.
+add_test(NAME v3_holdout_attempt_journal_crash_tamper_and_legacy
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/holdout_attempt_journal_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/admissible_calibration.json
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_holdout_journal)
+set_tests_properties(v3_holdout_attempt_journal_crash_tamper_and_legacy PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE)
+
+# V3-09 signed boundary witness: Ed25519 export, openssl-independent verify, replay-bound evidence.
+add_test(NAME v3_signed_witness_export_verify_and_forgery
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/signed_witness_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/admissible_calibration.json
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_signed_witness)
+set_tests_properties(v3_signed_witness_export_verify_and_forgery PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE)
+
+# V3-09 scope-preserving witness minimization with fresh-seed reproduction and replay verification.
+add_test(NAME v3_witness_minimization_fresh_seed_reproduction_and_forgery
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/witness_minimization_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/admissible_calibration.json
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_witness_minimization)
+set_tests_properties(v3_witness_minimization_fresh_seed_reproduction_and_forgery PROPERTIES TIMEOUT 600 RUN_SERIAL TRUE)
+
+# V3-09 live-worker crash/containment matrix: real signals, stalled, killed and forking workers.
+add_test(NAME v3_live_worker_fault_containment_matrix
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/live_worker_fault_matrix_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/admissible_calibration.json
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_live_worker_faults)
+set_tests_properties(v3_live_worker_fault_containment_matrix PROPERTIES TIMEOUT 600 RUN_SERIAL TRUE)
+
+# V3-09 storage fault matrix: write-limit sweeps, external locks, corruption and semantic tamper.
+add_test(NAME v3_storage_fault_matrix
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/storage_fault_matrix_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/admissible_calibration.json
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_storage_faults)
+set_tests_properties(v3_storage_fault_matrix PROPERTIES TIMEOUT 900 RUN_SERIAL TRUE)
+
+# V3-10 frozen one-time external confirmation: protocol, cohort freshness and decision statistics.
+add_test(NAME v3_external_confirmation_frozen_contract
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/external_confirmation_contract.py)
+set_tests_properties(v3_external_confirmation_frozen_contract PROPERTIES TIMEOUT 120)
+
+# V3-01b analytical synthetic worker shapes; strictly additive opt-in workloads.
+add_executable(phaseshift_v3_shapes_tests tests/v3/synthetic_shapes.cpp)
+target_link_libraries(phaseshift_v3_shapes_tests PRIVATE phaseshift_core)
+add_test(NAME v3_analytic_synthetic_worker_truth COMMAND phaseshift_v3_shapes_tests)
+set_tests_properties(v3_analytic_synthetic_worker_truth PROPERTIES TIMEOUT 20)

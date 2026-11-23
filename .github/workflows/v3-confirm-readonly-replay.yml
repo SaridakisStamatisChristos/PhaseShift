@@ -1,0 +1,74 @@
+name: v3-01d-frozen-confirmation-readonly-replay
+
+on:
+  push:
+    branches: ['feature/phaseshift-v3-sota-research']
+    paths:
+      - '.github/workflows/v3-confirm-readonly-replay.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  independent-audit:
+    name: Replay exactly 240 frozen development families without new samples
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test all selection / post-hoc truth / Holm falsifiers
+        run: |
+          python3 -m py_compile benchmarks/v3/confirmation_protocol.py benchmarks/v3/run_confirmation_development.py benchmarks/v3/aggregate_confirmations.py tests/v3/confirmation_contract.py
+          python3 tests/v3/confirmation_contract.py
+          python3 tests/v3/multidim_truth_test.py
+      - name: Download original, immutable six-shard 20-seed discovery
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 45026057899
+          pattern: v3c-development-*
+          path: build/sources
+          github-token: ${{ github.token }}
+      - name: Download already-measured fresh high-range holdouts
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 45034840807
+          pattern: v3d-confirmation-*
+          path: build/confirmations
+          github-token: ${{ github.token }}
+      - name: Revalidate every selected family, raw SQLite and post-hoc truth
+        run: |
+          set -euo pipefail
+          python3 benchmarks/v3/aggregate_confirmations.py \
+            --sources build/sources --confirmations build/confirmations \
+            --out build/v3d_reproduced.json
+          python3 benchmarks/v3/aggregate_confirmations.py \
+            --sources build/sources --confirmations build/confirmations \
+            --out build/v3d_reproduced.json --verify-only
+          python3 - <<'PY'
+          import json,os
+          report=json.load(open("build/v3d_reproduced.json"))
+          assert report["trials"]==240 and report["failed"]==0
+          assert not report["population_fwer_certified"]
+          assert not report["model_assumptions_validated"] and not report["sota_claim"]
+          print("INDEPENDENT EXACT-BYTE REPLAY",report["completed_families"],
+                "complete families",report["observed_fresh_holdout_pairs"],"holdout pairs")
+          with open(os.environ["GITHUB_STEP_SUMMARY"],"a") as f:
+              f.write("## Independent V3-01d read-only evidence replay\n\n")
+              f.write(f"**{report['trials']} trials audited; {report['completed_families']} completed families; ")
+              f.write(f"{report['observed_fresh_holdout_pairs']} fresh paired holdout measurements.**\n\n")
+              f.write("No inference beyond a declared, empirically unvalidated sign model; no SOTA claim.\n\n")
+              f.write("| Scenario | v14 selected families | v15 selected families | v14 nominal rejections | v15 nominal rejections |\n")
+              f.write("|---|---:|---:|---:|---:|\n")
+              for scene in report["outcomes"]:
+                  a=scene["policies"]["conditional-tree"];b=scene["policies"]["acquisition-v3"]
+                  f.write(f"| {scene['fixture']} | {a['completed_families']} | {b['completed_families']} | {a['nominal_sign_model_rejections']} | {b['nominal_sign_model_rejections']} |\n")
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: v3d-current-revision-replayed-confirmation-scorecard
+          path: build/v3d_reproduced.json
+          retention-days: 60
+          if-no-files-found: warn
