@@ -9,6 +9,7 @@ import run_real_smac as lab
 class SMACContract(unittest.TestCase):
  def test_manifest_pinned_and_native_workers_only(self):
   m,by=lab.manifest()
+  self.m=m
   self.assertEqual(m["seeds"],list(range(33001,33021)))
   self.assertEqual(m["smac_version"],"2.4.1")
   self.assertEqual(m["policies"],list(lab.POLICIES))
@@ -23,6 +24,18 @@ class SMACContract(unittest.TestCase):
    self.assertEqual(c["algorithms"],e["algorithms"])
    self.assertEqual(c.get("fixed",{}).get("n"),e.get("fixed",{}).get("n"))
    self.assertEqual(len(lab.allowed_edges(source))+1,len(source["config"]["axes"][source["config"]["primary_axis"]]["values"]))
+ def test_continuous_coordinate_to_edge_bins(self):
+  self.assertIn("continuous_0_to_edge_count_floor_clamped",self.m["smac_coordinate_encoding"])
+  for count in (1,2,7,8,64):
+   for index in range(count):
+    self.assertEqual(lab.map_edge_coordinate(float(index),count),index)
+    self.assertEqual(lab.map_edge_coordinate(index+0.5,count),index)
+   self.assertEqual(lab.map_edge_coordinate(float(count),count),count-1)
+   for invalid in (-0.1,float(count)+0.1,float("nan"),float("inf")):
+    with self.assertRaises(ValueError):
+     lab.map_edge_coordinate(invalid,count)
+  with self.assertRaises(ValueError):
+   lab.map_edge_coordinate(0.5,0)
  def test_loss_censor_and_effect(self):
   self.assertEqual(lab.smac_loss(None),1.)
   self.assertEqual(lab.smac_loss(0),1.)
