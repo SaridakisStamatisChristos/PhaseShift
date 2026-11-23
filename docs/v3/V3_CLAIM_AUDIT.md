@@ -1,6 +1,6 @@
 # PhaseShift v3 claim audit (V3-11)
 
-**Date:** 2026-11-23. **Branch:** `feature/phaseshift-v3-sota-research` (draft PR #6, not merged). **Status:** the evidence verdict is FINAL. The one-time external confirmation was executed and both hypotheses were not supported. Merging still needs owner approval.
+**Date:** 2026-11-23. **Branch:** developed on `feature/phaseshift-v3-sota-research` (PR #6), **merged into `main` as `e7169dd`** with explicit owner approval on 2026-11-23. **Status:** the evidence verdict is FINAL. The one-time external confirmation was executed and both hypotheses were not supported. The path forward is planned in [`SOTA_ROADMAP.md`](SOTA_ROADMAP.md); the next session starts from [`../HANDOFF.md`](../HANDOFF.md).
 
 This audit states, per claim, what the evidence supports. Source, tests, Git history and recorded CI runs are the only evidence; a document describing a feature is not. "Verified" means observed execution on the exact commit named.
 
@@ -99,7 +99,7 @@ These states come from `IMPLEMENTATION_LEDGER.md`. Milestones marked *ledger* we
 
 The engineering gates are met at exact SHAs, and the scientific verdict is final and negative for external superiority. The open items are:
 
-1. Re-run all CI lanes on the final release SHA, together with `scripts/acceptance_smoke.sh`. CI already passed at `4525c50`; any later commit needs its own green run.
-2. Owner review and explicit merge approval. Nothing is merged or released without it.
+1. Done: merged into `main` as `e7169dd` after CI passed on the PR head `f0501f5`, with owner approval. `main` CI is green at `e7169dd` and `9792e81`. No release has been tagged; any release needs its own exact-SHA gates and owner approval.
+2. Development continues on `main` per [`../HANDOFF.md`](../HANDOFF.md).
 3. Retain the raw confirmation artifacts durably before their CI expiry on 2027-02-21, if the result is to be cited.
 4. The residual risks above remain disclosed, not resolved. A future external claim needs a new, separately frozen protocol on a new cohort, for example with more discriminating, less saturated workloads. This cohort must never be reused.

@@ -2,10 +2,13 @@
 
 # PhaseShift working rules for Claude Code
 
+## Session start
+When asked to "continue development" (or at the start of any session), read [`docs/HANDOFF.md`](docs/HANDOFF.md) first, run its start checklist, then execute its **Next task**. Update `docs/HANDOFF.md` and `docs/v3/IMPLEMENTATION_LEDGER.md` before ending the session. The path to a SOTA claim is planned in [`docs/v3/SOTA_ROADMAP.md`](docs/v3/SOTA_ROADMAP.md).
+
 ## Authority (highest first)
 1. `docs/PHASESHIFT_SPEC.md`: immutable functional contract.
 2. `PHASESHIFT_V3_SOTA_MASTER_ARCHITECTURE_DIRECTIVE.md`: V3 architecture requirements. It is a specification, not evidence of implementation.
-3. `AGENTS.md` (imported above): engineering and evidence rules, including R7 verification. Its "Current v1 handoff" section is historical.
+3. `AGENTS.md` (imported above): engineering and evidence rules, including R7 verification. Its "Historical v1 handoff" section is superseded by `docs/HANDOFF.md`.
 4. Source, tests, Git history and recorded CI results are the only evidence of what is implemented. Never mark a requirement complete because a document describes it.
 
 ## Development

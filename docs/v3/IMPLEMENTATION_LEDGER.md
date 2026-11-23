@@ -472,3 +472,20 @@ Descriptive costs are not matched. On discovery wall time V18 is the fastest (ab
 The archive is `docs/v3/external_evidence/external_confirmation_one_time_final.json` plus the raw artifact digests in the manifest. The frozen manifest is intentionally left unchanged as the pre-registration record, and the cohort must never be reused.
 
 `V3_CLAIM_AUDIT.md` is final: external advantage not supported, external competitiveness unproven, no SOTA. README updated. V3-10 is EXECUTED with a negative result. V3-11 is final for evidence; release-SHA CI and owner merge approval remain.
+
+
+## Merge to main and session handoff (23 November 2026)
+
+PR #6 was merged into `main` with explicit owner approval, as merge commit `e7169dd` (parents `279a8c6`, `f0501f5`). `main`'s tree is identical to the CI-verified PR head. The master directive gained an execution record and §21 (outcome and final verdict).
+
+By owner instruction, development now continues **directly on `main`** (CLAUDE.md Git rules updated). Commit `9792e81` added push-to-`main` triggers for the historical-compatibility, multidim and scientific-benchmark lanes, and moved the external-confirmation push path (protocol plus smoke only) to `main`. Feature-branch study workflows are intentionally left inert.
+
+CI on `main`:
+
+- `e7169dd`: build-test, sanitizers and coverage green.
+- `9792e81`: all seven workflows green, 123/123 tests, coverage 95.60%.
+
+**Handoff written:**
+
+- `docs/HANDOFF.md` holds the session-start checklist, the hard rules (opened cohorts, the full used-seed inventory including derived ranges, frozen evidence, pinned development runners, local Docker/LF verification), the next task (V4-00 known-truth external benchmark on the directive §2.3 endpoint, development only), the task queue and end-of-session duties. CLAUDE.md now points sessions to it, and the AGENTS.md v1 handoff is relabelled historical.
+- `docs/v3/SOTA_ROADMAP.md` is a planning document, not evidence. It covers the evidence-based diagnosis of why no lead exists (endpoint mismatch, top-2 nomination discarding V18's wider coverage, saturated easy workloads, unproven internal gains, query-count rather than CPU matching), the falsifiable algorithmic levers with ablation gates, a benchmark able to show a lead, competitors, power and pre-registration, engineering prerequisites, a stop rule (`SOTA_NOT_ESTABLISHED`) and an ordered plan.
