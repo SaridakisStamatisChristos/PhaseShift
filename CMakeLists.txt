@@ -702,6 +702,14 @@ add_test(NAME v3_attempt_accounting_crash_and_replay
  --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_attempt_accounting)
 set_tests_properties(v3_attempt_accounting_crash_and_replay PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE)
 
+# V3-09 opt-in schema-19 holdout sidecar: journaled attempts expose re-measured holdout pairs.
+add_test(NAME v3_holdout_attempt_journal_crash_tamper_and_legacy
+ COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/v3/holdout_attempt_journal_cli.py
+ --binary $<TARGET_FILE:phaseshift_v3_pairs>
+ --config ${CMAKE_CURRENT_SOURCE_DIR}/configs/v2/admissible_calibration.json
+ --out ${CMAKE_CURRENT_BINARY_DIR}/ctest_v3_holdout_journal)
+set_tests_properties(v3_holdout_attempt_journal_crash_tamper_and_legacy PROPERTIES TIMEOUT 300 RUN_SERIAL TRUE)
+
 # V3-01b analytical synthetic worker shapes; strictly additive opt-in workloads.
 add_executable(phaseshift_v3_shapes_tests tests/v3/synthetic_shapes.cpp)
 target_link_libraries(phaseshift_v3_shapes_tests PRIVATE phaseshift_core)

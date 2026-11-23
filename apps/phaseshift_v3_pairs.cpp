@@ -106,11 +106,11 @@ struct Statement {
 // proposal-to-precommit window, not the entire process tree or invocation.
 struct AccountedRunLock {
  int fd=-1;
- explicit AccountedRunLock(const fs::path& path){
+ explicit AccountedRunLock(const fs::path& path,const char* busy="accounted run already has a writer"){
   fd=::open(path.c_str(),O_RDONLY|O_CLOEXEC|O_NOFOLLOW);
   require(fd>=0,"accounted run lock open failed");
   if(::flock(fd,LOCK_EX|LOCK_NB)!=0){
-   ::close(fd);fd=-1;throw Error("accounted run already has a writer");
+   ::close(fd);fd=-1;throw Error(busy);
   }
  }
  ~AccountedRunLock(){if(fd>=0)::close(fd);}
@@ -1006,7 +1006,7 @@ Case family_case(const Plan& plan,const MatchedBoundaryObservationV3& edge,
  apply_axis(c,plan.axis,plan.config.axes.at(plan.axis).at(right?edge.right:edge.left));
  return make_case(c,plan.config.max_bytes);
 }
-void freeze_family_sidecar(Sqlite& db,const FamilySpecV3& f){
+void freeze_family_sidecar(Sqlite& db,const FamilySpecV3& f,bool journaled){
  db.exec("BEGIN IMMEDIATE");
  try{
   db.exec(R"SQL(
@@ -1035,17 +1035,49 @@ void freeze_family_sidecar(Sqlite& db,const FamilySpecV3& f){
   order_position INTEGER,order_seed TEXT NOT NULL,
   PRIMARY KEY(pair_number,side,ordinal),
   CHECK((status='ok' AND ns>0) OR (status!='ok' AND ns IS NULL)));
- PRAGMA user_version=16;
  )SQL");
+  if(journaled){
+   // Opt-in schema 19: every holdout worker launch is durably journaled
+   // before measurement, so an interrupted and re-measured pair is visible.
+   db.exec(R"SQL(
+ CREATE TABLE v3_holdout_journal_origin(
+  id INTEGER PRIMARY KEY CHECK(id=1),
+  protocol TEXT NOT NULL CHECK(protocol='phaseshift.v3.holdout_attempt_journal.1'));
+ CREATE TABLE v3_holdout_attempts(
+  attempt_id INTEGER PRIMARY KEY CHECK(attempt_id BETWEEN 0 AND 99999),
+  pair_number INTEGER NOT NULL CHECK(pair_number BETWEEN 0 AND 1599),
+  seed INTEGER NOT NULL,
+  left_first INTEGER NOT NULL CHECK(left_first IN (0,1)),
+  left_case_id TEXT NOT NULL CHECK(length(left_case_id)=64),
+  right_case_id TEXT NOT NULL CHECK(length(right_case_id)=64),
+  state TEXT NOT NULL CHECK(state IN ('STARTED','ABANDONED','COMMITTED')),
+  committed_pair INTEGER UNIQUE REFERENCES v3_pairs(pair_number),
+  CHECK((state='COMMITTED' AND committed_pair IS NOT NULL AND committed_pair=pair_number)
+    OR (state!='COMMITTED' AND committed_pair IS NULL)));
+ CREATE UNIQUE INDEX v3_holdout_attempt_active ON v3_holdout_attempts(state) WHERE state='STARTED';
+ INSERT INTO v3_holdout_journal_origin VALUES(1,'phaseshift.v3.holdout_attempt_journal.1');
+ PRAGMA user_version=19;
+ )SQL");
+  }else db.exec("PRAGMA user_version=16;");
   Statement st(db,"INSERT INTO v3_family VALUES(1,?,?,?,?,?)");
   st.bind(1,f.manifest);st.bind(2,f.canonical);st.bind(3,f.digest);
   st.bind(4,f.source_digest);st.bind(5,f.revision);st.done();
   db.exec("COMMIT");
  }catch(...){db.exec("ROLLBACK");throw;}
 }
+int family_sidecar_version(Sqlite& db){
+ Statement ver(db,"PRAGMA user_version");
+ require(ver.row()&&(ver.number(0)==16||ver.number(0)==19),"not v16/v19 family sidecar");
+ const auto version=static_cast<int>(ver.number(0));
+ // A genuine v16 sidecar never contains a journal; reject a downgraded v19
+ // sidecar that would otherwise hide abandoned holdout attempts.
+ Statement journal(db,"SELECT COUNT(*) FROM sqlite_master WHERE name IN ('v3_holdout_attempts','v3_holdout_journal_origin')");
+ require(journal.row()&&journal.number(0)==(version==19?2:0),"family sidecar journal/version mismatch");
+ return version;
+}
 FamilySpecV3 read_family_sidecar(Sqlite& db,const Plan& plan,
  const std::vector<MatchedBoundaryObservationV3>& discovery,const std::string& source_digest){
- Statement ver(db,"PRAGMA user_version");require(ver.row()&&ver.number(0)==16,"not v16 family sidecar");
+ (void)family_sidecar_version(db);
  Statement st(db,"SELECT manifest,specification,spec_sha256,source_sha256,source_revision FROM v3_family WHERE id=1");
  require(st.row()&&st.str(3)==source_digest,"changed discovery snapshot");
  const auto f=make_family_spec(plan,discovery,st.str(0),source_digest,st.str(4));
@@ -1118,57 +1150,193 @@ std::size_t replay_family_sidecar(Sqlite& db,const Plan& plan,const FamilySpecV3
  require(raw_count.row()&&raw_count.number(0)==static_cast<std::int64_t>(expected),"orphan holdout samples");
  return index;
 }
+// Frozen identity of holdout pair `index`: seed, presentation order and both
+// regenerated cases. Shared by v16 execution, v19 journaling and v19 audit.
+struct HoldoutProposalV3 {
+ std::uint64_t seed=0;
+ bool left_first=false;
+ Case a,b;
+};
+HoldoutProposalV3 holdout_proposal_v3(const Plan& plan,const FamilySpecV3& f,
+ const std::vector<MatchedBoundaryObservationV3>& discovery,std::size_t index){
+ const auto seed=f.seeds.at(index);
+ const auto& edge=discovery.at(f.members.at(index%f.members.size()).discovery_pair);
+ return {seed,((seed^index)&1ULL)==0,family_case(plan,edge,false,seed),family_case(plan,edge,true,seed)};
+}
+struct HoldoutMeasuredV3 {
+ std::vector<Observation> l,r;
+ std::optional<double> effect;
+ std::int64_t cpu=0,wall=0;
+ bool known=true;
+};
+HoldoutMeasuredV3 measure_holdout_pair_v3(const Plan& plan,const HoldoutProposalV3& p,
+ std::chrono::steady_clock::time_point deadline){
+ const std::vector<std::string> algorithms=plan.config.b.empty()?std::vector<std::string>{plan.config.a}:
+   std::vector<std::string>{plan.config.a,plan.config.b};
+ const auto start=std::chrono::steady_clock::now();
+ auto collect=[&](const Case& c){
+  return measure(c,algorithms,plan.config.blocks,plan.config.warmup,
+     plan.config.sample_ms,plan.config.rss_mb,plan.config.minimum_batch_ms,
+     plan.config.isolation_mode=="per_sample",deadline,plan.config.measurement_protocol_version);
+ };
+ HoldoutMeasuredV3 m;
+ if(p.left_first){m.l=collect(p.a);m.r=collect(p.b);}else{m.r=collect(p.b);m.l=collect(p.a);}
+ if(const auto* fault=std::getenv("PHASESHIFT_V3_FAILPOINT");fault&&std::string(fault)=="before_holdout_commit")std::_Exit(88);
+ m.wall=std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-start).count();
+ const auto lm=per_side_metric(m.l,plan.config.a,plan.config.b),rm=per_side_metric(m.r,plan.config.a,plan.config.b);
+ m.effect=lm&&rm?std::optional<double>{*rm-*lm}:std::nullopt;
+ require(m.wall>0&&(!m.effect||std::isfinite(*m.effect)),"invalid holdout worker effect/cost");
+ for(const auto& group:{m.l,m.r})for(const auto& row:group){
+  if(row.cpu_ns<0||row.cpu_ns>std::numeric_limits<std::int64_t>::max()-m.cpu)m.known=false;
+  else if(m.known)m.cpu+=row.cpu_ns;
+ }
+ return m;
+}
+// Caller owns the open write transaction.
+void insert_holdout_pair_v3(Sqlite& db,std::size_t index,const HoldoutProposalV3& p,const HoldoutMeasuredV3& m){
+ {
+  Statement count(db,"SELECT COUNT(*) FROM v3_pairs");
+  require(count.row()&&count.number(0)==static_cast<std::int64_t>(index),"concurrent family progress; retry from fresh snapshot");
+ }
+ insert_case(db,p.a);insert_case(db,p.b);
+ Statement st(db,"INSERT INTO v3_pairs VALUES(?,?,?,?,?,?,?,?,?)");
+ st.bind(1,static_cast<std::int64_t>(index));st.bind(2,static_cast<std::int64_t>(p.seed));
+ st.bind(3,static_cast<std::int64_t>(p.left_first?1:0));st.bind(4,p.a.id);st.bind(5,p.b.id);
+ st.bind(6,m.effect?std::string("ok"):std::string("censored"));
+ if(m.effect)require(sqlite3_bind_double(st.stmt,7,*m.effect)==SQLITE_OK,"holdout SQL effect");
+ else st.bind_null(7);
+ if(m.known)st.bind(8,m.cpu);else st.bind_null(8);
+ st.bind(9,m.wall);st.done();
+ insert_samples(db,index,0,p.a,m.l);insert_samples(db,index,1,p.b,m.r);
+}
 void run_family_pair(Sqlite& db,const Plan& plan,const FamilySpecV3& f,
  const std::vector<MatchedBoundaryObservationV3>& discovery,std::size_t index,
  std::chrono::steady_clock::time_point deadline){
- // Atomic holdout pair. Acquire the write lock before the worker call so
- // competing resumptions cannot collect a second measurement for this row.
+ // Schema 16: atomic holdout pair. Acquire the write lock before the worker
+ // call so competing resumptions cannot collect a second measurement.
  db.exec("BEGIN IMMEDIATE");
  try{
-  Statement count(db,"SELECT COUNT(*) FROM v3_pairs");
-  require(count.row()&&count.number(0)==static_cast<std::int64_t>(index),"concurrent family progress; retry from fresh snapshot");
-  const auto seed=f.seeds.at(index);
-  const auto& edge=discovery.at(f.members.at(index%f.members.size()).discovery_pair);
-  const auto a=family_case(plan,edge,false,seed),b=family_case(plan,edge,true,seed);
-  const bool left_first=((seed^index)&1ULL)==0;
-  const std::vector<std::string> algorithms=plan.config.b.empty()?std::vector<std::string>{plan.config.a}:
-    std::vector<std::string>{plan.config.a,plan.config.b};
-  const auto start=std::chrono::steady_clock::now();
-  auto collect=[&](const Case& c){
-   return measure(c,algorithms,plan.config.blocks,plan.config.warmup,
-      plan.config.sample_ms,plan.config.rss_mb,plan.config.minimum_batch_ms,
-      plan.config.isolation_mode=="per_sample",deadline,plan.config.measurement_protocol_version);
-  };
-  std::vector<Observation> l,r;
-  if(left_first){l=collect(a);r=collect(b);}else{r=collect(b);l=collect(a);}
-  if(const auto* fault=std::getenv("PHASESHIFT_V3_FAILPOINT");fault&&std::string(fault)=="before_holdout_commit")std::_Exit(88);
-  const auto wall=std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now()-start).count();
-  const auto lm=per_side_metric(l,plan.config.a,plan.config.b),rm=per_side_metric(r,plan.config.a,plan.config.b);
-  const auto effect=lm&&rm?std::optional<double>{*rm-*lm}:std::nullopt;
-  require(wall>0&&(!effect||std::isfinite(*effect)),"invalid holdout worker effect/cost");
-  std::int64_t cpu=0;bool known=true;
-  for(const auto& group:{l,r})for(const auto& row:group){
-   if(row.cpu_ns<0||row.cpu_ns>std::numeric_limits<std::int64_t>::max()-cpu)known=false;
-   else if(known)cpu+=row.cpu_ns;
+  {
+   Statement count(db,"SELECT COUNT(*) FROM v3_pairs");
+   require(count.row()&&count.number(0)==static_cast<std::int64_t>(index),"concurrent family progress; retry from fresh snapshot");
   }
-  insert_case(db,a);insert_case(db,b);
-  Statement st(db,"INSERT INTO v3_pairs VALUES(?,?,?,?,?,?,?,?,?)");
-  st.bind(1,static_cast<std::int64_t>(index));st.bind(2,static_cast<std::int64_t>(seed));
-  st.bind(3,static_cast<std::int64_t>(left_first?1:0));st.bind(4,a.id);st.bind(5,b.id);
-  st.bind(6,effect?std::string("ok"):std::string("censored"));
-  if(effect)require(sqlite3_bind_double(st.stmt,7,*effect)==SQLITE_OK,"holdout SQL effect");
-  else st.bind_null(7);
-  if(known)st.bind(8,cpu);else st.bind_null(8);
-  st.bind(9,wall);st.done();
-  insert_samples(db,index,0,a,l);insert_samples(db,index,1,b,r);
+  const auto p=holdout_proposal_v3(plan,f,discovery,index);
+  const auto m=measure_holdout_pair_v3(plan,p,deadline);
+  insert_holdout_pair_v3(db,index,p,m);
   db.exec("COMMIT");
  }catch(...){db.exec("ROLLBACK");throw;}
  if(const auto* fault=std::getenv("PHASESHIFT_V3_FAILPOINT");fault&&std::string(fault)=="after_holdout_commit")std::_Exit(89);
 }
+
+// Schema 19 holdout attempt journal. Limits: rows are not hash-chained, so a
+// deliberate SQLite rewrite (delete and renumber) is not detectable; this
+// guards against silent re-measurement by cooperating CLI writers only.
+constexpr std::int64_t kHoldoutAttemptCapV3=100000;
+struct HoldoutJournalV3 {
+ std::int64_t attempts=0,committed=0,abandoned=0,started=0,interrupted_pairs=0;
+};
+HoldoutJournalV3 audit_holdout_journal_v3(Sqlite& db,const Plan& plan,const FamilySpecV3& f,
+ const std::vector<MatchedBoundaryObservationV3>& discovery,std::size_t committed){
+ {
+  Statement origin(db,"SELECT protocol FROM v3_holdout_journal_origin WHERE id=1");
+  require(origin.row()&&origin.str(0)=="phaseshift.v3.holdout_attempt_journal.1","missing holdout journal provenance");
+ }
+ Statement q(db,"SELECT a.attempt_id,a.pair_number,a.seed,a.left_first,a.left_case_id,a.right_case_id,a.state,a.committed_pair,"
+                "p.seed,p.left_first,p.left_case_id,p.right_case_id FROM v3_holdout_attempts a "
+                "LEFT JOIN v3_pairs p ON p.pair_number=a.committed_pair ORDER BY a.attempt_id");
+ HoldoutJournalV3 out;
+ std::optional<std::size_t> expected_index;
+ HoldoutProposalV3 expected;
+ bool interrupted=false;
+ while(q.row()){
+  require(out.started==0,"holdout attempt follows an unresolved STARTED attempt");
+  require(q.number(0)==out.attempts&&out.attempts<kHoldoutAttemptCapV3,"holdout attempt sequence/cap mismatch");
+  ++out.attempts;
+  const auto index=static_cast<std::size_t>(out.committed);
+  require(index<f.seeds.size()&&q.number(1)==static_cast<std::int64_t>(index),"holdout attempt outside frozen order");
+  if(expected_index!=index){expected=holdout_proposal_v3(plan,f,discovery,index);expected_index=index;interrupted=false;}
+  require(q.number(2)==static_cast<std::int64_t>(expected.seed)&&q.number(3)==(expected.left_first?1:0)&&
+          q.str(4)==expected.a.id&&q.str(5)==expected.b.id,"holdout attempt differs from frozen schedule");
+  const auto state=q.str(6);
+  if(state=="COMMITTED"){
+   require(sqlite3_column_type(q.stmt,7)==SQLITE_INTEGER&&q.number(7)==q.number(1)&&
+           sqlite3_column_type(q.stmt,8)==SQLITE_INTEGER&&q.number(8)==q.number(2)&&q.number(9)==q.number(3)&&
+           q.str(10)==q.str(4)&&q.str(11)==q.str(5),"committed holdout attempt does not bind its pair");
+   ++out.committed;
+  }else{
+   require(state=="STARTED"||state=="ABANDONED","unknown holdout attempt state");
+   require(sqlite3_column_type(q.stmt,7)==SQLITE_NULL,"uncommitted holdout attempt claims a pair");
+   if(state=="STARTED")++out.started;
+   else{
+    ++out.abandoned;
+    if(!interrupted){interrupted=true;++out.interrupted_pairs;}
+   }
+  }
+ }
+ require(out.committed==static_cast<std::int64_t>(committed),"committed holdout pair lacks journaled attempt");
+ return out;
+}
+std::int64_t reserve_holdout_attempt_v3(Sqlite& db,std::size_t index,const HoldoutProposalV3& p){
+ std::int64_t id=0;
+ {
+  Statement count(db,"SELECT COUNT(*) FROM v3_holdout_attempts");
+  require(count.row()&&count.number(0)<kHoldoutAttemptCapV3,"holdout attempt journal capacity exhausted");
+  id=count.number(0);
+ }
+ // Autocommit with synchronous=FULL: durable before any worker launch.
+ Statement st(db,"INSERT INTO v3_holdout_attempts(attempt_id,pair_number,seed,left_first,left_case_id,right_case_id,state) VALUES(?,?,?,?,?,?,'STARTED')");
+ st.bind(1,id);st.bind(2,static_cast<std::int64_t>(index));st.bind(3,static_cast<std::int64_t>(p.seed));
+ st.bind(4,static_cast<std::int64_t>(p.left_first?1:0));st.bind(5,p.a.id);st.bind(6,p.b.id);st.done();
+ return id;
+}
+void abandon_holdout_attempt_v3(Sqlite& db,std::int64_t id) noexcept{
+ // Best effort while unwinding; a later writer abandons any STARTED row anyway.
+ try{
+  Statement st(db,"UPDATE v3_holdout_attempts SET state='ABANDONED' WHERE attempt_id=? AND state='STARTED'");
+  st.bind(1,id);st.done();
+ }catch(...){}
+}
+void run_journaled_family_pair(Sqlite& db,const Plan& plan,const FamilySpecV3& f,
+ const std::vector<MatchedBoundaryObservationV3>& discovery,std::size_t index,
+ std::chrono::steady_clock::time_point deadline){
+ const auto p=holdout_proposal_v3(plan,f,discovery,index);
+ const auto attempt=reserve_holdout_attempt_v3(db,index,p);
+ if(const auto* fault=std::getenv("PHASESHIFT_V3_FAILPOINT");fault&&std::string(fault)=="stop_after_holdout_reservation")
+  std::raise(SIGSTOP);
+ HoldoutMeasuredV3 m;
+ try{m=measure_holdout_pair_v3(plan,p,deadline);}
+ catch(...){abandon_holdout_attempt_v3(db,attempt);throw;}
+ db.exec("BEGIN IMMEDIATE");
+ try{
+  insert_holdout_pair_v3(db,index,p,m);
+  Statement st(db,"UPDATE v3_holdout_attempts SET state='COMMITTED',committed_pair=? WHERE attempt_id=? AND state='STARTED'");
+  st.bind(1,static_cast<std::int64_t>(index));st.bind(2,attempt);st.done();
+  require(sqlite3_changes(db.db)==1,"holdout attempt completion mismatch");
+  if(const auto* fault=std::getenv("PHASESHIFT_V3_FAILPOINT");fault&&std::string(fault)=="during_holdout_commit")
+   std::_Exit(90);
+  db.exec("COMMIT");
+ }catch(...){
+  db.exec("ROLLBACK");abandon_holdout_attempt_v3(db,attempt);throw;
+ }
+ if(const auto* fault=std::getenv("PHASESHIFT_V3_FAILPOINT");fault&&std::string(fault)=="after_holdout_commit")std::_Exit(89);
+}
 void report_family_v3(const Plan& plan,const FamilySpecV3& f,const HoldoutEffectsV3& effects,
-                     std::size_t count){
+                     std::size_t count,const std::optional<HoldoutJournalV3>& journal=std::nullopt){
  const auto outcome=fixed_family_v3(f.members,effects,f.n,std::log(plan.config.min_ratio),f.alpha,f.assumptions);
- Json result;result.put("schema","phaseshift.v3.fixed_edge_family.1");
+ Json result;
+ result.put("schema",journal?"phaseshift.v3.fixed_edge_family_journaled.1":"phaseshift.v3.fixed_edge_family.1");
+ if(journal){
+  // Disclosure only: retries re-measure the identical frozen seed and order,
+  // but an interrupted measurement may have differed and is never recorded.
+  result.put("holdout_attempt_protocol","phaseshift.v3.holdout_attempt_journal.1");
+  result.put("holdout_attempts",journal->attempts);
+  result.put("committed_attempts",journal->committed);
+  result.put("abandoned_attempts",journal->abandoned);
+  result.put("started_attempts",journal->started);
+  result.put("pairs_with_abandoned_attempts",journal->interrupted_pairs);
+  result.put("attempt_integrity",journal->started?"INTERRUPTED_ATTEMPT_PENDING":
+             journal->abandoned?"RETRIED_AFTER_INTERRUPTION":"CLEAN");
+ }
  result.put("cohort","confirmation");result.put("family_sha256",f.digest);
  result.put("source_snapshot_sha256",f.source_digest);
  result.put("complete",outcome.complete);result.put("committed_pairs",static_cast<std::int64_t>(count));
@@ -1194,29 +1362,47 @@ void family_command_v3(const std::string& command,const fs::path& run,const std:
  const std::string& fingerprint,std::size_t pause){
  const auto directory=run/"confirmation";const auto path=directory/"family.sqlite";
  const auto revision=Json::parse(environment()).s("source_revision");
- if(command=="family-freeze"){
+ if(command=="family-freeze"||command=="family-freeze-journaled"){
   require(!manifest_path.empty(),"family-freeze needs manifest");
   const auto f=make_family_spec(plan,discovery,read_file(manifest_path),fingerprint,revision);
   require(fs::create_directory(directory),"family already reserved; no refreeze or replacement");
-  Sqlite ledger(path);freeze_family_sidecar(ledger,f);
-  report_family_v3(plan,f,HoldoutEffectsV3(f.members.size()),0);return;
+  const bool journaled=command=="family-freeze-journaled";
+  Sqlite ledger(path);freeze_family_sidecar(ledger,f,journaled);
+  report_family_v3(plan,f,HoldoutEffectsV3(f.members.size()),0,
+                   journaled?std::optional<HoldoutJournalV3>{HoldoutJournalV3{}}:std::nullopt);
+  return;
  }
  require(fs::is_regular_file(path),"family must be frozen before holdout");
  const bool read_only=command=="family-report";
- Sqlite ledger(path,read_only);ledger.exec("BEGIN");
+ Sqlite ledger(path,read_only);
+ const bool journaled=family_sidecar_version(ledger)==19;
+ std::optional<AccountedRunLock> lock;
+ if(journaled&&!read_only){
+  // Exclusive cooperating writer before replay, so no live attempt is abandoned.
+  lock.emplace(path,"journaled holdout family already has a writer");
+  ledger.exec("PRAGMA synchronous=FULL");
+ }
+ std::optional<HoldoutJournalV3> journal;
+ ledger.exec("BEGIN");
  const auto f=read_family_sidecar(ledger,plan,discovery,fingerprint);
  HoldoutEffectsV3 effects;auto count=replay_family_sidecar(ledger,plan,f,discovery,effects);
+ if(journaled)journal=audit_holdout_journal_v3(ledger,plan,f,discovery,count);
  ledger.exec("COMMIT");
  if(!read_only){
   require(revision==f.revision,"holdout executable source revision differs from frozen family");
+  if(journaled)ledger.exec("UPDATE v3_holdout_attempts SET state='ABANDONED' WHERE state='STARTED'");
   const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(plan.config.total_wall_s);
   const auto stop=pause?std::min(f.seeds.size(),count+pause):f.seeds.size();
   while(count<stop&&std::chrono::steady_clock::now()<deadline){
-   run_family_pair(ledger,plan,f,discovery,count,deadline);++count;
+   if(journaled)run_journaled_family_pair(ledger,plan,f,discovery,count,deadline);
+   else run_family_pair(ledger,plan,f,discovery,count,deadline);
+   ++count;
   }
-  ledger.exec("BEGIN");count=replay_family_sidecar(ledger,plan,f,discovery,effects);ledger.exec("COMMIT");
+  ledger.exec("BEGIN");count=replay_family_sidecar(ledger,plan,f,discovery,effects);
+  if(journaled)journal=audit_holdout_journal_v3(ledger,plan,f,discovery,count);
+  ledger.exec("COMMIT");
  }
- report_family_v3(plan,f,effects,count);
+ report_family_v3(plan,f,effects,count,journal);
 }
 
 std::string option(int argc,char** argv,const std::string& name){
@@ -1235,7 +1421,7 @@ void syntax(int argc,char** argv,const std::string& command){
   std::set<std::string>{"--config","--out","--left","--right","--pairs","--pause-after"}:
   command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||(command=="acquisition-v3"||command=="acquisition-v3-coverage")||command=="accounted-v3")?
   std::set<std::string>{"--config","--out","--pairs","--pause-after"}:
-  command=="family-freeze"?std::set<std::string>{"--run","--manifest"}:
+  (command=="family-freeze"||command=="family-freeze-journaled")?std::set<std::string>{"--run","--manifest"}:
   (command=="verify"||command=="taxonomy"||command=="family-report"||command=="accounting")?std::set<std::string>{"--run"}:
   std::set<std::string>{"--run","--pause-after"};
  require((argc-2)%2==0,"options require key/value pairs");
@@ -1251,7 +1437,7 @@ int main(int argc,char** argv){
  try{
   require(argc>=2,"expected run, resume or verify");
   const std::string command=argv[1];
-  require(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||(command=="acquisition-v3"||command=="acquisition-v3-coverage")||command=="accounted-v3")||command=="resume"||command=="verify"||command=="taxonomy"||command=="family-freeze"||command=="family-confirm"||command=="family-report"||command=="accounting","unknown pilot command");
+  require(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||(command=="acquisition-v3"||command=="acquisition-v3-coverage")||command=="accounted-v3")||command=="resume"||command=="verify"||command=="taxonomy"||command=="family-freeze"||command=="family-freeze-journaled"||command=="family-confirm"||command=="family-report"||command=="accounting","unknown pilot command");
   syntax(argc,argv,command);
   const auto pause=numeric_option(argc,argv,"--pause-after",0);
   if(command=="run"||command=="adaptive"||command=="conditional"||command=="conditional-rules"||(command=="conditional-tree"||(command=="acquisition-v3"||command=="acquisition-v3-coverage")||command=="accounted-v3")){
@@ -1301,7 +1487,7 @@ int main(int argc,char** argv){
   const auto run=option(argc,argv,"--run");
   require(!run.empty(),"resume/verify need --run");
   require(fs::is_regular_file(fs::path(run)/"run.sqlite"),"missing authoritative run.sqlite");
-  const bool family=command=="family-freeze"||command=="family-confirm"||command=="family-report";
+  const bool family=command=="family-freeze"||command=="family-freeze-journaled"||command=="family-confirm"||command=="family-report";
   const bool needs_taxonomy=command=="taxonomy"||family;
   const bool readonly=needs_taxonomy||command=="accounting"||command=="verify";
   Sqlite db(fs::path(run)/"run.sqlite",readonly);

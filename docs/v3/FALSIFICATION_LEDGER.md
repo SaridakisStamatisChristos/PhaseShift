@@ -118,3 +118,15 @@ Run 44986318671, job 137097561518: baseline and candidate built, both baseline f
 - F6: even if exploratory seed-paired intervals look positive, no cross-engine winner is computable because endpoints and budget protocols differ. The gate rejects apparent score comparability rather than silently pooling outcomes.
 
 No successful execution evidence is asserted here until GitHub Actions for the exact commit complete. Keep raw negative/censored results and the original schema 7/8/9 historical compatibility lane.
+
+
+## F-027 — Silent holdout re-measurement after interruption
+
+Attack: kill `family-confirm` after the worker measured a holdout pair but before commit, then resume. Under v16 no trace remains, so unfavourable holdout outcomes could be re-rolled at the same frozen seed. Schema-19 falsifiers:
+
+- a real SIGKILL while a durable STARTED reservation is live, with a competing writer that must fail rather than abandon it;
+- exits before, during and after commit, each of which must leave exactly one new ABANDONED or COMMITTED row with identical frozen identity;
+- an independent reconstruction of every attempt against `holdout_seeds`, the `(seed ^ index) & 1` order rule and the committed `v3_pairs` row;
+- rejection of deleted abandoned or committed attempts, uncommitted links, altered seed, order or case identity, extra or beyond-schedule attempts, a missing protocol row and a `user_version` downgrade.
+
+Residual, deliberately recorded: a full journal strip to a valid v16 layout is undetectable without signing (V3-09 signed export remains OPEN).

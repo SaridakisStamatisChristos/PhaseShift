@@ -182,3 +182,30 @@ Added frozen version-2 development and evaluation manifests with nine scenarios 
 **Unified scoring:** `unified_score.py` independently replays v1/v2 and v3 source datasets. Within-v3 differences receive seed-paired exploratory bootstrap intervals for hit rate and consumed CPU. Any cross-engine winning claim is vetoed because v1/v2 holdout work-unit confirmation and v3 unconfirmed wall-time nominations are different endpoints, with different budgets/task geometry. The tool has a hard no-SOTA flag and immutable scorecard output. `v3-multidim.yml` executes six real-worker scenario shards (one seed diagnostic per PR, 20 seeds only on explicitly requested workflow_dispatch), tests analytic truth, and on one shard builds a real v1/v2 incumbent plus validates the unified veto.
 
 **Acceptance gates:** G1 generator/truth multi-context exactness — **IMPLEMENTED, PENDING CI**; G2 illegal/censored/duplicate edge falsification — **IMPLEMENTED, PENDING CI**; G3 v14/v15 frozen real-worker replay — **IMPLEMENTED, PENDING CI**; G4 within-v3 paired exploratory uncertainty — **IMPLEMENTED, PENDING CI**; G5 cross-engine noncomparability veto — **IMPLEMENTED, PENDING CI**; G6 full 20-seed evaluation, independent sealed confirmations, same-endpoint external competitors, statistical FWER, broad smooth-timing truth — **UNVERIFIED/OPEN**. V3-01 remains **PARTIAL**, no SOTA claim or merge.
+
+
+## V3-09b journaled holdout attempts, schema-19 family sidecar (23 November 2026)
+
+**Gap closed (engineering only):** the v16 `family-confirm` runner measured each holdout pair inside one uncommitted SQLite transaction. A crash or kill before `COMMIT` left no trace, so a frozen holdout seed could be re-measured any number of times invisibly, which allowed selective re-rolling of confirmation evidence. This is the "holdout attempt journaling" gap listed open under V3-09a.
+
+New opt-in `family-freeze-journaled` creates a schema-19 sidecar. It has the same frozen specification, seeds and evidence tables as v16, plus `v3_holdout_journal_origin` and `v3_holdout_attempts`. `family-freeze` still produces an unchanged schema-16 sidecar, and `family-confirm` and `family-report` dispatch on the sidecar `user_version`. The v16 runner keeps its transaction and failpoint order; it now shares the proposal, measurement and insert helpers. How it works:
+
+- **Durable reservation.** A v19 writer takes an exclusive advisory `flock` on `family.sqlite` and sets `synchronous=FULL`. It durably reserves a STARTED attempt before any worker launch. The attempt records the frozen seed, presentation order and both regenerated case IDs.
+- **Atomic commit.** The worker runs outside the transaction. The pair, cases, raw samples and the attempt's COMMITTED link then commit in one transaction.
+- **Recovery.** A later writer marks leftover STARTED rows ABANDONED and retries the identical frozen proposal. Abandoned attempts carry no fabricated measurement.
+- **Read-only replay.** Replay requires contiguous attempt IDs and frozen schedule order and identity. At most one trailing STARTED row is allowed, and every committed pair needs exactly one linked COMMITTED attempt.
+- **Report.** The report discloses attempts, abandoned and started counts, pairs with abandoned attempts and `attempt_integrity` (`CLEAN`, `RETRIED_AFTER_INTERRUPTION` or `INTERRUPTED_ATTEMPT_PENDING`). Statistics are unchanged, and `confirmed` stays false.
+- **Downgrade guard.** The v16 reader now rejects a sidecar that contains journal tables, so a v19 sidecar relabelled as v16 cannot hide retries.
+
+**Limits:** the journal is not hash-chained or signed. Deleting and renumbering rows, or fully stripping the journal back to a valid v16 layout, is not detectable; the test records the second case explicitly. The lock protects only cooperating CLI writers. A retry re-measures the identical frozen proposal, but the interrupted measurement is unknown and may have differed. No holdout CPU accounting is added.
+
+**Test:** `tests/v3/holdout_attempt_journal_cli.py` (CTest `v3_holdout_attempt_journal_crash_tamper_and_legacy`). It covers:
+
+- a real SIGSTOP/SIGKILL after reservation, a read-only report during the live attempt, and rejection of a competing writer;
+- the before-, during- and after-commit exits 88/90/89 with atomic rollback;
+- 43 attempts and 40 pairs reconstructed independently against the frozen seeds;
+- idempotent completed resume;
+- ten rejected tamper or downgrade edits plus one documented undetectable strip;
+- unchanged legacy schema-16 freeze and confirm.
+
+**State:** V3-09 PARTIAL. Exact-head CI pending. No statistical, performance or SOTA claim.
